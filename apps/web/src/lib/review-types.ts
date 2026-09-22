@@ -9,6 +9,13 @@ export interface ReviewExtractionView {
   readonly references: readonly string[];
 }
 
+export interface ReviewCommandView {
+  readonly id: string;
+  readonly state: 'PENDING' | 'CLAIMED' | 'DONE' | 'REJECTED';
+  readonly rejectionReason: string | null;
+  readonly createdAt: string;
+}
+
 export interface ReviewItemView {
   readonly itemId: string;
   readonly jobId: string;
@@ -39,6 +46,7 @@ export interface ReviewItemView {
   readonly suggestionSource: string | null;
   readonly suggestionReason: string | null;
   readonly extraction: ReviewExtractionView | null;
+  readonly reviewCommand: ReviewCommandView | null;
 }
 
 export interface DestinationOption {

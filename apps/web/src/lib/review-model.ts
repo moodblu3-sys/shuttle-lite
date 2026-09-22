@@ -1,4 +1,19 @@
-import type { DestinationOption, ReviewItemView } from './review-types';
+import type { DestinationOption, ReviewCommandView, ReviewItemView } from './review-types';
+
+/** Command receipt changes alone must not discard an operator's metadata edits. */
+export function reviewRevision(item: ReviewItemView): string {
+  const { reviewCommand: _command, ...snapshot } = item;
+  return JSON.stringify(snapshot);
+}
+
+export function isReviewPending(item: ReviewItemView, receipt?: ReviewCommandView): boolean {
+  const command = item.reviewCommand;
+  if (command?.state === 'PENDING' || command?.state === 'CLAIMED') return true;
+  // A successful POST may arrive before refreshed server props include its receipt.
+  return (
+    !!receipt && command?.id !== receipt.id && (!command || command.createdAt <= receipt.createdAt)
+  );
+}
 
 export interface ApprovalDraft {
   readonly destinationKey: string;
@@ -57,6 +72,7 @@ export function groupReviewItems(
   items: readonly ReviewItemView[],
   destinations: readonly DestinationOption[],
   needsReviewKey: string,
+  draft: (item: ReviewItemView) => ApprovalDraft = draftFor,
 ) {
   const groups = destinations
     .filter((destination) => destination.key !== needsReviewKey)
@@ -66,7 +82,10 @@ export function groupReviewItems(
         (item) =>
           item.hasRoutingDecision &&
           !item.needsAttention &&
-          item.suggestedDestinationKey === destination.key,
+          destinations.some(
+            (entry) => entry.key === item.suggestedDestinationKey && entry.key !== needsReviewKey,
+          ) &&
+          draft(item).destinationKey === destination.key,
       ),
     }))
     .filter((group) => group.items.length > 0);
@@ -91,16 +110,19 @@ export function canApprove(
 
 export function bulkReviewItems(
   items: readonly ReviewItemView[],
-  selected: ReadonlySet<string>,
+  selected: ReadonlyMap<string, string>,
   draft: (item: ReviewItemView) => ApprovalDraft,
   destinations: readonly DestinationOption[],
   needsReviewKey: string,
 ) {
-  const { groups } = groupReviewItems(items, destinations, needsReviewKey);
+  const { groups } = groupReviewItems(items, destinations, needsReviewKey, draft);
   return groups
     .flatMap((group) => group.items)
     .filter(
-      (item) => selected.has(item.itemId) && canApprove(draft(item), destinations, needsReviewKey),
+      (item) =>
+        selected.get(item.itemId) === reviewRevision(item) &&
+        !isReviewPending(item) &&
+        canApprove(draft(item), destinations, needsReviewKey),
     );
 }
 

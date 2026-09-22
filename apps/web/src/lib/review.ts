@@ -15,6 +15,7 @@ export function buildReviewViews(jobId: string, limit = 200): ReviewItemView[] {
     .map((item) => {
       const routing = store.getRouting(item.id);
       const extraction = store.latestExtraction(item.id);
+      const command = store.latestReviewCommand(jobId, item.id);
       return {
         itemId: item.id,
         jobId,
@@ -42,6 +43,14 @@ export function buildReviewViews(jobId: string, limit = 200): ReviewItemView[] {
         ),
         suggestionSource: routing?.suggestionSource ?? null,
         suggestionReason: routing?.suggestionReason ?? null,
+        reviewCommand: command
+          ? {
+              id: command.id,
+              state: command.state,
+              rejectionReason: command.rejectionReason,
+              createdAt: command.createdAt,
+            }
+          : null,
         extraction: extraction
           ? {
               provider: extraction.provider,

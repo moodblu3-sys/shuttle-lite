@@ -969,6 +969,18 @@ export class ShuttleStore {
     return rows.map(mapCommand);
   }
 
+  latestReviewCommand(jobId: string, itemId: string): JobCommandRecord | null {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM job_commands
+       WHERE job_id = ? AND type IN ('APPROVE_ITEM', 'SKIP_ITEM')
+         AND json_extract(payload, '$.itemId') = ?
+       ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      )
+      .get(jobId, itemId) as CommandRow | undefined;
+    return row ? mapCommand(row) : null;
+  }
+
   // -------------------------------------------------------------------------
   // Events and outbox
   // -------------------------------------------------------------------------

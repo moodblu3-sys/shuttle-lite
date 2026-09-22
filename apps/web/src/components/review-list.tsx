@@ -1,10 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatBytes } from '@shuttle-lite/core/progress';
 import { withNameSuffix } from '@shuttle-lite/core/naming';
-import type { DestinationOption, ReviewItemView } from '../lib/review-types';
+import type { DestinationOption, ReviewCommandView, ReviewItemView } from '../lib/review-types';
 import {
   bulkReviewItems,
   canApprove,
@@ -12,6 +12,8 @@ import {
   draftFor,
   groupReviewItems,
   matchesReviewSearch,
+  isReviewPending,
+  reviewRevision,
   type ApprovalDraft,
 } from '../lib/review-model';
 import styles from './review-workspace.module.css';
@@ -60,17 +62,22 @@ export function ReviewList({
   const [edits, setEdits] = useState<Record<string, { revision: string; draft: ApprovalDraft }>>(
     {},
   );
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Map<string, string>>(new Map());
   const [activeId, setActiveId] = useState<string | null>(items[0]?.itemId ?? null);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
-  const [submitted, setSubmitted] = useState<Set<string>>(new Set());
+  const [submitted, setSubmitted] = useState<Record<string, ReviewCommandView>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const active = items.find((item) => item.itemId === activeId);
-  const { groups, attention, undecided } = groupReviewItems(items, destinations, needsReviewKey);
-  const pending = items.filter((item) => !submitted.has(item.itemId));
+  const { groups, attention, undecided } = groupReviewItems(
+    items,
+    destinations,
+    needsReviewKey,
+    currentDraft,
+  );
+  const pending = items.filter((item) => !isReviewPending(item, submitted[item.itemId]));
   const ready = bulkReviewItems(pending, selected, currentDraft, destinations, needsReviewKey);
   const duplicateNames = new Set(
     items
@@ -86,22 +93,37 @@ export function ReviewList({
   function currentDraft(item: ReviewItemView) {
     const edit = edits[item.itemId];
     // Never reuse edits against a new worker snapshot (version, error or AI result).
-    return edit?.revision === JSON.stringify(item) ? edit.draft : draftFor(item);
+    return edit?.revision === reviewRevision(item) ? edit.draft : draftFor(item);
+  }
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!document.hidden && !sending.current) router.refresh();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [router]);
+
+  function isSelected(item: ReviewItemView) {
+    return selected.get(item.itemId) === reviewRevision(item);
   }
   function updateDraft(item: ReviewItemView, patch: Partial<ApprovalDraft>) {
+    setSelected((previous) => {
+      const next = new Map(previous);
+      next.delete(item.itemId);
+      return next;
+    });
     setEdits((previous) => ({
       ...previous,
-      [item.itemId]: { revision: JSON.stringify(item), draft: { ...currentDraft(item), ...patch } },
+      [item.itemId]: { revision: reviewRevision(item), draft: { ...currentDraft(item), ...patch } },
     }));
   }
   function toggleGroup(group: readonly ReviewItemView[]) {
-    const available = group.filter((item) => !submitted.has(item.itemId));
+    const available = group.filter((item) => !isReviewPending(item, submitted[item.itemId]));
     setSelected((previous) => {
-      const next = new Set(previous);
-      const remove = available.every((item) => previous.has(item.itemId));
+      const next = new Map(previous);
+      const remove = available.every((item) => previous.get(item.itemId) === reviewRevision(item));
       for (const item of available) {
         if (remove) next.delete(item.itemId);
-        else next.add(item.itemId);
+        else next.set(item.itemId, reviewRevision(item));
       }
       return next;
     });
@@ -121,7 +143,7 @@ export function ReviewList({
     const failures: string[] = [];
     try {
       for (const item of targets) {
-        if (submitted.has(item.itemId)) continue;
+        if (isReviewPending(item, submitted[item.itemId])) continue;
         if (!skip && !canApprove(currentDraft(item), destinations, needsReviewKey)) continue;
         try {
           const response = await fetch(`/api/jobs/${jobId}/commands`, {
@@ -140,19 +162,20 @@ export function ReviewList({
             const body = (await response.json()) as { error?: string };
             throw new Error(body.error ?? `送信に失敗しました (${response.status})`);
           }
+          const body = (await response.json()) as { command: ReviewCommandView };
+          setSubmitted((previous) => ({ ...previous, [item.itemId]: body.command }));
           accepted.push(item.itemId);
         } catch (cause) {
           failures.push(`${item.sourceFileName}: ${(cause as Error).message}`);
         }
       }
-      setSubmitted((previous) => new Set([...previous, ...accepted]));
-      setSelected((previous) => new Set([...previous].filter((id) => !accepted.includes(id))));
+      setSelected((previous) => new Map([...previous].filter(([id]) => !accepted.includes(id))));
       if (accepted.length > 0)
         setNotice(
           `${accepted.length}件の${skip ? '除外' : '承認'}を送信しました。処理結果は進捗画面で確認してください。`,
         );
       if (failures.length > 0) setError(failures.join(' / '));
-      // 202 means queued, not approved or moved. Keep these rows locked until navigation.
+      // 202 means queued; server command state unlocks rejected or returned items.
       router.refresh();
     } finally {
       sending.current = false;
@@ -160,7 +183,7 @@ export function ReviewList({
     }
   }
   function renderRow(item: ReviewItemView, bulk: boolean) {
-    const queued = submitted.has(item.itemId);
+    const queued = isReviewPending(item, submitted[item.itemId]);
     const changed = currentDraft(item).destinationKey !== draftFor(item).destinationKey;
     return (
       <li
@@ -170,7 +193,7 @@ export function ReviewList({
         {bulk ? (
           <input
             type="checkbox"
-            checked={selected.has(item.itemId)}
+            checked={isSelected(item)}
             disabled={busy || queued}
             onChange={() => toggleGroup([item])}
             aria-label={`${item.sourceRelativePath} を選択`}
@@ -196,7 +219,7 @@ export function ReviewList({
           </span>
           <span className={`${styles.status} ${!bulk ? styles.warning : ''}`}>
             {queued
-              ? '送信済み'
+              ? '処理待ち'
               : changed
                 ? '配置先を変更'
                 : item.needsAttention
@@ -218,7 +241,7 @@ export function ReviewList({
   ) {
     const visible = group.filter((item) => matchesReviewSearch(item, query));
     if (visible.length === 0) return null;
-    const available = visible.filter((item) => !submitted.has(item.itemId));
+    const available = visible.filter((item) => !isReviewPending(item, submitted[item.itemId]));
     return (
       <section
         key={key}
@@ -240,7 +263,7 @@ export function ReviewList({
               disabled={busy || available.length === 0}
               onClick={() => toggleGroup(visible)}
             >
-              {available.length > 0 && available.every((item) => selected.has(item.itemId))
+              {available.length > 0 && available.every((item) => isSelected(item))
                 ? '選択を解除'
                 : 'グループを選択'}
             </button>
@@ -253,7 +276,7 @@ export function ReviewList({
   const draft = active ? currentDraft(active) : null;
   const boxLink =
     active && boxLinkBase && active.boxFileId ? `${boxLinkBase}${active.boxFileId}` : null;
-  const locked = busy || !!(active && submitted.has(active.itemId));
+  const locked = busy || !!(active && isReviewPending(active, submitted[active.itemId]));
   return (
     <div className={styles.workspace}>
       <nav className={styles.sidebar} aria-label="移行ナビゲーション">
@@ -300,7 +323,8 @@ export function ReviewList({
         </ol>
         <div className={styles.toolbar}>
           <div>
-            表示中 <strong>{items.length}件</strong>
+            表示中{' '}
+            <strong>{items.filter((item) => matchesReviewSearch(item, query)).length}件</strong>
             <span className={styles.count}>要判断 {undecided.length}</span>
             {attention.length ? (
               <span className={styles.warning}>要対応 {attention.length}</span>
@@ -360,7 +384,7 @@ export function ReviewList({
               type="button"
               className={styles.textButton}
               disabled={busy || selected.size === 0}
-              onClick={() => setSelected(new Set())}
+              onClick={() => setSelected(new Map())}
             >
               選択解除
             </button>
@@ -423,6 +447,12 @@ export function ReviewList({
             ) : (
               <p className={styles.hint}>このデモモードではBoxの原本を開けません。</p>
             )}
+            {active.reviewCommand?.state === 'REJECTED' ? (
+              <p className="error" role="alert">
+                承認・除外の処理が受け付けられませんでした。内容を修正して再送してください。
+                {active.reviewCommand.rejectionReason}
+              </p>
+            ) : null}
             <fieldset disabled={locked} className={styles.fields}>
               <section>
                 <h3>配置先</h3>
@@ -558,7 +588,9 @@ export function ReviewList({
                 }
                 onClick={() => void send([active])}
               >
-                {submitted.has(active.itemId) ? '送信済み' : 'このファイルを承認'}
+                {isReviewPending(active, submitted[active.itemId])
+                  ? '処理待ち'
+                  : 'このファイルを承認'}
               </button>
               <p className={styles.hint}>判断を保留する場合は、承認せずに残してください。</p>
             </div>

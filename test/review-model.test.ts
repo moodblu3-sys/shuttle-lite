@@ -6,6 +6,8 @@ import {
   draftFor,
   groupReviewItems,
   matchesReviewSearch,
+  isReviewPending,
+  reviewRevision,
 } from '../apps/web/src/lib/review-model';
 import type { ReviewItemView } from '../apps/web/src/lib/review-types';
 
@@ -35,6 +37,7 @@ const item = (id: string, patch: Partial<ReviewItemView> = {}): ReviewItemView =
   suggestionSource: 'AI',
   suggestionReason: '契約内容が一致',
   extraction: null,
+  reviewCommand: null,
   ...patch,
 });
 
@@ -71,7 +74,7 @@ describe('review workspace approval boundaries', () => {
       item('two', { needsAttention: true }),
       item('three', { hasRoutingDecision: false, suggestedDestinationKey: 'NEEDS_REVIEW' }),
     ];
-    const selected = new Set(['one', 'two', 'three', 'removed']);
+    const selected = new Map(rows.map((entry) => [entry.itemId, reviewRevision(entry)]));
     const draft = (entry: ReviewItemView) => ({ ...draftFor(entry), destinationKey: 'PROPOSALS' });
     expect(
       bulkReviewItems(rows, selected, draft, destinations, 'NEEDS_REVIEW').map(
@@ -86,7 +89,13 @@ describe('review workspace approval boundaries', () => {
       const draft = { ...draftFor(row), destinationKey };
       expect(canApprove(draft, destinations, 'NEEDS_REVIEW')).toBe(false);
       expect(
-        bulkReviewItems([row], new Set(['one']), () => draft, destinations, 'NEEDS_REVIEW'),
+        bulkReviewItems(
+          [row],
+          new Map([[row.itemId, reviewRevision(row)]]),
+          () => draft,
+          destinations,
+          'NEEDS_REVIEW',
+        ),
       ).toEqual([]);
     }
   });
@@ -161,7 +170,7 @@ it('places only the selected eligible document when workspace commands reach the
         hasRoutingDecision: index === 0,
       }),
     );
-    const selected = new Set(views.map((entry) => entry.itemId));
+    const selected = new Map(views.map((entry) => [entry.itemId, reviewRevision(entry)]));
     const targets = bulkReviewItems(
       views,
       selected,
@@ -181,6 +190,125 @@ it('places only the selected eligible document when workspace commands reach the
     expect(harness.store.getItem(staged[1]!.id)!.state).toBe('REVIEW_REQUIRED');
     expect(harness.store.getItem(staged[1]!.id)!.finalFolderId).toBeNull();
     expect(harness.store.getJob(job.id)!.state).not.toBe('COMPLETED');
+  } finally {
+    harness.cleanup();
+  }
+});
+
+it('groups a manually changed file under the destination that will actually receive it', () => {
+  const source = item('changed');
+  const draft = (entry: ReviewItemView) => ({ ...draftFor(entry), destinationKey: 'PROPOSALS' });
+  const result = groupReviewItems([source], destinations, 'NEEDS_REVIEW', draft);
+  expect(result.groups.map((group) => group.destination.key)).toEqual(['PROPOSALS']);
+});
+
+it('requires selecting a new document snapshot again after a worker refresh', () => {
+  const before = item('changed');
+  const after = item('changed', {
+    boxVersionId: 'version-2',
+    suggestedDestinationKey: 'PROPOSALS',
+  });
+  const selected = new Map([[before.itemId, reviewRevision(before)]]);
+  expect(bulkReviewItems([after], selected, draftFor, destinations, 'NEEDS_REVIEW')).toEqual([]);
+});
+
+it('restores pending locks after reload and releases rejected or completed commands', () => {
+  const receipt = {
+    id: 'command-1',
+    state: 'PENDING' as const,
+    rejectionReason: null,
+    createdAt: '2026-09-22T00:00:01.000Z',
+  };
+  const source = item('one');
+  expect(isReviewPending(source, receipt)).toBe(true);
+  for (const state of ['PENDING', 'CLAIMED'] as const) {
+    const pending = { ...source, reviewCommand: { ...receipt, state } };
+    expect(isReviewPending(pending)).toBe(true);
+    expect(
+      bulkReviewItems(
+        [pending],
+        new Map([[source.itemId, reviewRevision(source)]]),
+        draftFor,
+        destinations,
+        'NEEDS_REVIEW',
+      ),
+    ).toEqual([]);
+  }
+  for (const state of ['REJECTED', 'DONE'] as const) {
+    const returned = { ...source, reviewCommand: { ...receipt, state } };
+    expect(isReviewPending(returned, receipt)).toBe(false);
+    // Receipt-only updates do not discard metadata corrections.
+    expect(reviewRevision(returned)).toBe(reviewRevision(source));
+  }
+  expect(
+    isReviewPending(
+      {
+        ...source,
+        reviewCommand: {
+          ...receipt,
+          id: 'older',
+          state: 'REJECTED',
+          createdAt: '2026-09-22T00:00:00.000Z',
+        },
+      },
+      receipt,
+    ),
+  ).toBe(true);
+});
+
+it('reloads a rejected command from the store, then allows a corrected approval', async () => {
+  const { createHarness, runUntilIdle } = await import('./harness');
+  const { processCommands } = await import('../apps/worker/src/commands');
+  const harness = await createHarness();
+  try {
+    harness.writeSource(
+      '契約書.txt',
+      '業務委託契約書 契約番号 LEG-2026-0042 甲乙は契約を締結する。',
+    );
+    const profile = harness.createProfile();
+    const job = harness.store.createJob({ profileId: profile.id, operatorLabel: 'reviewer' });
+    harness.store.enqueueCommand(job.id, 'START_JOB');
+    await runUntilIdle(harness);
+    const staged = harness.store.listItems(job.id)[0]!;
+    const source = item(staged.id, {
+      jobId: job.id,
+      sourceFileName: staged.sourceFileName,
+      boxFileId: staged.boxFileId,
+      boxSha1: staged.boxSha1,
+      boxVersionId: staged.boxFileVersionId,
+      suggestedDestinationKey: 'LEGAL_CONTRACTS',
+    });
+    const invalid = commandFor(
+      source,
+      { ...draftFor(source), documentType: '長'.repeat(121) },
+      'reviewer',
+    );
+    const receipt = harness.store.enqueueCommand(job.id, invalid.type, invalid.payload);
+    expect(
+      isReviewPending({
+        ...source,
+        reviewCommand: harness.store.latestReviewCommand(job.id, staged.id),
+      }),
+    ).toBe(true);
+    await processCommands(harness.ctx);
+    // This cannot rely on the generic command endpoint's 50-record window.
+    for (let index = 0; index < 55; index += 1) {
+      const noise = harness.store.enqueueCommand(job.id, 'GENERATE_REPORT');
+      harness.store.completeCommand(noise.id);
+    }
+    const rejected = harness.store.latestReviewCommand(job.id, staged.id)!;
+    expect(rejected.state).toBe('REJECTED');
+    expect(rejected.rejectionReason).toContain('APPROVAL_INVALID');
+    expect(isReviewPending({ ...source, reviewCommand: rejected }, receipt)).toBe(false);
+    expect(harness.store.getItem(staged.id)!.state).toBe('REVIEW_REQUIRED');
+    const corrected = commandFor(source, draftFor(source), 'reviewer');
+    const retry = harness.store.enqueueCommand(job.id, corrected.type, corrected.payload);
+    expect(harness.store.latestReviewCommand(job.id, staged.id)!.id).toBe(retry.id);
+    expect(isReviewPending({ ...source, reviewCommand: retry }, receipt)).toBe(true);
+    expect(harness.store.latestReviewCommand('another-job', staged.id)).toBeNull();
+    await runUntilIdle(harness);
+    expect(harness.store.getItem(staged.id)!.state).toBe('COMPLETED');
+    expect(harness.store.getItem(staged.id)!.boxFileId).toBe(staged.boxFileId);
   } finally {
     harness.cleanup();
   }
