@@ -175,7 +175,7 @@ describe('concise review and empty states', () => {
       '配置・検証',
     ])
       expect(html).not.toContain(copy);
-    expect(html).toContain('配置先の指定待ち');
+    expect(html).toContain('未選択');
     expect(html).toMatch(/<span>4<\/span>アップロード/);
 
     // Previously saved manual-routing hints must disappear without recreating the job.
@@ -211,7 +211,7 @@ describe('concise review and empty states', () => {
       '<dt>文書種別</dt>',
     ])
       expect(manual).not.toContain(copy);
-    expect(manual).toContain('配置先の指定待ち');
+    expect(manual).toContain('未選択');
     expect(manual).toContain('配置先を選択');
     expect(manual).toContain('メタデータを確認・編集');
   });

@@ -200,7 +200,7 @@ export function ReviewList({
                   ? '要対応'
                   : bulk
                     ? '承認待ち'
-                    : '配置先の指定待ち'}
+                    : '未選択'}
           </span>
         </button>
       </li>
@@ -296,9 +296,7 @@ export function ReviewList({
                 )}
               </strong>
             </span>
-            <span className={`${styles.count} ${styles.warning}`}>
-              配置先の指定待ち {undecided.length}
-            </span>
+            <span className={`${styles.count} ${styles.warning}`}>未選択 {undecided.length}</span>
             {attention.length ? (
               <span className={styles.warning}>要対応 {attention.length}</span>
             ) : null}
@@ -324,7 +322,7 @@ export function ReviewList({
           {groups.map(({ destination, items: group }) =>
             renderSection(destination.key, destination.label, group, true),
           )}
-          {renderSection('undecided', '配置先の指定待ち', undecided, false)}
+          {renderSection('undecided', '未選択', undecided, false)}
           {items.length === 0 ? (
             <div className={styles.empty}>
               <Icon kind="check" />
