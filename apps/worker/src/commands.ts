@@ -39,6 +39,19 @@ export async function processCommands(ctx: WorkerContext, limit = 20): Promise<n
 async function applyCommand(ctx: WorkerContext, command: JobCommandRecord): Promise<void> {
   const job = ctx.store.getJob(command.jobId);
   if (!job) throw new ShuttleError('STATE_INVALID', `jobが存在しません: ${command.jobId}`);
+  // The job in the command envelope must own the target before any routing or
+  // item state is changed. Item IDs alone do not establish that relationship.
+  if (
+    command.type === 'APPROVE_ITEM' ||
+    command.type === 'SKIP_ITEM' ||
+    command.type === 'SEND_TO_REVIEW' ||
+    command.type === 'RETRY_ITEM'
+  ) {
+    const item = ctx.store.getItem(requireString(command, 'itemId'));
+    if (!item || item.jobId !== job.id) {
+      throw new ShuttleError('APPROVAL_INVALID', '指定されたitemはこのjobに属していません');
+    }
+  }
   const telemetry = ctx.store.getProfile(job.profileId)?.snowflakeLoggingEnabled ?? true;
 
   switch (command.type) {
