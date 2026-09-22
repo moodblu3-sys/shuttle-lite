@@ -170,8 +170,13 @@ describe('concise review and empty states', () => {
       '原文の抜粋はまだ',
       '承認するまで一時保管',
       '個別に承認してください',
+      '要判断',
+      '配置先の判断待ち',
+      '配置・検証',
     ])
       expect(html).not.toContain(copy);
+    expect(html).toContain('配置先の指定待ち');
+    expect(html).toMatch(/<span>4<\/span>アップロード/);
   });
 
   it('shows an empty review list with a return action', () => {

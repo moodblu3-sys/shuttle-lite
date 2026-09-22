@@ -67,7 +67,7 @@ export function commandFor(item: ReviewItemView, draft: ApprovalDraft, operatorL
   };
 }
 
-/** Browser-only projection. Unresolved/failed items require individual review. */
+/** Group by the current destination, including manual choices. Failures stay separate. */
 export function groupReviewItems(
   items: readonly ReviewItemView[],
   destinations: readonly DestinationOption[],
@@ -79,13 +79,7 @@ export function groupReviewItems(
     .map((destination) => ({
       destination,
       items: items.filter(
-        (item) =>
-          item.hasRoutingDecision &&
-          !item.needsAttention &&
-          destinations.some(
-            (entry) => entry.key === item.suggestedDestinationKey && entry.key !== needsReviewKey,
-          ) &&
-          draft(item).destinationKey === destination.key,
+        (item) => !item.needsAttention && draft(item).destinationKey === destination.key,
       ),
     }))
     .filter((group) => group.items.length > 0);

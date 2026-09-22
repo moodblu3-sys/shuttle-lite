@@ -68,7 +68,7 @@ describe('review workspace approval boundaries', () => {
     expect(result.undecided.map((entry) => entry.itemId)).toEqual(['three', 'four']);
     expect(result.attention).toEqual([failed]);
   });
-  it('never bulk approves exceptions even when selected and manually given a valid destination', () => {
+  it('bulk approves manually assigned destinations while keeping failures separate', () => {
     const rows = [
       item('one'),
       item('two', { needsAttention: true }),
@@ -80,7 +80,7 @@ describe('review workspace approval boundaries', () => {
       bulkReviewItems(rows, selected, draft, destinations, 'NEEDS_REVIEW').map(
         (entry) => entry.itemId,
       ),
-    ).toEqual(['one']);
+    ).toEqual(['one', 'three']);
     expect(canApprove(draft(rows[2]!), destinations, 'NEEDS_REVIEW')).toBe(true);
   });
   it('excludes cleared, review-only and missing destinations from approval', () => {
@@ -200,6 +200,75 @@ it('groups a manually changed file under the destination that will actually rece
   const draft = (entry: ReviewItemView) => ({ ...draftFor(entry), destinationKey: 'PROPOSALS' });
   const result = groupReviewItems([source], destinations, 'NEEDS_REVIEW', draft);
   expect(result.groups.map((group) => group.destination.key)).toEqual(['PROPOSALS']);
+});
+
+it('bulk places manually assigned files with AI off, leaving unassigned files waiting', async () => {
+  const { createHarness, runUntilIdle } = await import('./harness');
+  const { destinationFolderId } = await import('@shuttle-lite/box');
+  const harness = await createHarness();
+  try {
+    for (const name of ['one', 'two', 'three']) {
+      harness.writeSource(`${name}.txt`, `文書 ${name}`);
+    }
+    const profile = harness.createProfile({ aiRoutingEnabled: false });
+    const job = harness.store.createJob({ profileId: profile.id, operatorLabel: 'tester' });
+    harness.store.enqueueCommand(job.id, 'START_JOB');
+    await runUntilIdle(harness);
+    const staged = harness.store.listItems(job.id);
+    expect(staged).toHaveLength(3);
+    expect(staged.every((source) => source.state === 'REVIEW_REQUIRED')).toBe(true);
+    const views = staged.map((source) =>
+      item(source.id, {
+        jobId: job.id,
+        sourceFileName: source.sourceFileName,
+        sourceRelativePath: source.sourceRelativePath,
+        boxFileId: source.boxFileId,
+        boxSha1: source.boxSha1,
+        boxVersionId: source.boxFileVersionId,
+        suggestedDestinationKey: null,
+        hasRoutingDecision: false,
+        suggestionSource: 'MANUAL',
+      }),
+    );
+    const selected = new Map(views.map((entry) => [entry.itemId, reviewRevision(entry)]));
+    const catalog = harness.catalog.entries;
+    const reviewKey = harness.catalog.needsReviewKey;
+    expect(bulkReviewItems(views, selected, draftFor, catalog, reviewKey)).toEqual([]);
+    const destinationKeys = catalog
+      .filter((entry) => entry.key !== reviewKey)
+      .map((entry) => entry.key);
+    const chosen = new Map([
+      [views[0]!.itemId, destinationKeys[0]!],
+      [views[1]!.itemId, destinationKeys[1]!],
+    ]);
+    const draft = (entry: ReviewItemView) => ({
+      ...draftFor(entry),
+      destinationKey: chosen.get(entry.itemId) ?? '',
+    });
+    const grouped = groupReviewItems(views, catalog, reviewKey, draft);
+    expect(grouped.groups).toHaveLength(2);
+    expect(grouped.undecided).toEqual([views[2]]);
+    const targets = bulkReviewItems(views, selected, draft, catalog, reviewKey);
+    expect(targets).toHaveLength(2);
+    for (const target of targets) {
+      const command = commandFor(target, draft(target), 'reviewer');
+      harness.store.enqueueCommand(job.id, command.type, command.payload);
+    }
+    await runUntilIdle(harness);
+    for (const target of targets) {
+      const placed = harness.store.getItem(target.itemId)!;
+      expect(placed.state).toBe('COMPLETED');
+      expect(placed.boxFileId).toBe(target.boxFileId);
+      expect(placed.finalFolderId).toBe(
+        destinationFolderId(harness.ctx.layout, draft(target).destinationKey),
+      );
+    }
+    const waiting = harness.store.getItem(views[2]!.itemId)!;
+    expect(waiting.state).toBe('REVIEW_REQUIRED');
+    expect(waiting.finalFolderId).toBeNull();
+  } finally {
+    harness.cleanup();
+  }
 });
 
 it('requires selecting a new document snapshot again after a worker refresh', () => {
