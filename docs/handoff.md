@@ -1,7 +1,10 @@
 # Handoff — ChatGPTで開発を続けるための1枚
 
-Cursorのtoken残量が尽きた場合に、ChatGPT（web）を主な作業場にして、このMacを
-「patchを当ててtestを通す場」にするための手順。**このfileを最初に読ませる。**
+ChatGPTを設計・実装・自動テストの主担当とし、GitHub経由で社用Macに受け渡す。
+社用Macでは実Boxでの確認と発表リハーサルを行う。**このfileを最初に読ませる。**
+
+設計レビューで合意した次の開発範囲と受け渡し方針は
+[development-plan.md](development-plan.md) を参照する。新しい設計は未実装の項目を含む。
 
 更新日 2026-09-22
 
@@ -42,7 +45,18 @@ npm run demo:reset       # local stateを消す（Box側は消えない）
 `.env` は `.env.example` からコピーして作る。fake modeなら `BOX_MODE=fake` で
 credential無しで全pipelineが動く。
 
-## ChatGPTとの往復（これを守れば壊れない）
+## GitHubでの開発と受け渡し
+
+1. ChatGPTが作業ブランチで実装し、対応するテストとfake Box検証を実行する。
+2. 変更内容、検証結果、取得すべきブランチまたはコミットを共有する。
+3. 社用Macでは公開リポジトリをcloneし、以後はfetchして確認対象のコミットを取得する。
+4. `.env`は社用Macで用意し、認証情報や実Boxの設定をGitHubへ送らない。
+5. 実Boxの確認結果を共有し、必要な修正を同じ手順で取り込む。
+
+新しい変更のbaseは、着手時に確認したGitHub上のコミットとする。
+公開先は作成・確認後に案内する。元の非公開リポジトリを公開済みとは扱わない。
+
+## パッチで受け渡す場合の補助手順
 
 ChatGPTはこのMacのfileを直接編集できない。**diffをもらって、ここで当てる。**
 

@@ -116,7 +116,7 @@ describe('approval validation', () => {
   const valid = {
     itemId: 'it_' + '0'.repeat(24),
     destinationKey: 'legal_contracts',
-    operatorLabel: 'tterakawa (local)',
+    operatorLabel: 'demo-operator (local)',
     observedBoxFileId: 'fil1001',
     observedSha1: sha1,
     observedVersionId: 'ver1',
@@ -126,7 +126,7 @@ describe('approval validation', () => {
   it('normalises the destination key and keeps the operator label', () => {
     const parsed = parseApprovalRequest(valid, KEYS);
     expect(parsed.destinationKey).toBe('LEGAL_CONTRACTS');
-    expect(parsed.operatorLabel).toBe('tterakawa (local)');
+    expect(parsed.operatorLabel).toBe('demo-operator (local)');
   });
 
   it('refuses a destination outside the catalog', () => {
@@ -165,7 +165,7 @@ describe('approval freshness', () => {
     approvedBoxFileId: 'fil1001',
     approvedBoxVersionId: 'ver1',
     approvedSha1: sha1,
-    operatorLabel: 'tterakawa (local)',
+    operatorLabel: 'demo-operator (local)',
     approvedAt: '2026-09-13T12:00:00.000Z',
   };
   const current = {
@@ -252,11 +252,11 @@ describe('metadata builders', () => {
       suggestedDestinationKey: 'LEGAL_CONTRACTS',
       routingReason: null,
       approvedDestinationKey: 'LEGAL_CONTRACTS',
-      approvedBy: 'tterakawa (local)',
+      approvedBy: 'demo-operator (local)',
     });
     expect(record).toEqual({
       approvedDestinationKey: 'LEGAL_CONTRACTS',
-      approvedBy: 'tterakawa (local)',
+      approvedBy: 'demo-operator (local)',
       migrationStatus: 'PLACED',
       documentType: 'Contract',
       suggestedTags: 'contract',
