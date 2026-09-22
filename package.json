@@ -30,6 +30,7 @@
     "db:reset": "node --import tsx scripts/reset.ts",
     "fixtures": "node --import tsx scripts/generate-fixtures.ts",
     "bootstrap:box": "node --import tsx scripts/bootstrap-box.ts",
+    "check:box": "node --import tsx scripts/check-box.ts",
     "check:proxy": "node --import tsx scripts/check-proxy.ts",
     "demo:reset": "node --import tsx scripts/reset.ts --all && node --import tsx scripts/generate-fixtures.ts",
     "pack": "git archive --format=zip --prefix=shuttle-lite/ -o \"$HOME/Desktop/shuttle-lite-$(date +%Y%m%d).zip\" HEAD && echo \"-> $HOME/Desktop/shuttle-lite-$(date +%Y%m%d).zip\"",

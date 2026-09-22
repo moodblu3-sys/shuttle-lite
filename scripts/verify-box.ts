@@ -88,12 +88,12 @@ async function main(): Promise<void> {
     try {
       const me = await gateway.whoAmI();
       record(
-        'CCGでtokenを取得しAPIを呼べる',
+        '設定された認証方式でBox APIを呼べる',
         true,
         `login=${me.login} name=${me.name} enterprise=${me.enterpriseId ?? '-'}`,
       );
     } catch (error) {
-      record('CCGでtokenを取得しAPIを呼べる', false, describeError(error));
+      record('設定された認証方式でBox APIを呼べる', false, describeError(error));
       return;
     }
 

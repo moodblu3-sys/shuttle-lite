@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { redact } from '@shuttle-lite/core';
 import {
   assertProxyUsable,
   buildConfig,
@@ -22,6 +23,54 @@ describe('environment validation', () => {
 
   it('demands Box credentials in real mode', () => {
     expect(() => parseEnv({ BOX_MODE: 'real' } as NodeJS.ProcessEnv)).toThrowError(/BOX_CLIENT_ID/);
+  });
+
+  it('accepts an explicit access token without any CCG credentials', () => {
+    const config = buildConfig(
+      parseEnv({ BOX_MODE: 'real', BOX_ACCESS_TOKEN: ' test-only-token ' }),
+    );
+    expect(config.box.accessToken).toBe('test-only-token');
+    expect(config.box.clientId).toBeUndefined();
+    expect(config.box.clientSecret).toBeUndefined();
+    expect(config.box.enterpriseId).toBeUndefined();
+  });
+
+  it('uses the existing CCG requirements when the token is blank', () => {
+    expect(() => parseEnv({ BOX_MODE: 'real', BOX_ACCESS_TOKEN: '   ' })).toThrowError(
+      /BOX_CLIENT_ID/,
+    );
+    const config = buildConfig(
+      parseEnv({
+        BOX_MODE: 'real',
+        BOX_ACCESS_TOKEN: '',
+        BOX_CLIENT_ID: 'test-client',
+        BOX_CLIENT_SECRET: 'test-secret',
+        BOX_ENTERPRISE_ID: 'test-enterprise',
+      }),
+    );
+    expect(config.box.accessToken).toBeUndefined();
+    expect(config.box.clientId).toBe('test-client');
+  });
+
+  it('rejects a Bearer prefix or embedded newlines without exposing the token', () => {
+    for (const token of ['Bearer test-only-token', 'test-only-token\nmore']) {
+      let message = '';
+      try {
+        parseEnv({ BOX_MODE: 'real', BOX_ACCESS_TOKEN: token });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain('BOX_ACCESS_TOKEN');
+      expect(message).not.toContain('test-only-token');
+    }
+  });
+
+  it('redacts the token in both the raw environment and translated Box config', () => {
+    const config = buildConfig(parseEnv({ BOX_MODE: 'real', BOX_ACCESS_TOKEN: 'test-only-token' }));
+    const safe = redact(config) as { env: Record<string, unknown>; box: Record<string, unknown> };
+    expect(safe.env.BOX_ACCESS_TOKEN).toBe('[redacted]');
+    expect(safe.box.accessToken).toBe('[redacted]');
+    expect(JSON.stringify(safe)).not.toContain('test-only-token');
   });
 
   it('demands a proxy URL when the proxy is mandatory', () => {

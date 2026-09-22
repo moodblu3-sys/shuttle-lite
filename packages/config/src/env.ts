@@ -26,6 +26,10 @@ export const EnvSchema = z.object({
   BOX_CLIENT_ID: optionalString,
   BOX_CLIENT_SECRET: optionalString,
   BOX_ENTERPRISE_ID: optionalString,
+  BOX_ACCESS_TOKEN: optionalString.refine(
+    (value) => value === undefined || !/\s/.test(value),
+    'BOX_ACCESS_TOKEN は Bearer を付けず、トークン本体だけを指定してください',
+  ),
   BOX_API_BASE_URL: z.string().url().default('https://api.box.com/2.0'),
   BOX_UPLOAD_BASE_URL: z.string().url().default('https://upload.box.com/api/2.0'),
   BOX_AUTH_BASE_URL: z.string().url().default('https://api.box.com/oauth2'),
@@ -79,6 +83,8 @@ export interface BoxConfig {
   readonly clientId?: string;
   readonly clientSecret?: string;
   readonly enterpriseId?: string;
+  /** Explicit token takes precedence over CCG; it is never refreshed automatically. */
+  readonly accessToken?: string;
   readonly apiBaseUrl: string;
   readonly uploadBaseUrl: string;
   readonly authBaseUrl: string;
@@ -151,7 +157,7 @@ export interface AppConfig {
 
 function crossFieldChecks(env: Env): string[] {
   const problems: string[] = [];
-  if (env.BOX_MODE === 'real') {
+  if (env.BOX_MODE === 'real' && !env.BOX_ACCESS_TOKEN) {
     if (!env.BOX_CLIENT_ID) problems.push('BOX_MODE=real には BOX_CLIENT_ID が必要です');
     if (!env.BOX_CLIENT_SECRET) problems.push('BOX_MODE=real には BOX_CLIENT_SECRET が必要です');
     if (!env.BOX_ENTERPRISE_ID) problems.push('BOX_MODE=real には BOX_ENTERPRISE_ID が必要です');
@@ -204,6 +210,7 @@ export function buildConfig(env: Env): AppConfig {
       clientId: env.BOX_CLIENT_ID,
       clientSecret: env.BOX_CLIENT_SECRET,
       enterpriseId: env.BOX_ENTERPRISE_ID,
+      accessToken: env.BOX_ACCESS_TOKEN,
       apiBaseUrl: env.BOX_API_BASE_URL.replace(/\/$/, ''),
       uploadBaseUrl: env.BOX_UPLOAD_BASE_URL.replace(/\/$/, ''),
       authBaseUrl: env.BOX_AUTH_BASE_URL.replace(/\/$/, ''),

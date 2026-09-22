@@ -67,6 +67,9 @@ export class BoxHttpClient {
   }
 
   async getAccessToken(force = false): Promise<string> {
+    // A supplied token fixes the identity for this process. Never fall back to
+    // CCG (a potentially different user), including after a 401 or force refresh.
+    if (this.#box.accessToken) return this.#box.accessToken;
     if (!force && this.#token && this.#token.expiresAtMs > Date.now() + 60_000) {
       return this.#token.token;
     }
@@ -150,6 +153,13 @@ export class BoxHttpClient {
       this.#token = null;
     }
     if (result.status >= 400 && !(request.allowStatuses ?? []).includes(result.status)) {
+      if (result.status === 401 && !request.skipAuth && this.#box.accessToken) {
+        throw new ShuttleError(
+          'BOX_AUTH',
+          'BOX_ACCESS_TOKEN が無効または期限切れです。.envのトークンを更新し、アプリを再起動してください。',
+          { status: result.status, requestId: result.requestId },
+        );
+      }
       throw mapResponseError(result.status, result.headers, bodyText, {
         url: request.url,
         method: request.method,

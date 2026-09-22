@@ -217,6 +217,10 @@ flowchart TB
 
 ## 動かす
 
+実Boxへの接続はCCGに加え、`.env` の `BOX_ACCESS_TOKEN` にアクセストークンを
+設定する方式にも対応しています。読み取り専用の `npm run check:box` で認証を確認できます。
+設定と差し替え手順は [.envのアクセストークンでBoxに接続する](docs/access-token-setup.md) を参照してください。
+
 ```sh
 npm install
 cp .env.example .env          # 既定は BOX_MODE=fake で credential 不要

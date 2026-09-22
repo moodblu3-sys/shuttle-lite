@@ -103,11 +103,13 @@ export const ERROR_CATEGORY_META: Record<ErrorCategory, CategoryMeta> = {
   },
   BOX_AUTH: {
     retryable: false,
-    operatorAction: 'Box client ID、client secret、enterprise IDとscopeを確認してください。',
+    operatorAction:
+      'アクセストークン方式では.envのBOX_ACCESS_TOKENを更新してアプリを再起動してください。CCG方式ではclient ID、client secret、enterprise IDとscopeを確認してください。',
   },
   BOX_PERMISSION: {
     retryable: false,
-    operatorAction: 'Service Accountに対象folderのupload権限が付与されているか確認してください。',
+    operatorAction:
+      '認証に使っているユーザーの対象folderへの権限と、アプリのscopeを確認してください。',
   },
   BOX_NOT_FOUND: {
     retryable: false,
