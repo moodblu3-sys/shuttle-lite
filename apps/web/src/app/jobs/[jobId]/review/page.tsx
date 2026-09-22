@@ -12,11 +12,8 @@ export default async function ReviewPage({ params }: { params: Promise<{ jobId: 
 
   return (
     <>
-      <p className="breadcrumb">
-        <a href="/">移行一覧</a> / <a href={`/jobs/${jobId}`}>進捗</a> / 承認
-      </p>
-
       <ReviewList
+        key={jobId}
         jobId={jobId}
         items={buildReviewViews(jobId)}
         destinations={getCatalog().entries.map((entry) => ({
