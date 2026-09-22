@@ -14,6 +14,20 @@ describe('job scheduling', () => {
     harness.cleanup();
   });
 
+  it('does not let an unstarted job block a job the operator started', async () => {
+    harness.writeSource('legal/first.txt', CONTRACT);
+    const profile = harness.createProfile();
+    const unstarted = harness.store.createJob({ profileId: profile.id, operatorLabel: 'tester' });
+    const started = harness.store.createJob({ profileId: profile.id, operatorLabel: 'tester' });
+    harness.store.enqueueCommand(started.id, 'START_JOB');
+
+    await runUntilIdle(harness);
+
+    expect(harness.store.listItems(started.id)[0]?.state).toBe('REVIEW_REQUIRED');
+    expect(harness.store.getJob(unstarted.id)?.state).toBe('QUEUED');
+    expect(harness.store.listItems(unstarted.id)).toHaveLength(0);
+  });
+
   it('does not let a job waiting for review starve the next job', async () => {
     harness.writeSource('legal/first.txt', CONTRACT);
     const profile = harness.createProfile();

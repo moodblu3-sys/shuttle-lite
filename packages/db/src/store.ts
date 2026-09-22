@@ -279,10 +279,10 @@ export class ShuttleStore {
       const row = this.db
         .prepare(
           `SELECT j.* FROM migration_jobs j
-            WHERE j.state IN ('QUEUED','SCANNING','RUNNING')
+            WHERE j.state IN ('SCANNING','RUNNING')
               AND (j.lease_owner IS NULL OR j.lease_expires_at IS NULL OR j.lease_expires_at < ?)
               AND (
-                j.state IN ('QUEUED','SCANNING')
+                j.state = 'SCANNING'
                 OR EXISTS (
                   SELECT 1 FROM job_commands c WHERE c.job_id = j.id AND c.state = 'PENDING'
                 )

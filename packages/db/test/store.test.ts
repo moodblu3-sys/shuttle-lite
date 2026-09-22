@@ -73,7 +73,8 @@ describe('sqlite store', () => {
   });
 
   it('leases a job to one worker at a time', () => {
-    seed(store);
+    const { job } = seed(store);
+    store.setJobState(job.id, 'SCANNING');
     const first = store.claimJob('worker-a', 60_000);
     expect(first).not.toBeNull();
     expect(store.claimJob('worker-b', 60_000)).toBeNull();
@@ -84,7 +85,8 @@ describe('sqlite store', () => {
   });
 
   it('reclaims a job whose lease expired with the worker that held it', () => {
-    seed(store);
+    const { job } = seed(store);
+    store.setJobState(job.id, 'SCANNING');
     const claimed = store.claimJob('crashed-worker', -1_000);
     expect(claimed).not.toBeNull();
     expect(store.claimJob('fresh-worker', 60_000)?.id).toBe(claimed!.id);
