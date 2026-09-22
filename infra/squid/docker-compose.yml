@@ -1,0 +1,13 @@
+services:
+  squid:
+    image: ubuntu/squid:6.6-24.04_edge
+    container_name: shuttle-lite-squid
+    ports:
+      - '3128:3128'
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+      - ./passwd:/etc/squid/passwd:ro
+    # Log goes to stdout so `docker compose logs -f squid` shows the route
+    # taken by every request.
+    command: ['squid', '-N', '-f', '/etc/squid/squid.conf']
+    restart: unless-stopped

@@ -1,0 +1,56 @@
+{
+  "name": "shuttle-lite",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Box Platform based lightweight migration path PoC",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,worker -c cyan,magenta \"npm:dev:web\" \"npm:dev:worker\"",
+    "dev:web": "npm run dev --workspace @shuttle-lite/web",
+    "dev:worker": "npm run dev --workspace @shuttle-lite/worker",
+    "demo": "npm run build --workspace @shuttle-lite/web && concurrently -n web,worker -c cyan,magenta \"npm:start:web\" \"npm:start:worker\"",
+    "start:web": "npm run start --workspace @shuttle-lite/web",
+    "start:worker": "npm run start --workspace @shuttle-lite/worker",
+    "worker": "npm run start --workspace @shuttle-lite/worker",
+    "build": "npm run build --workspace @shuttle-lite/web",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:migrate": "node --import tsx scripts/migrate.ts",
+    "db:reset": "node --import tsx scripts/reset.ts",
+    "fixtures": "node --import tsx scripts/generate-fixtures.ts",
+    "bootstrap:box": "node --import tsx scripts/bootstrap-box.ts",
+    "check:proxy": "node --import tsx scripts/check-proxy.ts",
+    "demo:reset": "node --import tsx scripts/reset.ts --all && node --import tsx scripts/generate-fixtures.ts",
+    "pack": "git archive --format=zip --prefix=shuttle-lite/ -o \"$HOME/Desktop/shuttle-lite-$(date +%Y%m%d).zip\" HEAD && echo \"-> $HOME/Desktop/shuttle-lite-$(date +%Y%m%d).zip\"",
+    "verify": "node --import tsx scripts/verify-migration.ts",
+    "verify:box": "node --import tsx scripts/verify-box.ts",
+    "fixtures:pdf": "node --import tsx scripts/generate-pdf-fixtures.ts",
+    "measure:ai": "node --import tsx scripts/measure-box-ai.ts",
+    "squid:start": "node --import tsx scripts/squid.ts start",
+    "squid:stop": "node --import tsx scripts/squid.ts stop",
+    "squid:log": "node --import tsx scripts/squid.ts log"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.5.1",
+    "concurrently": "^10.0.5",
+    "eslint": "^10.10.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^5.0.0"
+  }
+}

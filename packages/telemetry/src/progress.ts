@@ -1,0 +1,223 @@
+import {
+  buildPhaseCounters,
+  etaSeconds,
+  type ItemState,
+  type MigrationEventRecord,
+  type MigrationJob,
+  type PhaseCounters,
+  throughputBytesPerSecond,
+  type ThroughputSample,
+} from '@shuttle-lite/core';
+import type { ShuttleStore } from '@shuttle-lite/db';
+
+export interface ActiveItemView {
+  readonly itemId: string;
+  readonly sourceRelativePath: string;
+  readonly state: ItemState;
+  readonly bytesTransferred: number;
+  readonly sourceSize: number;
+  readonly retryCount: number;
+  readonly lastErrorCategory: string | null;
+}
+
+export type NextActionKind =
+  'START' | 'RESUME' | 'REVIEW' | 'RETRY_FAILED' | 'REPORT' | 'WORKING' | 'IDLE';
+
+export interface NextAction {
+  readonly kind: NextActionKind;
+  /** One sentence telling the operator what to do now. */
+  readonly message: string;
+  readonly count?: number;
+}
+
+export interface JobSnapshot {
+  readonly job: MigrationJob;
+  readonly counts: Record<string, number>;
+  readonly phases: readonly PhaseCounters[];
+  readonly totalItems: number;
+  /** Reached a terminal state: COMPLETED, SKIPPED or FAILED. */
+  readonly processedItems: number;
+  /** Content is in Box and verified, whether or not it is placed yet. */
+  readonly transferredItems: number;
+  readonly completedItems: number;
+  readonly skippedItems: number;
+  readonly totalBytes: number;
+  readonly transferredBytes: number;
+  readonly throughputBytesPerSecond: number;
+  readonly etaSeconds: number | null;
+  readonly reviewBacklog: number;
+  readonly failedItems: number;
+  /** True while the worker still has transfer or AI work it can do. */
+  readonly working: boolean;
+  readonly nextAction: NextAction;
+  readonly outbox: { pending: number; failed: number; delivered: number };
+  readonly errorCategories: ReadonlyArray<{ category: string; count: number }>;
+  readonly activeItems: readonly ActiveItemView[];
+  readonly recentEvents: readonly MigrationEventRecord[];
+  readonly at: string;
+}
+
+const TERMINAL: readonly ItemState[] = ['COMPLETED', 'SKIPPED', 'FAILED'];
+const REVIEW: readonly ItemState[] = ['REVIEW_REQUIRED', 'NEEDS_REVIEW'];
+/** Content already sits in Box staging, verified. Only placement is pending. */
+const TRANSFERRED: readonly ItemState[] = [
+  'STAGED',
+  'TRANSFER_VERIFIED',
+  'PROVENANCE_PENDING',
+  'PROVENANCE_APPLIED',
+  'AI_PENDING',
+  'AI_COMPLETED',
+  'REVIEW_REQUIRED',
+  'NEEDS_REVIEW',
+  'APPROVED',
+  'MOVING',
+  'FINAL_VERIFY',
+  'COMPLETED',
+];
+const ACTIVE: readonly ItemState[] = [
+  'HASHING',
+  'PREFLIGHT',
+  'READY',
+  'UPLOADING',
+  'STAGED',
+  'TRANSFER_VERIFIED',
+  'PROVENANCE_PENDING',
+  'PROVENANCE_APPLIED',
+  'AI_PENDING',
+  'APPROVED',
+  'MOVING',
+  'FINAL_VERIFY',
+  'RETRY_WAIT',
+  'UNKNOWN_OUTCOME',
+];
+
+/** Windowed byte samples per job, so the rate reflects the recent past. */
+const samples = new Map<string, ThroughputSample[]>();
+
+function recordSample(jobId: string, bytes: number): ThroughputSample[] {
+  const series = samples.get(jobId) ?? [];
+  const now = Date.now();
+  const last = series.at(-1);
+  if (!last || now - last.at > 500) {
+    series.push({ bytes, at: now });
+    while (series.length > 24) series.shift();
+    samples.set(jobId, series);
+  }
+  return series;
+}
+
+/**
+ * Everything the progress screen needs, read straight from SQLite. The UI
+ * never reads worker logs, so a page reload restores the same view
+ * (docs/implementation-plan.md Phase 8).
+ */
+export function buildJobSnapshot(store: ShuttleStore, jobId: string): JobSnapshot | null {
+  const job = store.getJob(jobId);
+  if (!job) return null;
+
+  const counts = store.countItemsByState(jobId);
+  const bytes = store.byteTotals(jobId);
+  const items = store.listItems(jobId, { limit: 10_000 });
+  const series = recordSample(jobId, bytes.transferredBytes);
+  const rate = throughputBytesPerSecond(series);
+
+  const sum = (states: readonly ItemState[]) =>
+    states.reduce((total, state) => total + (counts[state] ?? 0), 0);
+  const processedItems = sum(TERMINAL);
+  const reviewBacklog = sum(REVIEW);
+  const transferredItems = sum(TRANSFERRED);
+  const failedItems = counts.FAILED ?? 0;
+  const completedItems = counts.COMPLETED ?? 0;
+  const skippedItems = counts.SKIPPED ?? 0;
+  const working = items.some((item) => ACTIVE.includes(item.state));
+
+  return {
+    job,
+    counts,
+    phases: buildPhaseCounters(items),
+    totalItems: items.length,
+    processedItems,
+    transferredItems,
+    completedItems,
+    skippedItems,
+    totalBytes: bytes.totalBytes,
+    transferredBytes: bytes.transferredBytes,
+    throughputBytesPerSecond: rate,
+    etaSeconds: etaSeconds(bytes.totalBytes - bytes.transferredBytes, rate),
+    reviewBacklog,
+    failedItems,
+    working,
+    nextAction: decideNextAction({
+      job,
+      totalItems: items.length,
+      reviewBacklog,
+      failedItems,
+      processedItems,
+      working,
+    }),
+    outbox: store.outboxStatus(jobId),
+    errorCategories: store.errorCategoryCounts(jobId),
+    activeItems: items
+      .filter((item) => ACTIVE.includes(item.state))
+      .slice(0, 12)
+      .map((item) => ({
+        itemId: item.id,
+        sourceRelativePath: item.sourceRelativePath,
+        state: item.state,
+        bytesTransferred: item.bytesTransferred,
+        sourceSize: item.sourceSize,
+        retryCount: item.retryCount,
+        lastErrorCategory: item.lastErrorCategory,
+      })),
+    recentEvents: store.listEvents(jobId, { limit: 25 }),
+    at: new Date().toISOString(),
+  };
+}
+
+/**
+ * What the operator should do next. The migration deliberately stops and waits
+ * for a human at review, so the UI has to say so instead of looking stalled.
+ */
+export function decideNextAction(input: {
+  job: MigrationJob;
+  totalItems: number;
+  reviewBacklog: number;
+  failedItems: number;
+  processedItems: number;
+  working: boolean;
+}): NextAction {
+  const { job, totalItems, reviewBacklog, failedItems, processedItems, working } = input;
+
+  if (job.state === 'QUEUED') {
+    return { kind: 'START', message: 'jobを開始するとscanが始まります。' };
+  }
+  if (job.state === 'PAUSED') {
+    return { kind: 'RESUME', message: 'jobは一時停止中です。再開すると続きから処理します。' };
+  }
+  if (reviewBacklog > 0) {
+    return {
+      kind: 'REVIEW',
+      count: reviewBacklog,
+      message: `${reviewBacklog}件が承認待ちです。承認するとBox内で最終folderへ移動します。`,
+    };
+  }
+  if (working) {
+    return { kind: 'WORKING', message: '転送と分類を実行中です。' };
+  }
+  if (failedItems > 0) {
+    return {
+      kind: 'RETRY_FAILED',
+      count: failedItems,
+      message: `${failedItems}件が失敗しています。原因を確認してから再実行できます。`,
+    };
+  }
+  if (totalItems > 0 && processedItems === totalItems) {
+    return { kind: 'REPORT', message: '全件が完了しました。reportを出力できます。' };
+  }
+  return { kind: 'IDLE', message: '処理待ちです。' };
+}
+
+export function resetThroughputSamples(jobId?: string): void {
+  if (jobId) samples.delete(jobId);
+  else samples.clear();
+}

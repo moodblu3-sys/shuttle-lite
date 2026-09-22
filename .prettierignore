@@ -1,0 +1,8 @@
+node_modules
+.next
+dist
+coverage
+.shuttle-lite
+fixtures/source
+package-lock.json
+*.md

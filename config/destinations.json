@@ -1,0 +1,42 @@
+{
+  "id": "default",
+  "needsReviewKey": "NEEDS_REVIEW",
+  "entries": [
+    {
+      "key": "LEGAL_CONTRACTS",
+      "label": "Legal / Contracts",
+      "boxPath": "/Shuttle Lite/destinations/Legal/Contracts",
+      "description": "MSA、NDA、業務委託などの契約書"
+    },
+    {
+      "key": "FINANCE_INVOICES",
+      "label": "Finance / Invoices",
+      "boxPath": "/Shuttle Lite/destinations/Finance/Invoices",
+      "description": "請求書、支払通知、経費精算"
+    },
+    {
+      "key": "HR_RECORDS",
+      "label": "HR / Employee Records",
+      "boxPath": "/Shuttle Lite/destinations/HR/Employee Records",
+      "description": "従業員台帳、評価、入退社手続き"
+    },
+    {
+      "key": "IT_RUNBOOKS",
+      "label": "IT / Runbooks",
+      "boxPath": "/Shuttle Lite/destinations/IT/Runbooks",
+      "description": "運用手順書、障害対応、構成情報"
+    },
+    {
+      "key": "SALES_PROPOSALS",
+      "label": "Sales / Proposals",
+      "boxPath": "/Shuttle Lite/destinations/Sales/Proposals",
+      "description": "提案書、見積、SOW"
+    },
+    {
+      "key": "NEEDS_REVIEW",
+      "label": "Needs review",
+      "boxPath": "/Shuttle Lite/_needs_review",
+      "description": "分類できないため人の判断が必要なdocument"
+    }
+  ]
+}

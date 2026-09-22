@@ -1,0 +1,64 @@
+# Shuttle Lite — 非透過型proxyの検証用 Squid 設定（macOSローカル実行版）
+#
+# `scripts/squid.ts start` がplaceholder（二重underscoreで囲んだ語）を置換し、
+# .shuttle-lite/squid/squid.conf として書き出す。手で編集する対象ではない。
+#
+# 目的は2つ。
+#   1. 必要な宛先だけをproxy経由で通し、それ以外は拒否する状態を作る
+#   2. access logで「direct接続へfallbackしていない」ことを証明する
+
+# ---------------------------------------------------------------------------
+# 認証。MVPのproxy認証は none または Basic のみ（NTLM/Kerberosは対象外）
+# scripts/squid.ts が .env の PROXY_AUTH_MODE を見て生成する
+# ---------------------------------------------------------------------------
+__AUTH__
+
+# ---------------------------------------------------------------------------
+# 宛先allowlist。Boxのupload/downloadはAPIと別domainなので個別に許可する
+# ---------------------------------------------------------------------------
+acl box_api dstdomain .box.com
+acl box_download dstdomain .boxcloud.com
+acl snowflake dstdomain .snowflakecomputing.com
+
+acl ssl_ports port 443
+acl safe_ports port 80 443
+acl CONNECT method CONNECT
+
+http_access deny !safe_ports
+http_access deny CONNECT !ssl_ports
+
+http_access allow client_ok box_api
+http_access allow client_ok box_download
+http_access allow client_ok snowflake
+
+# allowlist外は拒否する。403になることがallowlistが効いている証拠になる
+http_access deny all
+
+http_port __PORT__
+
+# ---------------------------------------------------------------------------
+# Log。経路の証明に使うので、requestごとに1行出す
+#
+# 既定の squid formatはclientへ返したbyteしか出さない。移行は上り方向が
+# 主役なので、up/downの両方を出す独自formatを使う。
+#   up=%>st   clientから受け取ったbyte（Boxへuploadした量）
+#   down=%<st clientへ返したbyte
+# CONNECT tunnelは1本で複数requestを多重化するため、行数はrequest数ではなく
+# tunnel数になる。行はtunnelを閉じた時点で書かれる。
+# ---------------------------------------------------------------------------
+logformat shuttle %ts.%03tu %>a %Ss/%03>Hs %rm %ru user=%[un up=%>st down=%<st %Sh/%<a
+access_log stdio:__RUNTIME__/access.log shuttle
+cache_log __RUNTIME__/cache.log
+pid_filename __RUNTIME__/squid.pid
+coredump_dir __RUNTIME__
+
+# 移行の測定を歪めないよう、cacheは無効化する
+cache deny all
+
+# Client情報をBoxへ渡さない
+forwarded_for delete
+
+# 実行端末のhostnameをlogやerror pageへ出さない
+visible_hostname shuttle-lite-proxy
+
+shutdown_lifetime 3 seconds

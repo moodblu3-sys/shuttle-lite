@@ -1,0 +1,1131 @@
+:root {
+  --box-blue: #0061d5;
+  --box-blue-dark: #003c8a;
+  --ink: #1a1d21;
+  --ink-soft: #5b6770;
+  --line: #dfe3e8;
+  --surface: #ffffff;
+  --canvas: #f5f7fa;
+  --ok: #1d7a46;
+  --warn: #a6641c;
+  --bad: #b3261e;
+  --wait: #5a4fbf;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Segoe UI',
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--box-blue);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  margin-bottom: 24px;
+}
+
+.topbar .brand {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.topbar .brand:hover {
+  color: var(--box-blue);
+  text-decoration: none;
+}
+
+.topbar .tagline {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.badges {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.badge {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.badge strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Not production: fake Box, no proxy, local telemetry, AI off. */
+.badge-demo {
+  border-color: #e0c49a;
+  background: #fdf8f1;
+}
+
+.badge-demo strong {
+  color: var(--warn);
+}
+
+/* Jobs dashboard ---------------------------------------------------------- */
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.page-title {
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.page-desc {
+  color: var(--ink-soft);
+  font-size: 13px;
+  margin: 2px 0 0;
+}
+
+.newjob {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.newjob > summary {
+  cursor: pointer;
+  list-style: none;
+  background: var(--box-blue);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 9px 16px;
+  white-space: nowrap;
+}
+
+.newjob > summary::-webkit-details-marker {
+  display: none;
+}
+
+.newjob > summary::after {
+  content: ' ▾';
+}
+
+.newjob > summary:hover {
+  background: var(--box-blue-dark);
+}
+
+.newjob-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+  width: min(460px, 86vw);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px;
+  box-shadow: 0 6px 20px rgba(26, 29, 33, 0.14);
+}
+
+.jobcards {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.jobcard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.jobcard:hover {
+  border-color: #b7d3f8;
+}
+
+.jobcard-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* 移行jobであることが一目で分かる identity. Shuttleと同じ紫。 */
+.jobcard-icon {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  color: var(--wait);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.jobcard-ident {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.jobcard-name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.jobcard-name:hover {
+  color: var(--box-blue);
+  text-decoration: none;
+}
+
+.jobcard-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
+.typechip {
+  background: #eef0f4;
+  color: var(--ink-soft);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.jobstatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.jobstatus-glyph {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+.jobstatus-glyph path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 実行中は静止した丸だと止まって見える。 */
+.jobstatus-run .jobstatus-glyph {
+  animation: jobstatus-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes jobstatus-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* labelはinkで読ませ、状態の色はglyphだけに載せる。 */
+.jobstatus-idle .jobstatus-glyph {
+  color: #98a4ae;
+}
+
+.jobstatus-ok .jobstatus-glyph {
+  color: var(--ok);
+}
+
+.jobstatus-run .jobstatus-glyph {
+  color: var(--box-blue);
+}
+
+.jobstatus-wait .jobstatus-glyph {
+  color: var(--wait);
+}
+
+.jobstatus-warn .jobstatus-glyph {
+  color: var(--warn);
+}
+
+.jobstatus-bad .jobstatus-glyph {
+  color: var(--bad);
+}
+
+.jobcard-dot,
+.jobcard-when {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.jobcard-cta {
+  flex: 0 0 auto;
+  background: var(--box-blue);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 8px 16px;
+  white-space: nowrap;
+}
+
+.jobcard-cta:hover {
+  background: var(--box-blue-dark);
+  text-decoration: none;
+}
+
+.jobcard-bar {
+  height: 6px;
+  margin-top: 14px;
+}
+
+.jobcard-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 16px;
+  border-top: 1px solid var(--line);
+  margin: 14px 0 0;
+  padding-top: 14px;
+}
+
+.jobcard-stat dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.jobcard-stat dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+}
+
+.jobcard-stat-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.jobcard-note {
+  margin: 10px 0 0;
+}
+
+.empty {
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  color: var(--ink-soft);
+  margin: 0 0 24px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
+/* Supporting information: readable, but not competing with the main content. */
+.card.quiet {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  margin-bottom: 14px;
+}
+
+.card h2 {
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  margin: 0 0 12px;
+}
+
+.card.quiet h2 {
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.card h3 {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink-soft);
+  margin: 16px 0 8px;
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+
+.small {
+  font-size: 12px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+th {
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.grid.cols-2 {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.grid.cols-4 {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.metric {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--surface);
+}
+
+.metric .label {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.metric .value {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.bar {
+  height: 10px;
+  border-radius: 999px;
+  background: #e8ecf1;
+  overflow: hidden;
+  display: flex;
+}
+
+.bar > span {
+  display: block;
+  height: 100%;
+  background: var(--box-blue);
+  transition: width 0.4s ease;
+}
+
+.bar .bar-done {
+  background: var(--ok);
+}
+
+.bar .bar-staged {
+  background: #9ec3f5;
+}
+
+/* Next action banner ------------------------------------------------------ */
+
+.next-action {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-left-width: 4px;
+}
+
+.next-action-label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.next-action-message {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.next-action-cta {
+  margin-left: auto;
+  background: var(--box-blue);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 9px 18px;
+}
+
+.next-action-cta:hover {
+  background: var(--box-blue-dark);
+  text-decoration: none;
+}
+
+.next-action-wait {
+  border-left-color: var(--wait);
+  background: #f7f6fd;
+}
+
+.next-action-bad {
+  border-left-color: var(--bad);
+  background: #fdeceb;
+}
+
+.next-action-ok {
+  border-left-color: var(--ok);
+  background: #f0f8f3;
+}
+
+.next-action-run {
+  border-left-color: var(--box-blue);
+}
+
+/* Cards and headings ------------------------------------------------------ */
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.card-head h2 {
+  margin: 0;
+}
+
+.conn {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.conn-live::before {
+  content: '● ';
+  color: var(--ok);
+}
+
+.conn-connecting::before {
+  content: '● ';
+  color: var(--ink-soft);
+}
+
+.conn-lost::before {
+  content: '● ';
+  color: var(--warn);
+}
+
+.job-head {
+  margin-bottom: 16px;
+}
+
+.job-head .job-ids {
+  flex: 0 0 auto;
+}
+
+.job-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.progress-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.progress-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.track-note {
+  margin: 6px 0 0;
+}
+
+.footnote {
+  margin-top: 12px;
+}
+
+.footnote > summary {
+  cursor: pointer;
+}
+
+.metric-wait {
+  border-color: #cdc7f0;
+  background: #f7f6fd;
+}
+
+.metric-bad {
+  border-color: #f3c4c1;
+  background: #fdeceb;
+}
+
+/* Stepper ----------------------------------------------------------------- */
+
+.stepper {
+  list-style: none;
+  display: flex;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  overflow-x: auto;
+}
+
+.step {
+  flex: 1 1 0;
+  min-width: 104px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: var(--canvas);
+}
+
+.step-name {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.step-count {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.step-badge {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 0 7px;
+  background: #e8f1fd;
+  color: var(--box-blue);
+}
+
+.step-badge.bad {
+  background: #fdeceb;
+  color: var(--bad);
+}
+
+.step-done {
+  background: #f0f8f3;
+  border-color: #bfe0cd;
+}
+
+.step-active {
+  background: #e8f1fd;
+  border-color: #b7d3f8;
+}
+
+.step-bad {
+  background: #fdeceb;
+  border-color: #f3c4c1;
+}
+
+/* Review ------------------------------------------------------------------ */
+
+/* Stays reachable while scrolling 30+ rows. */
+.review-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0 12px;
+  margin-bottom: 18px;
+}
+
+.review-bar-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.review-count {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.review-group {
+  margin-bottom: 26px;
+}
+
+.review-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.review-group-head h2 {
+  font-size: 16px;
+  margin: 0 0 2px;
+}
+
+.review-group-count {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+/* The only group that needs a decision gets the accent. */
+.review-group-attention {
+  border-left: 3px solid var(--warn);
+  padding-left: 14px;
+}
+
+/* Failed placements: louder than "needs a decision", because approving them
+   unchanged cannot succeed. */
+.review-group-blocked {
+  border-left: 3px solid var(--bad);
+  padding-left: 14px;
+}
+
+.review-blocked {
+  border-top: 1px solid var(--line);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.review-blocked p {
+  margin: 0 0 4px;
+}
+
+.review-rename {
+  margin-top: 8px;
+  align-items: flex-end;
+}
+
+.review-rename label {
+  flex: 1 1 260px;
+}
+
+.review-rename button {
+  flex: 0 0 auto;
+}
+
+.dest-counts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.review-notice {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.review-notice > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.operator-input {
+  max-width: 320px;
+  margin-top: 10px;
+}
+
+.review-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.review-row {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.review-row.open {
+  border-color: #b7d3f8;
+  box-shadow: 0 1px 4px rgba(0, 97, 213, 0.08);
+}
+
+.review-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.review-name {
+  flex: 1 1 320px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.review-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+/* The AI's reason lives here: it is the material the approval decision needs. */
+.review-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+/* Keeps "28 B" from breaking across two lines when the row is tight. */
+.review-meta > .pill,
+.review-size {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.review-reason {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.review-select {
+  width: auto;
+  min-width: 180px;
+  flex: 0 0 auto;
+}
+
+/* An unset destination is the thing to fix, so it reads as pending. */
+.review-select-empty {
+  border-color: #e0c49a;
+  background: #fdf8f1;
+}
+
+.review-detail {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.review-detail h3 {
+  margin-top: 0;
+}
+
+.review-detail .grid.cols-2 {
+  margin-top: 16px;
+}
+
+/* 配置の判断は文書の中身を見てから行う。Boxのpreviewへ渡す入口を、
+   detail内の他のlinkより目立たせる。 */
+.open-in-box {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--canvas);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.open-in-box:hover {
+  border-color: var(--box-blue);
+}
+
+.review-candidates {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-left: 26px;
+}
+
+.review-candidates button {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.overriding {
+  color: var(--warn);
+  margin: 6px 0 0;
+  padding-left: 26px;
+}
+
+.job-ids > summary {
+  cursor: pointer;
+}
+
+.job-ids .kv {
+  grid-template-columns: 110px 1fr;
+  margin-top: 6px;
+}
+
+.linkbtn {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 12px;
+  color: var(--box-blue);
+  background: var(--surface);
+  font-weight: 600;
+}
+
+.linkbtn:hover {
+  background: var(--canvas);
+  text-decoration: none;
+}
+
+/* Collapsible sections ---------------------------------------------------- */
+
+details.card > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+details.card > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.card > summary::before {
+  content: '▸';
+  color: var(--ink-soft);
+}
+
+details.card[open] > summary::before {
+  content: '▾';
+}
+
+details.card > summary h2 {
+  margin: 0;
+}
+
+.details-body {
+  margin-top: 14px;
+}
+
+form.stack {
+  display: grid;
+  gap: 10px;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+input[type='text'],
+input[type='number'],
+select,
+textarea {
+  font: inherit;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  width: 100%;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.row > * {
+  flex: 1 1 180px;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  border: 1px solid var(--box-blue);
+  background: var(--box-blue);
+  color: #fff;
+  border-radius: 6px;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--box-blue-dark);
+  border-color: var(--box-blue-dark);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+button.secondary {
+  background: var(--surface);
+  color: var(--box-blue);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: #eef4fd;
+  color: var(--box-blue-dark);
+}
+
+button.ghost {
+  background: var(--surface);
+  color: var(--ink-soft);
+  border-color: var(--line);
+}
+
+button.ghost:hover:not(:disabled) {
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.pill.ok {
+  color: var(--ok);
+  background: #e8f5ee;
+}
+
+.pill.run {
+  color: var(--box-blue);
+  background: #e8f1fd;
+}
+
+.pill.wait {
+  color: var(--wait);
+  background: #eeecfa;
+}
+
+.pill.warn {
+  color: var(--warn);
+  background: #fdf1e3;
+}
+
+.pill.bad {
+  color: var(--bad);
+  background: #fdeceb;
+}
+
+.notice {
+  border-left: 3px solid var(--warn);
+  background: #fdf8f1;
+  padding: 10px 14px;
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+}
+
+.error {
+  border-left: 3px solid var(--bad);
+  background: #fdeceb;
+  padding: 10px 14px;
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+
+.kv dt {
+  color: var(--ink-soft);
+}
+
+.kv dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.events {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.breadcrumb {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}

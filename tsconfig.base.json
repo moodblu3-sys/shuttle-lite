@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": false,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "noEmit": true,
+    "paths": {
+      "@shuttle-lite/core": ["./packages/core/src/index.ts"],
+      "@shuttle-lite/core/*": ["./packages/core/src/*"],
+      "@shuttle-lite/db": ["./packages/db/src/index.ts"],
+      "@shuttle-lite/db/*": ["./packages/db/src/*"],
+      "@shuttle-lite/config": ["./packages/config/src/index.ts"],
+      "@shuttle-lite/config/*": ["./packages/config/src/*"],
+      "@shuttle-lite/box": ["./packages/box/src/index.ts"],
+      "@shuttle-lite/box/*": ["./packages/box/src/*"],
+      "@shuttle-lite/routing": ["./packages/routing/src/index.ts"],
+      "@shuttle-lite/routing/*": ["./packages/routing/src/*"],
+      "@shuttle-lite/telemetry": ["./packages/telemetry/src/index.ts"],
+      "@shuttle-lite/telemetry/*": ["./packages/telemetry/src/*"]
+    }
+  }
+}
