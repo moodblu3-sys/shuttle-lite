@@ -35,7 +35,8 @@ Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋�
 ## 動かし方
 
 ```bash
-npm install
+npm ci
+npm run fixtures        # fresh cloneでは先に合成データを生成する
 npm test                 # 129件
 npm run verify           # fake Boxで18項目の独立検証
 npm run demo             # web(:3000) + worker を production buildで起動
