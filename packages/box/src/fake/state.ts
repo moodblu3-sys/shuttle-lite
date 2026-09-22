@@ -44,6 +44,7 @@ export interface FakeState {
   nextId: number;
   folders: Record<string, FakeFolder>;
   files: Record<string, FakeFile>;
+  trash?: Record<string, FakeFile>;
   sessions: Record<string, FakeSession>;
   aiCalls: Record<string, number>;
   uploadAttempts: number;

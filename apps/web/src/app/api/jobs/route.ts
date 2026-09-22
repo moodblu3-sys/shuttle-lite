@@ -24,6 +24,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '移行の設定を確認してください。' }, { status: 400 });
   }
   const body = input as Record<string, unknown>;
+  if (body.testMode !== undefined && typeof body.testMode !== 'boolean') {
+    return NextResponse.json({ error: 'テストモードの指定を確認してください。' }, { status: 400 });
+  }
   const operatorLabel =
     typeof body.operatorLabel === 'string' && body.operatorLabel.trim().length > 0
       ? body.operatorLabel.trim()
@@ -59,7 +62,11 @@ export async function POST(request: Request) {
       }
     }
     const job = store.transaction(() => {
-      const created = store.createJob({ profileId: profile.id, operatorLabel });
+      const created = store.createJob({
+        profileId: profile.id,
+        operatorLabel,
+        testMode: body.testMode === true,
+      });
       if (destinations) store.saveJobDestinations(created.id, destinations);
       if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB');
       return created;
@@ -127,7 +134,12 @@ export async function POST(request: Request) {
       snowflakeLoggingEnabled: true,
       conflictPolicy: body.conflictPolicy === 'SKIP' ? 'SKIP' : 'RENAME',
     });
-    const created = store.createJob({ name, profileId: profile.id, operatorLabel });
+    const created = store.createJob({
+      name,
+      profileId: profile.id,
+      operatorLabel,
+      testMode: body.testMode === true,
+    });
     store.saveJobDestinations(created.id, destinations);
     if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB');
     return created;

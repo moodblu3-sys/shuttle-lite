@@ -32,6 +32,12 @@ export async function processCommands(ctx: WorkerContext, limit = 20): Promise<n
       try {
         if (command.type === 'GENERATE_REPORT') {
           const assertOwned = () => {
+            if (ctx.store.getJob(command.jobId)?.cleanupState !== 'NONE') {
+              throw new ShuttleError(
+                'STATE_INVALID',
+                '終了したテストのレポートはBoxに保存できません。',
+              );
+            }
             if (!ctx.store.withCommandClaim(command, () => {})) {
               throw new ShuttleError('STATE_INVALID', '操作の実行権が失効しました。');
             }
@@ -67,6 +73,12 @@ export async function processCommands(ctx: WorkerContext, limit = 20): Promise<n
 function applyCommand(ctx: WorkerContext, command: JobCommandRecord): void {
   const job = ctx.store.getJob(command.jobId);
   if (!job) throw new ShuttleError('STATE_INVALID', `jobが存在しません: ${command.jobId}`);
+  if (job.cleanupState !== 'NONE' && command.type !== 'END_TEST') {
+    throw new ShuttleError(
+      'STATE_INVALID',
+      '終了したテストは再開できません。新しい移行を作成してください',
+    );
+  }
   // The job in the command envelope must own the target before any routing or
   // item state is changed. Item IDs alone do not establish that relationship.
   if (
@@ -95,6 +107,10 @@ function applyCommand(ctx: WorkerContext, command: JobCommandRecord): void {
   const telemetry = ctx.store.getProfile(job.profileId)?.snowflakeLoggingEnabled ?? true;
 
   switch (command.type) {
+    case 'END_TEST': {
+      ctx.store.requestTestCleanup(job.id);
+      return;
+    }
     case 'START_JOB': {
       if (job.state === 'COMPLETED') {
         throw new ShuttleError('STATE_INVALID', '完了済みjobは開始できません');

@@ -57,6 +57,9 @@ export interface JobRow {
   profile_id: string;
   state: string;
   operator_label: string;
+  test_mode: number;
+  cleanup_state: MigrationJob['cleanupState'];
+  cleanup_message: string | null;
   staging_folder_id: string | null;
   pause_requested: number;
   lease_owner: string | null;
@@ -78,6 +81,9 @@ export function mapJob(row: JobRow): MigrationJob {
     profileId: row.profile_id,
     state: row.state as JobState,
     operatorLabel: row.operator_label,
+    testMode: toBool(row.test_mode),
+    cleanupState: row.cleanup_state,
+    cleanupMessage: row.cleanup_message,
     stagingFolderId: row.staging_folder_id,
     pauseRequested: toBool(row.pause_requested),
     leaseOwner: row.lease_owner,

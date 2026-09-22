@@ -5,6 +5,9 @@ import { decideNextAction } from '@shuttle-lite/telemetry';
 function job(state: MigrationJob['state']): MigrationJob {
   return {
     id: 'job_1',
+    testMode: false,
+    cleanupState: 'NONE',
+    cleanupMessage: null,
     name: 'テスト移行',
     profileId: 'prf_1',
     state,

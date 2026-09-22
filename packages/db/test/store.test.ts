@@ -17,7 +17,7 @@ function createStore(): ShuttleStore {
   });
 }
 
-function seed(store: ShuttleStore) {
+function seed(store: ShuttleStore, legacyJob = false) {
   const profile = store.createProfile({
     name: `profile-${Math.random()}`,
     sourceRootPath: '/tmp/source',
@@ -31,7 +31,25 @@ function seed(store: ShuttleStore) {
     snowflakeLoggingEnabled: true,
     conflictPolicy: 'RENAME',
   });
-  const job = store.createJob({ profileId: profile.id, operatorLabel: 'tester' });
+  // Seed the historical schema without calling a newer createJob implementation.
+  if (legacyJob)
+    store.db
+      .prepare(
+        `INSERT INTO migration_jobs
+    (id, profile_id, state, operator_label, created_at, updated_at, name) VALUES (?,?,?,?,?,?,?)`,
+      )
+      .run(
+        'legacy-job',
+        profile.id,
+        'QUEUED',
+        'tester',
+        '2026-09-01T00:00:00.000Z',
+        '2026-09-01T00:00:00.000Z',
+        'existing',
+      );
+  const job = legacyJob
+    ? store.getJob('legacy-job')!
+    : store.createJob({ profileId: profile.id, operatorLabel: 'tester' });
   const itemId = migrationItemId(job.id, 'legal/msa.pdf');
   store.upsertScannedItem({
     id: itemId,
@@ -70,6 +88,7 @@ describe('sqlite store', () => {
       'routing_decisions',
       'runtime_settings',
       'snowflake_outbox',
+      'test_deleted_files',
       'upload_parts',
       'upload_sessions',
     ]);
@@ -81,7 +100,7 @@ describe('sqlite store', () => {
       for (const migration of MIGRATIONS.filter((m) => m.version <= 5)) db.exec(migration.sql);
       db.pragma('user_version = 5');
       const legacy = new ShuttleStore(db);
-      const { job } = seed(legacy);
+      const { job } = seed(legacy, true);
       const interrupted = legacy.enqueueCommand(job.id, 'START_JOB');
       const pending = legacy.enqueueCommand(job.id, 'PAUSE_JOB');
       db.prepare("UPDATE job_commands SET state = 'CLAIMED' WHERE id = ?").run(interrupted.id);
@@ -92,6 +111,40 @@ describe('sqlite store', () => {
       });
       expect(legacy.listCommands(job.id).find((c) => c.id === pending.id)?.state).toBe('PENDING');
       expect(legacy.claimCommands().map((c) => c.id)).toEqual([pending.id]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('upgrades published v6 without changing settings, history or active command claims', () => {
+    const db = openDatabase({ path: ':memory:' });
+    try {
+      for (const migration of MIGRATIONS.filter((m) => m.version <= 6)) db.exec(migration.sql);
+      db.pragma('user_version = 6');
+      const legacy = new ShuttleStore(db);
+      const { job } = seed(legacy, true);
+      legacy.saveRuntimeSettings(
+        { fileConcurrency: 2, logSink: 'jsonl', logFolder: '/tmp/demo-logs' },
+        0,
+      );
+      const cmd = legacy.enqueueCommand(job.id, 'PAUSE_JOB');
+      legacy.claimCommands();
+      const before = legacy.listCommands(job.id);
+      migrate(db);
+      migrate(db);
+      expect(schemaVersion(db)).toBe(7);
+      expect(legacy.getRuntimeSettings()).toEqual({
+        revision: 1,
+        settings: { fileConcurrency: 2, logSink: 'jsonl', logFolder: '/tmp/demo-logs' },
+      });
+      expect(legacy.getJob(job.id)).toMatchObject({
+        name: 'existing',
+        testMode: false,
+        cleanupState: 'NONE',
+      });
+      expect(legacy.listItems(job.id)).toHaveLength(1);
+      expect(legacy.listCommands(job.id)).toEqual(before);
+      expect(legacy.listCommands(job.id)[0]).toMatchObject({ id: cmd.id, state: 'CLAIMED' });
     } finally {
       db.close();
     }

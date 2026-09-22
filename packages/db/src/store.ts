@@ -261,19 +261,116 @@ export class ShuttleStore {
   // Jobs
   // -------------------------------------------------------------------------
 
-  createJob(input: { profileId: string; operatorLabel: string; name?: string }): MigrationJob {
+  createJob(input: {
+    profileId: string;
+    operatorLabel: string;
+    name?: string;
+    testMode?: boolean;
+  }): MigrationJob {
     const id = newJobId();
     const at = nowIso();
     const name = input.name ?? this.getProfile(input.profileId)?.name ?? null;
     this.db
       .prepare(
-        `INSERT INTO migration_jobs (id, profile_id, state, operator_label, created_at, updated_at, name)
-         VALUES (?,?,?,?,?,?,?)`,
+        `INSERT INTO migration_jobs (id, profile_id, state, operator_label, created_at, updated_at, name, test_mode)
+         VALUES (?,?,?,?,?,?,?,?)`,
       )
-      .run(id, input.profileId, 'QUEUED', input.operatorLabel, at, at, name);
+      .run(
+        id,
+        input.profileId,
+        'QUEUED',
+        input.operatorLabel,
+        at,
+        at,
+        name,
+        fromBool(input.testMode === true),
+      );
     const job = this.getJob(id);
     if (!job) throw new ShuttleError('UNKNOWN', 'jobの作成直後に読み出せませんでした');
     return job;
+  }
+
+  requestTestCleanup(jobId: string): void {
+    this.transaction(() => {
+      const job = this.getJob(jobId);
+      if (!job?.testMode)
+        throw new ShuttleError('STATE_INVALID', 'テストモードの移行だけを終了できます');
+      if (
+        job.cleanupState === 'DONE' ||
+        job.cleanupState === 'REQUESTED' ||
+        job.cleanupState === 'RUNNING'
+      )
+        return;
+      this.db
+        .prepare(
+          `UPDATE migration_jobs SET cleanup_state = 'REQUESTED',
+        pause_requested = 1, cleanup_message = '処理の停止を待っています', updated_at = ? WHERE id = ?`,
+        )
+        .run(nowIso(), jobId);
+    });
+  }
+
+  /** Never steal even an expired transfer lease: an HTTP upload can still be in flight. */
+  claimTestCleanup(owner: string): MigrationJob | null {
+    return this.transaction(() => {
+      const row = this.db
+        .prepare(
+          `SELECT * FROM migration_jobs WHERE test_mode = 1
+        AND cleanup_state = 'REQUESTED' AND lease_owner IS NULL ORDER BY created_at LIMIT 1`,
+        )
+        .get() as JobRow | undefined;
+      if (!row) return null;
+      this.db
+        .prepare(
+          `UPDATE migration_jobs SET cleanup_state = 'RUNNING', state = 'PAUSED',
+        lease_owner = ?, cleanup_message = 'テストファイルを削除しています', updated_at = ? WHERE id = ?`,
+        )
+        .run(owner, nowIso(), row.id);
+      return this.getJob(row.id);
+    });
+  }
+
+  listLockedTestCleanups(): MigrationJob[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT * FROM migration_jobs WHERE test_mode = 1
+      AND cleanup_state IN ('REQUESTED','RUNNING') AND lease_owner IS NOT NULL`,
+        )
+        .all() as JobRow[]
+    ).map(mapJob);
+  }
+
+  recoverTestCleanup(jobId: string, owner: string): void {
+    this.db
+      .prepare(
+        `UPDATE migration_jobs SET cleanup_state = 'REQUESTED',
+      lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
+      WHERE id = ? AND test_mode = 1 AND lease_owner = ? AND cleanup_state IN ('REQUESTED','RUNNING')`,
+      )
+      .run(nowIso(), jobId, owner);
+  }
+
+  finishTestCleanup(jobId: string, state: 'DONE' | 'FAILED', message: string): void {
+    this.db
+      .prepare(
+        `UPDATE migration_jobs SET cleanup_state = ?, cleanup_message = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(state, message, nowIso(), jobId);
+  }
+
+  wasTestFileDeleted(jobId: string, fileId: string): boolean {
+    return !!this.db
+      .prepare('SELECT 1 FROM test_deleted_files WHERE job_id = ? AND file_id = ?')
+      .get(jobId, fileId);
+  }
+
+  recordTestFileDeleted(jobId: string, fileId: string): void {
+    this.db
+      .prepare(
+        'INSERT OR IGNORE INTO test_deleted_files (job_id, file_id, deleted_at) VALUES (?,?,?)',
+      )
+      .run(jobId, fileId, nowIso());
   }
 
   /** Insert only: a later migration must not change an earlier approval's meaning. */
@@ -317,7 +414,7 @@ export class ShuttleStore {
       const row = this.db
         .prepare(
           `SELECT j.* FROM migration_jobs j
-            WHERE j.state IN ('SCANNING','RUNNING')
+            WHERE j.state IN ('SCANNING','RUNNING') AND j.cleanup_state = 'NONE'
               AND (j.lease_owner IS NULL OR j.lease_expires_at IS NULL OR j.lease_expires_at < ?)
               AND (
                 j.state = 'SCANNING'
@@ -1045,7 +1142,7 @@ export class ShuttleStore {
     const rows = this.db
       .prepare(
         `SELECT * FROM job_commands WHERE job_id = ?
-      AND type IN ('START_JOB','RESUME_JOB','PAUSE_JOB','RESCAN_JOB','RETRY_FAILED','GENERATE_REPORT')
+      AND type IN ('START_JOB','RESUME_JOB','PAUSE_JOB','RESCAN_JOB','RETRY_FAILED','GENERATE_REPORT','END_TEST')
       ORDER BY created_at DESC, rowid DESC LIMIT ?`,
       )
       .all(jobId, limit) as CommandRow[];

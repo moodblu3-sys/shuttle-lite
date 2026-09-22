@@ -15,6 +15,7 @@ export interface BoxFolder {
 }
 
 export interface BoxFile {
+  readonly etag?: string;
   readonly id: string;
   readonly name: string;
   readonly size: number;
@@ -193,6 +194,8 @@ export interface BoxGateway {
   abortUploadSession(sessionId: string): Promise<void>;
 
   getFile(fileId: string): Promise<BoxFile | null>;
+  /** Normal Box delete; trash behavior depends on enterprise settings. Requires concurrency guard. */
+  deleteTestFile(fileId: string, etag: string): Promise<void>;
   moveFile(request: { fileId: string; targetFolderId: string; newName?: string }): Promise<BoxFile>;
 
   setMetadata(fileId: string, values: MetadataValues): Promise<void>;

@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildJobSnapshot } from '@shuttle-lite/telemetry';
-import { createHarness, type Harness } from '../../../test/harness';
+import { createHarness, runUntilIdle, type Harness } from '../../../test/harness';
 import { processCommands } from '../../worker/src/commands';
 import { JobControls, OperationResult } from '../src/components/job-controls';
 import { ProgressView } from '../src/components/progress-view';
@@ -99,6 +99,30 @@ describe('command submission', () => {
     expect(retry.command.id).not.toBe(first.command.id);
     await processCommands(h.ctx);
     expect(snapshot().commands[0]?.state).toBe('DONE');
+  });
+
+  it('deduplicates test-end commands and shows the actual cleanup result after reload', async () => {
+    jobId = h.store.createJob({
+      profileId: h.createProfile().id,
+      operatorLabel: 'tester',
+      testMode: true,
+    }).id;
+    const first = await (await submit({ type: 'END_TEST' })).json();
+    const duplicate = await (await submit({ type: 'END_TEST' })).json();
+    expect(duplicate.command.id).toBe(first.command.id);
+    expect(snapshot().commands).toHaveLength(1);
+    expect(page()).toContain('テスト終了を受け付けました');
+    await runUntilIdle(h);
+    expect(snapshot().commands[0]).toMatchObject({ type: 'END_TEST', state: 'DONE' });
+    const html = page();
+    expect(html).toContain('0件のテストファイルを削除しました');
+    expect(html).not.toContain('再開する');
+    expect((await submit({ type: 'START_JOB' })).status).toBe(409);
+  });
+
+  it('rejects cleanup on normal migrations without enqueuing a command', async () => {
+    expect((await submit({ type: 'END_TEST' })).status).toBe(409);
+    expect(h.store.listCommands(jobId)).toHaveLength(0);
   });
 
   it.each([null, [], { type: 'UNKNOWN' }])('rejects malformed command input: %j', async (input) => {

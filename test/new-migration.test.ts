@@ -42,6 +42,22 @@ describe('creating a migration without registering a source first', () => {
     harness.cleanup();
   });
 
+  it('persists test mode only when explicitly selected', async () => {
+    const response = await POST(
+      request({ name: 'demo', sourceRootPath: harness.sourceRoot, testMode: true }),
+    );
+    expect(response.status).toBe(201);
+    expect(((await response.json()) as { job: MigrationJob }).job).toMatchObject({
+      testMode: true,
+      cleanupState: 'NONE',
+    });
+    const bad = await POST(
+      request({ name: 'demo', sourceRootPath: harness.sourceRoot, testMode: 'true' }),
+    );
+    expect(bad.status).toBe(400);
+    expect(harness.store.listJobs()).toHaveLength(1);
+  });
+
   it('creates and starts a named migration, then waits for approval before placement', async () => {
     const source = harness.writeSource('契約書.txt', '業務委託契約書 契約番号 LEG-2026-0042');
     expect(harness.store.listProfiles()).toHaveLength(0);

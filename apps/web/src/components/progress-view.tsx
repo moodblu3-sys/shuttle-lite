@@ -52,7 +52,13 @@ export function ProgressView({
       <div className="card">
         <div className="card-head">
           <h2>
-            進捗 <StatePill state={snapshot.job.state} />
+            {snapshot.job.cleanupState === 'NONE' ? (
+              <>
+                進捗 <StatePill state={snapshot.job.state} />
+              </>
+            ) : (
+              'テストの実行履歴'
+            )}
           </h2>
           <span className={`conn conn-${live}`}>
             {live === 'live'
@@ -251,6 +257,18 @@ function Metric({
 }
 
 function NextActionBanner({ jobId, snapshot }: { jobId: string; snapshot: JobSnapshot }) {
+  if (snapshot.job.cleanupState !== 'NONE')
+    return (
+      <div className="next-action next-action-wait" role="status">
+        <div>
+          <div className="next-action-label">テスト終了</div>
+          <div className="next-action-message">{snapshot.job.cleanupMessage}</div>
+          <p className="small">
+            以下の件数と履歴は削除前の移行結果です。再テストは「新しい移行」から開始してください。
+          </p>
+        </div>
+      </div>
+    );
   const { nextAction } = snapshot;
   const tone =
     nextAction.kind === 'REVIEW'

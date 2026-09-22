@@ -16,6 +16,7 @@ export function NewJobForm({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [testMode, setTestMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [folder, setFolder] = useState<Extract<FolderSelection, { cancelled: false }> | null>(null);
   const [destination, setDestination] = useState<SelectedBoxFolder | null>(null);
@@ -77,6 +78,7 @@ export function NewJobForm({
           aiRoutingEnabled: aiEnabled && form.get('aiRoutingEnabled') === 'on',
           conflictPolicy: form.get('conflictPolicy'),
           autoStart: true,
+          testMode,
         }),
       });
       const body = (await response.json()) as { job?: { id: string }; error?: string };
@@ -140,6 +142,23 @@ export function NewJobForm({
         disabled={busy || picking}
         boxMode={boxMode}
       />
+      <label>
+        <span>
+          <input
+            type="checkbox"
+            checked={testMode}
+            disabled={busy}
+            onChange={(event) => setTestMode(event.target.checked)}
+          />{' '}
+          テストモード
+        </span>
+        {testMode ? (
+          <span className="small muted">
+            結果確認後、「テストを終了」で今回転送したファイルをまとめて削除します。
+            Boxの企業設定により完全削除になる場合があります。
+          </span>
+        ) : null}
+      </label>
       <details className="migration-options">
         <summary>詳細オプション</summary>
         <div className="migration-options-body">

@@ -49,13 +49,15 @@ export type FakeOperation =
   | 'setMetadata'
   | 'extractStructured'
   | 'moveFile'
-  | 'getFile';
+  | 'getFile'
+  | 'deleteTestFile';
 
 const DEFAULT_PART_SIZE = 8 * 1024 * 1024;
 
 function toBoxFile(file: FakeFile): BoxFile {
   return {
     id: file.id,
+    etag: createHash('sha1').update(JSON.stringify(file)).digest('hex'),
     name: file.name,
     size: file.size,
     sha1: file.sha1,
@@ -435,6 +437,21 @@ export class FakeBoxGateway implements BoxGateway {
     this.#checkInjectedFailure('getFile');
     const file = this.#state.read().files[fileId];
     return file ? toBoxFile(file) : null;
+  }
+
+  async deleteTestFile(fileId: string, etag: string): Promise<void> {
+    this.#checkInjectedFailure('deleteTestFile');
+    this.#state.mutate((state) => {
+      const file = state.files[fileId];
+      if (!file)
+        throw new ShuttleError('BOX_NOT_FOUND', '削除対象が見つかりません', { status: 404 });
+      if (!etag || toBoxFile(file).etag !== etag)
+        throw new ShuttleError('APPROVAL_STALE', '削除前にファイルが変更されました', {
+          status: 412,
+        });
+      (state.trash ??= {})[fileId] = file;
+      delete state.files[fileId];
+    });
   }
 
   async moveFile(request: {

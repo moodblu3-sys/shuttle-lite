@@ -9,6 +9,14 @@ export default async function ReviewPage({ params }: { params: Promise<{ jobId: 
   const { jobId } = await params;
   const job = getStore().getJob(jobId);
   if (!job) notFound();
+  if (job.cleanupState !== 'NONE')
+    return (
+      <div className="page-content">
+        <h1>このテストは終了しています</h1>
+        <p>{job.cleanupMessage}</p>
+        <a href={`/jobs/${jobId}`}>結果と削除状況を確認</a>
+      </div>
+    );
 
   return (
     <>

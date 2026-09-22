@@ -21,9 +21,10 @@ import { BoxHttpClient } from './client';
 import { buildMultipart } from './multipart';
 import { toBoxRfc3339 } from './rfc3339';
 
-const FILE_FIELDS = 'id,name,size,sha1,parent,file_version,created_at,modified_at';
+const FILE_FIELDS = 'id,name,size,sha1,parent,file_version,created_at,modified_at,etag';
 
 interface ApiFile {
+  etag?: string;
   id: string;
   name: string;
   size: number;
@@ -44,6 +45,7 @@ interface ApiFolder {
 function toBoxFile(file: ApiFile): BoxFile {
   return {
     id: file.id,
+    etag: file.etag,
     name: file.name,
     size: file.size,
     sha1: file.sha1,
@@ -408,6 +410,15 @@ export class HttpBoxGateway implements BoxGateway {
     });
     if (response.status === 404) return null;
     return toBoxFile(JSON.parse(response.bodyText) as ApiFile);
+  }
+
+  async deleteTestFile(fileId: string, etag: string): Promise<void> {
+    if (!etag) throw new ShuttleError('STATE_INVALID', '削除前の変更確認に必要なetagがありません');
+    await this.#client.request({
+      method: 'DELETE',
+      url: `${this.#box.apiBaseUrl}/files/${encodeURIComponent(fileId)}`,
+      headers: { 'if-match': etag },
+    });
   }
 
   async moveFile(request: {

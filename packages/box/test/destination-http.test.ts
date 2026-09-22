@@ -29,6 +29,15 @@ describe('Box destination HTTP contract', () => {
     vi.restoreAllMocks();
   });
 
+  it('deletes the exact file with an etag guard and never requests permanent trash purge', async () => {
+    agent
+      .get('https://box.invalid')
+      .intercept({ path: '/2.0/files/123', method: 'DELETE', headers: { 'if-match': '7' } })
+      .reply(204);
+    await gateway.deleteTestFile('123', '7');
+    agent.assertNoPendingInterceptors();
+  });
+
   it('uses returned ancestry without needing to fetch inaccessible parent folders', async () => {
     agent
       .get('https://box.invalid')

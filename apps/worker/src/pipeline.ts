@@ -72,6 +72,7 @@ export async function advanceItem(
   itemId: string,
   scope: readonly ItemState[],
 ): Promise<AdvanceResult> {
+  if (ctx.store.getJob(ctx.job.id)?.cleanupState !== 'NONE') return 'BLOCKED';
   const stored = ctx.store.getItem(itemId);
   if (!stored) return 'OUT_OF_SCOPE';
   const state = effectiveState(stored);

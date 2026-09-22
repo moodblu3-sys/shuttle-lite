@@ -246,6 +246,21 @@ export const MIGRATIONS: readonly Migration[] = [
         completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
         WHERE state = 'CLAIMED';`,
   },
+  {
+    version: 7,
+    name: 'test run cleanup',
+    sql: `
+    ALTER TABLE migration_jobs ADD COLUMN test_mode INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE migration_jobs ADD COLUMN cleanup_state TEXT NOT NULL DEFAULT 'NONE';
+    ALTER TABLE migration_jobs ADD COLUMN cleanup_message TEXT;
+    CREATE TABLE test_deleted_files (
+      job_id TEXT NOT NULL REFERENCES migration_jobs(id),
+      file_id TEXT NOT NULL,
+      deleted_at TEXT NOT NULL,
+      PRIMARY KEY (job_id, file_id)
+    ) STRICT;
+  `,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

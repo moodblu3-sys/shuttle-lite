@@ -341,11 +341,26 @@ describe('destination snapshot schema upgrade', () => {
         snowflakeLoggingEnabled: true,
         conflictPolicy: 'RENAME',
       });
-      const job = store.createJob({ profileId: profile.id, operatorLabel: 'tester' });
+      const at = '2026-09-01T00:00:00.000Z';
+      db.prepare(
+        `INSERT INTO migration_jobs (id, profile_id, state, operator_label, created_at, updated_at, name)
+        VALUES (?,?,?,?,?,?,?)`,
+      ).run('old-job', profile.id, 'QUEUED', 'tester', at, at, '既存');
       migrate(db);
+      const migrated = store.getJob('old-job');
       migrate(db);
-      expect(store.getJob(job.id)).toEqual(job);
-      expect(store.getJobDestinations(job.id)).toBeNull();
+      expect(store.getJob('old-job')).toEqual(migrated);
+      expect(migrated).toMatchObject({
+        id: 'old-job',
+        name: '既存',
+        profileId: profile.id,
+        operatorLabel: 'tester',
+        createdAt: at,
+        testMode: false,
+        cleanupState: 'NONE',
+        cleanupMessage: null,
+      });
+      expect(store.getJobDestinations('old-job')).toBeNull();
     } finally {
       db.close();
     }

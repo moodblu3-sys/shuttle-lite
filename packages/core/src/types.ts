@@ -35,6 +35,9 @@ export interface MigrationJob {
   readonly profileId: string;
   readonly state: JobState;
   readonly operatorLabel: string;
+  readonly testMode: boolean;
+  readonly cleanupState: 'NONE' | 'REQUESTED' | 'RUNNING' | 'DONE' | 'FAILED';
+  readonly cleanupMessage: string | null;
   readonly stagingFolderId: string | null;
   readonly pauseRequested: boolean;
   readonly leaseOwner: string | null;
@@ -160,6 +163,7 @@ export const COMMAND_TYPES = [
   'SKIP_ITEM',
   'SEND_TO_REVIEW',
   'GENERATE_REPORT',
+  'END_TEST',
 ] as const;
 
 export type CommandType = (typeof COMMAND_TYPES)[number];

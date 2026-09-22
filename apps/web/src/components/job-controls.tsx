@@ -19,7 +19,18 @@ function buttonsFor(snapshot: JobSnapshot): {
   primary: ControlButton[];
   secondary: ControlButton[];
 } {
-  const primary: ControlButton[] = [];
+  if (snapshot.job.cleanupState !== 'NONE') {
+    return {
+      primary:
+        snapshot.job.cleanupState === 'FAILED'
+          ? [{ type: 'END_TEST', label: '未削除ファイルの削除を再試行', variant: 'secondary' }]
+          : [],
+      secondary: [],
+    };
+  }
+  const primary: ControlButton[] = snapshot.job.testMode
+    ? [{ type: 'END_TEST', label: 'テストを終了してファイルを削除', variant: 'secondary' }]
+    : [];
   const secondary: ControlButton[] = [
     { type: 'RESCAN_JOB', label: '移行元を再スキャン', variant: 'ghost' },
     { type: 'GENERATE_REPORT', label: 'レポートをBoxに保存', variant: 'ghost' },
@@ -78,6 +89,13 @@ export function JobControls({ jobId, snapshot }: { jobId: string; snapshot: JobS
   const disabled = pending !== null || waiting;
 
   async function send(button: ControlButton) {
+    if (
+      button.type === 'END_TEST' &&
+      !window.confirm(
+        'このテストを終了し、今回転送したBoxファイルを削除します。Boxの企業設定により完全削除になる場合があります。実行しますか？',
+      )
+    )
+      return;
     setPending(button.type);
     setMessage(null);
     try {
@@ -106,6 +124,14 @@ export function JobControls({ jobId, snapshot }: { jobId: string; snapshot: JobS
         </button>
       </div>
 
+      {snapshot.job.testMode ? (
+        <p className="small muted">
+          テストモード
+          {snapshot.job.cleanupMessage
+            ? `：${snapshot.job.cleanupMessage}`
+            : '：結果を確認したらテストを終了してください'}
+        </p>
+      ) : null}
       <div className="actions">
         {primary.length === 0 ? (
           <span className="muted small">この状態で必要な操作はありません。</span>
@@ -163,6 +189,7 @@ const OPERATION_LABELS: Partial<Record<CommandType, string>> = {
   RESCAN_JOB: '再スキャン',
   RETRY_FAILED: '失敗したファイルの再実行',
   GENERATE_REPORT: 'レポートのBox保存',
+  END_TEST: 'テスト終了',
 };
 
 export function OperationResult({ command }: { command: JobCommandRecord }) {

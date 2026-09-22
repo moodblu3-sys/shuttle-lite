@@ -8,6 +8,7 @@ import {
   toShuttleError,
 } from '@shuttle-lite/core';
 import { processCommands } from './commands';
+import { processTestCleanup } from './test-cleanup';
 import { destinationsForJob, type JobContext, type WorkerContext } from './context';
 import { advanceItem, PLACEMENT_SCOPE, ROUTING_SCOPE, TRANSFER_SCOPE } from './pipeline';
 import { reconcileJob } from './reconcile';
@@ -81,6 +82,7 @@ export class WorkerRuntime {
       fileGate: new Semaphore(config.limits.fileConcurrency),
       chunkGate: new Semaphore(config.limits.chunkConcurrency),
     };
+    if (await processTestCleanup(this.#ctx)) return true;
     const leaseTtl = this.#options.leaseTtlMs ?? 30_000;
     const claimed = this.#ctx.store.claimJob(this.#ctx.workerId, leaseTtl);
     if (!claimed) return false;

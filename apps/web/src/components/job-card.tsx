@@ -65,7 +65,12 @@ export function JobCard({
         <Stat label="開始時刻" value={stamp(job.startedAt)} />
       </dl>
 
-      {next && NOTE_KINDS.has(next.kind) ? (
+      {job.cleanupState !== 'NONE' ? (
+        <p className="jobcard-note small muted">
+          {job.cleanupMessage} 件数は削除前の移行結果です。
+        </p>
+      ) : null}
+      {job.cleanupState === 'NONE' && next && NOTE_KINDS.has(next.kind) ? (
         <p className="jobcard-note small muted">{next.message}</p>
       ) : null}
     </article>
@@ -84,12 +89,21 @@ export function JobIdentity({
   profile: MigrationProfile | null;
   linked?: boolean;
 }) {
-  const status = STATUS[job.state];
+  const cleanupStatus: Partial<
+    Record<MigrationJob['cleanupState'], { label: string; tone: Tone }>
+  > = {
+    REQUESTED: { label: 'テスト終了待ち', tone: 'wait' },
+    RUNNING: { label: 'テスト削除中', tone: 'run' },
+    DONE: { label: 'テスト終了', tone: 'idle' },
+    FAILED: { label: 'テスト削除に未解決あり', tone: 'warn' },
+  };
+  const status = cleanupStatus[job.cleanupState] ?? STATUS[job.state];
   const failed = snapshot?.failedItems ?? 0;
-  const withErrors = job.state === 'COMPLETED' && failed > 0;
+  const withErrors = job.cleanupState === 'NONE' && job.state === 'COMPLETED' && failed > 0;
   const tone = withErrors ? 'warn' : status.tone;
   const name = job.name ?? profile?.name ?? '移行';
   const starting =
+    job.cleanupState === 'NONE' &&
     job.state === 'QUEUED' &&
     snapshot?.commands.some(
       (command) =>
@@ -97,11 +111,13 @@ export function JobIdentity({
         (command.state === 'PENDING' || command.state === 'CLAIMED'),
     );
   const completedLabel =
-    job.state === 'COMPLETED' && snapshot?.skippedItems
-      ? `終了（${snapshot.skippedItems}件スキップ）`
-      : job.state === 'COMPLETED' && snapshot?.totalItems === 0
-        ? '終了（対象なし）'
-        : status.label;
+    job.cleanupState !== 'NONE'
+      ? status.label
+      : job.state === 'COMPLETED' && snapshot?.skippedItems
+        ? `終了（${snapshot.skippedItems}件スキップ）`
+        : job.state === 'COMPLETED' && snapshot?.totalItems === 0
+          ? '終了（対象なし）'
+          : status.label;
 
   return (
     <>
@@ -115,6 +131,7 @@ export function JobIdentity({
           <h1 className="jobcard-name">{name}</h1>
         )}
         <div className="jobcard-tags">
+          {job.testMode ? <span className="typechip">テスト</span> : null}
           <span className="typechip">
             {profile?.aiRoutingEnabled ? 'AI分類あり' : 'ファイル移行'}
           </span>
@@ -132,6 +149,12 @@ export function JobIdentity({
 
 function Cta({ job, snapshot }: { job: MigrationJob; snapshot: JobSnapshot | null }) {
   const next = snapshot?.nextAction;
+  if (job.cleanupState !== 'NONE')
+    return (
+      <a className="jobcard-cta" href={`/jobs/${job.id}`}>
+        テスト結果を見る
+      </a>
+    );
   if (next?.kind === 'REVIEW') {
     return (
       <a className="jobcard-cta" href={`/jobs/${job.id}/review`}>

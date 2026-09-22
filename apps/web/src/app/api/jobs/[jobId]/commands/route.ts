@@ -37,6 +37,19 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  const job = store.getJob(jobId)!;
+  if (type === 'END_TEST' && !job.testMode) {
+    return NextResponse.json(
+      { error: '通常の移行ではテスト終了を実行できません。' },
+      { status: 409 },
+    );
+  }
+  if (job.cleanupState !== 'NONE' && type !== 'END_TEST') {
+    return NextResponse.json(
+      { error: '終了したテストは再開できません。新しい移行を作成してください。' },
+      { status: 409 },
+    );
+  }
   const command = store.transaction(() => {
     const existing = store
       .listJobOperations(jobId)
