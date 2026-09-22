@@ -236,6 +236,16 @@ export const MIGRATIONS: readonly Migration[] = [
     ) STRICT;`,
   },
   { version: 5, name: 'editable runtime settings', sql: RUNTIME_SETTINGS },
+  {
+    version: 6,
+    name: 'recoverable command claims',
+    sql: `ALTER TABLE job_commands ADD COLUMN claim_token TEXT;
+      ALTER TABLE job_commands ADD COLUMN lease_expires_at TEXT;
+      UPDATE job_commands SET state = 'REJECTED',
+        rejection_reason = '更新前の操作が中断されています。現在の状態を確認して操作し直してください。',
+        completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        WHERE state = 'CLAIMED';`,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

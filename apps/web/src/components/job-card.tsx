@@ -89,6 +89,19 @@ export function JobIdentity({
   const withErrors = job.state === 'COMPLETED' && failed > 0;
   const tone = withErrors ? 'warn' : status.tone;
   const name = job.name ?? profile?.name ?? '移行';
+  const starting =
+    job.state === 'QUEUED' &&
+    snapshot?.commands.some(
+      (command) =>
+        command.type === 'START_JOB' &&
+        (command.state === 'PENDING' || command.state === 'CLAIMED'),
+    );
+  const completedLabel =
+    job.state === 'COMPLETED' && snapshot?.skippedItems
+      ? `終了（${snapshot.skippedItems}件スキップ）`
+      : job.state === 'COMPLETED' && snapshot?.totalItems === 0
+        ? '終了（対象なし）'
+        : status.label;
 
   return (
     <>
@@ -107,7 +120,7 @@ export function JobIdentity({
           </span>
           <span className={`jobstatus jobstatus-${tone}`}>
             <StatusGlyph tone={tone} />
-            {withErrors ? `完了（${failed}件エラー）` : status.label}
+            {starting ? '開始待ち' : withErrors ? `終了（${failed}件エラー）` : completedLabel}
           </span>
           <span className="jobcard-dot">·</span>
           <span className="jobcard-when">{stamp(job.startedAt ?? job.createdAt)}</span>

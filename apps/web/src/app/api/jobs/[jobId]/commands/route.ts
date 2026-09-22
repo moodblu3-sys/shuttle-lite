@@ -25,7 +25,10 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: `jobが存在しません: ${jobId}` }, { status: 404 });
   }
 
-  const body = (await request.json()) as { type?: string; payload?: Record<string, unknown> };
+  const input: unknown = await request.json().catch(() => null);
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    return NextResponse.json({ error: '操作の指定を確認してください。' }, { status: 400 });
+  const body = input as { type?: string; payload?: Record<string, unknown> };
   const type = body.type as CommandType | undefined;
   if (!type || !COMMAND_TYPES.includes(type)) {
     return NextResponse.json(
@@ -34,6 +37,14 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  const command = store.enqueueCommand(jobId, type, body.payload ?? {});
+  const command = store.transaction(() => {
+    const existing = store
+      .listJobOperations(jobId)
+      .find(
+        (command) =>
+          command.type === type && (command.state === 'PENDING' || command.state === 'CLAIMED'),
+      );
+    return existing ?? store.enqueueCommand(jobId, type, body.payload ?? {});
+  });
   return NextResponse.json({ command }, { status: 202 });
 }

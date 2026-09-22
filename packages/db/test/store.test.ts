@@ -3,6 +3,7 @@ import { migrationItemId } from '@shuttle-lite/core';
 import {
   LATEST_SCHEMA_VERSION,
   migrate,
+  MIGRATIONS,
   openDatabase,
   schemaVersion,
   ShuttleStore,
@@ -72,6 +73,28 @@ describe('sqlite store', () => {
       'upload_parts',
       'upload_sessions',
     ]);
+  });
+
+  it('upgrades legacy interrupted commands without replaying possibly applied actions', () => {
+    const db = openDatabase({ path: ':memory:' });
+    try {
+      for (const migration of MIGRATIONS.filter((m) => m.version <= 5)) db.exec(migration.sql);
+      db.pragma('user_version = 5');
+      const legacy = new ShuttleStore(db);
+      const { job } = seed(legacy);
+      const interrupted = legacy.enqueueCommand(job.id, 'START_JOB');
+      const pending = legacy.enqueueCommand(job.id, 'PAUSE_JOB');
+      db.prepare("UPDATE job_commands SET state = 'CLAIMED' WHERE id = ?").run(interrupted.id);
+      migrate(db);
+      expect(legacy.listCommands(job.id).find((c) => c.id === interrupted.id)).toMatchObject({
+        state: 'REJECTED',
+        rejectionReason: expect.stringContaining('更新前の操作が中断'),
+      });
+      expect(legacy.listCommands(job.id).find((c) => c.id === pending.id)?.state).toBe('PENDING');
+      expect(legacy.claimCommands().map((c) => c.id)).toEqual([pending.id]);
+    } finally {
+      db.close();
+    }
   });
 
   it('leases a job to one worker at a time', () => {

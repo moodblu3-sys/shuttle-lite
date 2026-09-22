@@ -961,28 +961,69 @@ export class ShuttleStore {
     return mapCommand(row);
   }
 
-  /** Claim commands so two workers never execute the same operator action. */
-  claimCommands(limit = 20, jobId?: string): JobCommandRecord[] {
+  /** Claims expire after a crash. Local actions and DONE are committed atomically by the worker. */
+  claimCommands(limit = 20, jobId?: string): Array<JobCommandRecord & { claimToken: string }> {
     return this.transaction(() => {
+      const now = nowIso();
+      // A report upload may already have reached Box. Do not repeat that external write blindly.
+      this.db
+        .prepare(
+          `UPDATE job_commands SET state = 'REJECTED', completed_at = ?,
+        rejection_reason = 'レポート保存が中断され、Boxへの保存結果を確認できません。Boxのレポートを確認してから再操作してください。'
+        WHERE state = 'CLAIMED' AND lease_expires_at <= ? AND type = 'GENERATE_REPORT'`,
+        )
+        .run(now, now);
+      this.db
+        .prepare(
+          `UPDATE job_commands SET state = 'PENDING', claimed_at = NULL,
+        claim_token = NULL, lease_expires_at = NULL
+        WHERE state = 'CLAIMED' AND lease_expires_at <= ? AND type != 'GENERATE_REPORT'`,
+        )
+        .run(now);
       const rows = jobId
         ? (this.db
             .prepare(
-              `SELECT * FROM job_commands WHERE state = 'PENDING' AND job_id = ? ORDER BY created_at LIMIT ?`,
+              `SELECT p.* FROM job_commands p WHERE p.state = 'PENDING' AND p.job_id = ? AND NOT EXISTS (SELECT 1 FROM job_commands a WHERE a.job_id = p.job_id AND a.state = 'CLAIMED') ORDER BY p.created_at, p.rowid LIMIT ?`,
             )
             .all(jobId, limit) as CommandRow[])
         : (this.db
             .prepare(
-              `SELECT * FROM job_commands WHERE state = 'PENDING' ORDER BY created_at LIMIT ?`,
+              `SELECT p.* FROM job_commands p WHERE p.state = 'PENDING' AND NOT EXISTS (SELECT 1 FROM job_commands a WHERE a.job_id = p.job_id AND a.state = 'CLAIMED') ORDER BY p.created_at, p.rowid LIMIT ?`,
             )
             .all(limit) as CommandRow[]);
       const claim = this.db.prepare(
-        `UPDATE job_commands SET state = 'CLAIMED', claimed_at = ? WHERE id = ? AND state = 'PENDING'`,
+        `UPDATE job_commands SET state = 'CLAIMED', claimed_at = ?, claim_token = ?, lease_expires_at = ? WHERE id = ? AND state = 'PENDING'`,
       );
-      const claimed: CommandRow[] = [];
-      for (const row of rows) {
-        if (claim.run(nowIso(), row.id).changes === 1) claimed.push(row);
-      }
-      return claimed.map(mapCommand);
+      return rows.map((row) => {
+        const claimToken = newCommandId();
+        claim.run(now, claimToken, new Date(Date.parse(now) + 120_000).toISOString(), row.id);
+        return { ...mapCommand(row), state: 'CLAIMED' as const, claimedAt: now, claimToken };
+      });
+    });
+  }
+
+  renewCommandClaims(commands: readonly { id: string; claimToken: string }[]): void {
+    const now = nowIso();
+    const until = new Date(Date.parse(now) + 120_000).toISOString();
+    const statement = this.db.prepare(`UPDATE job_commands SET lease_expires_at = ?
+      WHERE id = ? AND claim_token = ? AND state = 'CLAIMED' AND lease_expires_at > ?`);
+    this.transaction(() => {
+      for (const command of commands) statement.run(until, command.id, command.claimToken, now);
+    });
+  }
+
+  /** Fence stale workers and keep local effects in the same transaction as command completion. */
+  withCommandClaim(command: { id: string; claimToken: string }, action: () => void): boolean {
+    return this.transaction(() => {
+      const owned = this.db
+        .prepare(
+          `SELECT id FROM job_commands
+        WHERE id = ? AND claim_token = ? AND state = 'CLAIMED' AND lease_expires_at > ?`,
+        )
+        .get(command.id, command.claimToken, nowIso());
+      if (!owned) return false;
+      action();
+      return true;
     });
   }
 
@@ -998,6 +1039,17 @@ export class ShuttleStore {
         `UPDATE job_commands SET state = 'REJECTED', rejection_reason = ?, completed_at = ? WHERE id = ?`,
       )
       .run(reason, nowIso(), id);
+  }
+
+  listJobOperations(jobId: string, limit = 20): JobCommandRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM job_commands WHERE job_id = ?
+      AND type IN ('START_JOB','RESUME_JOB','PAUSE_JOB','RESCAN_JOB','RETRY_FAILED','GENERATE_REPORT')
+      ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+      )
+      .all(jobId, limit) as CommandRow[];
+    return rows.map(mapCommand);
   }
 
   listCommands(jobId: string, limit = 50): JobCommandRecord[] {

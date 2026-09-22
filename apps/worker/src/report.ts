@@ -19,7 +19,11 @@ export interface ReportArtifacts {
  * `_reports` folder, so the evidence lives next to the migrated content
  * (docs/requirements.md section 4.15).
  */
-export async function generateReport(ctx: WorkerContext, jobId: string): Promise<ReportArtifacts> {
+export async function generateReport(
+  ctx: WorkerContext,
+  jobId: string,
+  assertOwned: () => void = () => {},
+): Promise<ReportArtifacts> {
   if (!ctx.store.getJob(jobId)) {
     throw new ShuttleError('STATE_INVALID', `jobが存在しません: ${jobId}`);
   }
@@ -37,6 +41,7 @@ export async function generateReport(ctx: WorkerContext, jobId: string): Promise
     ['json', jsonPath],
     ['csv', csvPath],
   ] as const) {
+    assertOwned();
     try {
       const digest = await sha1File(path);
       const file = await ctx.gateway.uploadDirect({
@@ -51,6 +56,14 @@ export async function generateReport(ctx: WorkerContext, jobId: string): Promise
       // A report upload failure is reported, but it never fails the migration.
       ctx.logger.warn('report uploadに失敗しました', { kind, message: (error as Error).message });
     }
+  }
+
+  assertOwned();
+  const missing = (['json', 'csv'] as const).filter((kind) => uploaded[kind] === null);
+  if (missing.length > 0) {
+    const message = `レポートのBox保存を確認できませんでした（${missing.join('・').toUpperCase()}）。CSV・JSONは画面から取得できます。`;
+    ctx.store.appendEvent({ jobId, phase: 'FINAL_VERIFY', status: 'FAILED', message });
+    throw new ShuttleError('BOX_SERVER', message);
   }
 
   ctx.store.appendEvent({

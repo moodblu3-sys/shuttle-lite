@@ -2,6 +2,7 @@ import {
   buildPhaseCounters,
   etaSeconds,
   type ItemState,
+  type JobCommandRecord,
   type MigrationEventRecord,
   type MigrationJob,
   type PhaseCounters,
@@ -32,6 +33,7 @@ export interface NextAction {
 
 export interface JobSnapshot {
   readonly job: MigrationJob;
+  readonly commands: readonly JobCommandRecord[];
   readonly counts: Record<string, number>;
   readonly phases: readonly PhaseCounters[];
   readonly totalItems: number;
@@ -115,6 +117,7 @@ export function buildJobSnapshot(store: ShuttleStore, jobId: string): JobSnapsho
   const job = store.getJob(jobId);
   if (!job) return null;
 
+  const commands = store.listJobOperations(jobId);
   const counts = store.countItemsByState(jobId);
   const bytes = store.byteTotals(jobId);
   const items = store.listItems(jobId, { limit: 10_000 });
@@ -133,6 +136,7 @@ export function buildJobSnapshot(store: ShuttleStore, jobId: string): JobSnapsho
 
   return {
     job,
+    commands,
     counts,
     phases: buildPhaseCounters(items),
     totalItems: items.length,
@@ -153,6 +157,9 @@ export function buildJobSnapshot(store: ShuttleStore, jobId: string): JobSnapsho
       reviewBacklog,
       failedItems,
       processedItems,
+      completedItems,
+      skippedItems,
+      commands,
       working,
     }),
     outbox: store.outboxStatus(jobId),
@@ -184,21 +191,47 @@ export function decideNextAction(input: {
   reviewBacklog: number;
   failedItems: number;
   processedItems: number;
+  completedItems: number;
+  skippedItems: number;
+  commands?: readonly JobCommandRecord[];
   working: boolean;
 }): NextAction {
-  const { job, totalItems, reviewBacklog, failedItems, processedItems, working } = input;
+  const {
+    job,
+    totalItems,
+    reviewBacklog,
+    failedItems,
+    processedItems,
+    completedItems,
+    skippedItems,
+    working,
+  } = input;
+  const waitingFor = (type: JobCommandRecord['type']) =>
+    input.commands?.some(
+      (command) =>
+        command.type === type && (command.state === 'PENDING' || command.state === 'CLAIMED'),
+    );
+  if (job.state === 'QUEUED' && waitingFor('START_JOB')) {
+    return { kind: 'WORKING', message: '開始待ちです。' };
+  }
+  if (job.state === 'PAUSED' && waitingFor('RESUME_JOB')) {
+    return { kind: 'WORKING', message: '再開待ちです。' };
+  }
 
   if (job.state === 'QUEUED') {
-    return { kind: 'START', message: 'jobを開始するとscanが始まります。' };
+    return { kind: 'START', message: '移行を開始できます。' };
   }
   if (job.state === 'PAUSED') {
-    return { kind: 'RESUME', message: 'jobは一時停止中です。再開すると続きから処理します。' };
+    return { kind: 'RESUME', message: '一時停止中です。' };
   }
+  if (job.state === 'SCANNING') return { kind: 'WORKING', message: 'ファイルを確認中です。' };
+  if (job.state === 'COMPLETED' && totalItems === 0)
+    return { kind: 'REPORT', message: '対象のファイルがありませんでした。' };
   if (reviewBacklog > 0) {
     return {
       kind: 'REVIEW',
       count: reviewBacklog,
-      message: `${reviewBacklog}件が承認待ちです。承認するとBox内で最終folderへ移動します。`,
+      message: `${reviewBacklog}件が承認待ちです。`,
     };
   }
   if (working) {
@@ -212,7 +245,13 @@ export function decideNextAction(input: {
     };
   }
   if (totalItems > 0 && processedItems === totalItems) {
-    return { kind: 'REPORT', message: '全件が完了しました。reportを出力できます。' };
+    return {
+      kind: 'REPORT',
+      message:
+        skippedItems > 0
+          ? `処理が終了しました。完了 ${completedItems}件・スキップ ${skippedItems}件。`
+          : `全${completedItems}件の配置が完了しました。`,
+    };
   }
   return { kind: 'IDLE', message: '処理待ちです。' };
 }

@@ -58,6 +58,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 
   const config = buildConfig(
     parseEnv({
+      NODE_ENV: 'test',
       BOX_MODE: 'fake',
       SHUTTLE_DATA_DIR: dataDir,
       SQLITE_PATH: join(dataDir, 'shuttle.db'),

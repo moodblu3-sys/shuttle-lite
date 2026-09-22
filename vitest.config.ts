@@ -11,6 +11,10 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: '@shuttle-lite/core/progress',
+        replacement: fileURLToPath(new URL('./packages/core/src/progress.ts', import.meta.url)),
+      },
+      {
         find: '@shuttle-lite/config/settings-schema',
         replacement: fileURLToPath(
           new URL('./packages/config/src/settings-schema.ts', import.meta.url),

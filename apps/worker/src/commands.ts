@@ -18,25 +18,53 @@ const RESUMABLE_FROM: ItemState = 'PREFLIGHT';
  */
 export async function processCommands(ctx: WorkerContext, limit = 20): Promise<number> {
   const commands = ctx.store.claimCommands(limit);
-  for (const command of commands) {
+  if (commands.length === 0) return 0;
+  const heartbeat = setInterval(() => {
     try {
-      await applyCommand(ctx, command);
-      ctx.store.completeCommand(command.id);
-    } catch (error) {
-      const shuttleError = toShuttleError(error, 'APPROVAL_INVALID');
-      ctx.logger.warn('command rejected', {
-        commandId: command.id,
-        type: command.type,
-        category: shuttleError.category,
-        message: shuttleError.message,
-      });
-      ctx.store.rejectCommand(command.id, `${shuttleError.category}: ${shuttleError.message}`);
+      ctx.store.renewCommandClaims(commands);
+    } catch {
+      /* Expired claims are fenced and recovered by the next worker. */
     }
+  }, 30_000);
+  heartbeat.unref();
+  try {
+    for (const command of commands) {
+      try {
+        if (command.type === 'GENERATE_REPORT') {
+          const assertOwned = () => {
+            if (!ctx.store.withCommandClaim(command, () => {})) {
+              throw new ShuttleError('STATE_INVALID', '操作の実行権が失効しました。');
+            }
+          };
+          assertOwned();
+          await generateReport(ctx, command.jobId, assertOwned);
+          ctx.store.withCommandClaim(command, () => ctx.store.completeCommand(command.id));
+        } else {
+          ctx.store.withCommandClaim(command, () => {
+            applyCommand(ctx, command);
+            ctx.store.completeCommand(command.id);
+          });
+        }
+      } catch (error) {
+        const shuttleError = toShuttleError(error, 'APPROVAL_INVALID');
+        ctx.logger.warn('command rejected', {
+          commandId: command.id,
+          type: command.type,
+          category: shuttleError.category,
+          message: shuttleError.message,
+        });
+        ctx.store.withCommandClaim(command, () =>
+          ctx.store.rejectCommand(command.id, `${shuttleError.category}: ${shuttleError.message}`),
+        );
+      }
+    }
+  } finally {
+    clearInterval(heartbeat);
   }
   return commands.length;
 }
 
-async function applyCommand(ctx: WorkerContext, command: JobCommandRecord): Promise<void> {
+function applyCommand(ctx: WorkerContext, command: JobCommandRecord): void {
   const job = ctx.store.getJob(command.jobId);
   if (!job) throw new ShuttleError('STATE_INVALID', `jobが存在しません: ${command.jobId}`);
   // The job in the command envelope must own the target before any routing or
@@ -143,10 +171,6 @@ async function applyCommand(ctx: WorkerContext, command: JobCommandRecord): Prom
     }
     case 'APPROVE_ITEM': {
       approveItem(ctx, command, telemetry);
-      return;
-    }
-    case 'GENERATE_REPORT': {
-      await generateReport(ctx, job.id);
       return;
     }
     default: {

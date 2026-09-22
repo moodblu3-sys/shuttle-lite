@@ -1,14 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 // Deep import: the package barrel reaches node:fs, which cannot be bundled
 // for the browser.
 import { formatBytes, formatDuration, PHASE_LABELS } from '@shuttle-lite/core/progress';
 import type { JobSnapshot } from '@shuttle-lite/telemetry';
 import { JobControls } from './job-controls';
 import { StatePill } from './state-pill';
+import { JobIdentity } from './job-card';
+import type { MigrationProfile } from '@shuttle-lite/core';
 
-export function ProgressView({ jobId, initial }: { jobId: string; initial: JobSnapshot }) {
+export function ProgressView({
+  jobId,
+  initial,
+  profile,
+  children,
+}: {
+  jobId: string;
+  initial: JobSnapshot;
+  profile: MigrationProfile | null;
+  children?: ReactNode;
+}) {
   const [snapshot, setSnapshot] = useState<JobSnapshot>(initial);
   const [live, setLive] = useState<'connecting' | 'live' | 'lost'>('connecting');
   const [showDetail, setShowDetail] = useState(false);
@@ -33,6 +45,8 @@ export function ProgressView({ jobId, initial }: { jobId: string; initial: JobSn
 
   return (
     <>
+      <ProgressIdentity snapshot={snapshot} profile={profile} />
+      {children}
       <NextActionBanner jobId={jobId} snapshot={snapshot} />
 
       <div className="card">
@@ -106,9 +120,11 @@ export function ProgressView({ jobId, initial }: { jobId: string; initial: JobSn
             sub={
               snapshot.working
                 ? `残り ${formatDuration(snapshot.etaSeconds)}`
-                : snapshot.transferredBytes >= snapshot.totalBytes
+                : snapshot.totalItems > 0 && snapshot.transferredItems === snapshot.totalItems
                   ? '全件転送済み'
-                  : `全 ${formatBytes(snapshot.totalBytes)}`
+                  : snapshot.totalItems === 0
+                    ? '対象なし'
+                    : `全 ${formatBytes(snapshot.totalBytes)}`
             }
           />
         </div>
@@ -143,6 +159,42 @@ export function ProgressView({ jobId, initial }: { jobId: string; initial: JobSn
           {showDetail ? <DetailPanels snapshot={snapshot} /> : null}
         </div>
       </details>
+    </>
+  );
+}
+
+export function ProgressIdentity({
+  snapshot,
+  profile,
+}: {
+  snapshot: JobSnapshot;
+  profile: MigrationProfile | null;
+}) {
+  return (
+    <>
+      <div className="jobcard job-head">
+        <div className="jobcard-main">
+          <JobIdentity job={snapshot.job} snapshot={snapshot} profile={profile} />
+          <details className="job-ids">
+            <summary className="small muted">ID</summary>
+            <dl className="kv small">
+              <dt>Job</dt>
+              <dd className="mono">{snapshot.job.id}</dd>
+              <dt>Staging folder</dt>
+              <dd className="mono">{snapshot.job.stagingFolderId ?? '未作成'}</dd>
+            </dl>
+          </details>
+        </div>
+        <p className="small muted jobcard-note">
+          操作者 {snapshot.job.operatorLabel} ・ 移行元{' '}
+          <span className="mono">{profile?.sourceRootPath ?? '-'}</span>
+        </p>
+      </div>
+      {snapshot.job.lastError && (
+        <p className="error" role="alert">
+          {snapshot.job.lastErrorCategory}: {snapshot.job.lastError}
+        </p>
+      )}
     </>
   );
 }
