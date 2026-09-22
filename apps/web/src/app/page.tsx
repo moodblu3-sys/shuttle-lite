@@ -25,7 +25,11 @@ export default function HomePage() {
         <details className="newjob">
           <summary className="newjob-trigger">新しい移行</summary>
           <div className="newjob-panel">
-            <NewJobForm aiEnabled={config.ai.enabled} boxMode={config.box.mode} />
+            <NewJobForm
+              aiEnabled={config.ai.enabled}
+              boxMode={config.box.mode}
+              folderPickerAvailable={process.platform === 'darwin'}
+            />
           </div>
         </details>
       </div>

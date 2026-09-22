@@ -1,21 +1,60 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { FolderSelection } from '../lib/folder-picker';
 
 export function NewJobForm({
   aiEnabled,
   boxMode,
+  folderPickerAvailable,
 }: {
   aiEnabled: boolean;
   boxMode: 'real' | 'fake';
+  folderPickerAvailable: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [folder, setFolder] = useState<Extract<FolderSelection, { cancelled: false }> | null>(null);
+  const [picking, setPicking] = useState(false);
+  const pickerRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => () => pickerRequest.current?.abort(), []);
+
+  async function selectFolder() {
+    if (pickerRequest.current || busy) return;
+    const controller = new AbortController();
+    pickerRequest.current = controller;
+    setPicking(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/source-folder', {
+        method: 'POST',
+        headers: { 'x-shuttle-folder-picker': '1' },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const body = (await response.json()) as { error?: string };
+        throw new Error(body.error ?? 'フォルダーを選択できませんでした。');
+      }
+      const selection = (await response.json()) as FolderSelection;
+      if (!selection.cancelled) setFolder(selection);
+    } catch (cause) {
+      if (!controller.signal.aborted) setError((cause as Error).message);
+    } finally {
+      pickerRequest.current = null;
+      if (!controller.signal.aborted) setPicking(false);
+    }
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy || picking) return;
+    if (!folder) {
+      setError('移行元フォルダーを選択してください。');
+      return;
+    }
     const form = new FormData(event.currentTarget);
     setBusy(true);
     setError(null);
@@ -25,7 +64,7 @@ export function NewJobForm({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name: form.get('name'),
-          sourceRootPath: form.get('sourceRootPath'),
+          sourceRootPath: folder.path,
           operatorLabel: form.get('operatorLabel'),
           aiRoutingEnabled: aiEnabled && form.get('aiRoutingEnabled') === 'on',
           conflictPolicy: form.get('conflictPolicy'),
@@ -60,20 +99,32 @@ export function NewJobForm({
           disabled={busy}
         />
       </label>
-      <label>
-        移行元フォルダー
-        <input
-          name="sourceRootPath"
-          type="text"
-          placeholder="/Users/…/Documents/移行する文書"
-          required
-          disabled={busy}
-          aria-describedby="source-path-help"
-        />
-      </label>
-      <p id="source-path-help" className="small muted">
-        Finderでフォルダーを選び、⌥⌘Cでパスをコピーして貼り付けます。
-      </p>
+      <div className="source-folder" role="group" aria-labelledby="source-folder-label">
+        <span id="source-folder-label" className="small">
+          移行元フォルダー
+        </span>
+        <div className="source-folder-choice">
+          <div aria-live="polite">
+            <strong>{folder?.name ?? 'フォルダー未選択'}</strong>
+            {folder ? <p className="small muted source-folder-path">{folder.path}</p> : null}
+          </div>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy || picking || !folderPickerAvailable}
+            onClick={() => void selectFolder()}
+          >
+            {picking ? '選択中…' : folder ? '変更' : 'フォルダーを選択'}
+          </button>
+        </div>
+        <p className="small muted" role="status">
+          {!folderPickerAvailable
+            ? 'フォルダー選択はMacで利用できます。Mac上でアプリを起動してください。'
+            : picking
+              ? 'Macのフォルダー選択画面で、移行元を選んでください。'
+              : 'このMacのフォルダーを選びます。選択だけでは移行は始まりません。'}
+        </p>
+      </div>
       <details className="migration-options">
         <summary>詳細オプション</summary>
         <div className="migration-options-body">
@@ -114,14 +165,14 @@ export function NewJobForm({
         <button
           type="button"
           className="secondary"
-          disabled={busy}
+          disabled={busy || picking}
           onClick={(event) =>
             event.currentTarget.closest('details.newjob')?.removeAttribute('open')
           }
         >
           キャンセル
         </button>
-        <button type="submit" disabled={busy}>
+        <button type="submit" disabled={busy || picking || !folder}>
           {busy ? '開始しています…' : '移行を開始'}
         </button>
       </div>

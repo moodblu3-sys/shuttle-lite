@@ -101,7 +101,7 @@ git apply -R patch.diff        # 当てたものを戻したいとき
 
 ## 残作業（発表まで）
 
-1. デモ通しのリハーサル（「新しい移行」で名前・移行元を入力 → 開始 → 承認 → report）
+1. デモ通しのリハーサル（「新しい移行」で名前を入力・フォルダーを選択 → 開始 → 承認 → report）
 2. 発表資料（5W1H。progressや検証詳細は入れない）
 3. 発表後: Windows実機検証、Snowflake sink、TLS interception下の検証
 

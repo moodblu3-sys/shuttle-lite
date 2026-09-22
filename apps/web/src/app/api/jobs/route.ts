@@ -62,10 +62,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '移行名を1〜100文字で入力してください。' }, { status: 400 });
   }
   if (!isAbsolute(sourceRootPath) || sourceRootPath.includes('\0')) {
-    return NextResponse.json(
-      { error: '移行元フォルダーの絶対パスを入力してください。Finderでコピーしたパスを使えます。' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: '移行元フォルダーを選び直してください。' }, { status: 400 });
   }
   if (
     (body.aiRoutingEnabled !== undefined && typeof body.aiRoutingEnabled !== 'boolean') ||
@@ -90,7 +87,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          '移行元フォルダーが見つからないか、読み取れません。パスとアクセス権を確認してください。',
+          '選択したフォルダーが見つからないか、読み取れません。アクセス権を確認するか、選び直してください。',
       },
       { status: 400 },
     );

@@ -169,3 +169,28 @@ Macで表示幅、ファイルの選択、配置先の変更、一括承認、�
 
 Macへの反映時はアプリを停止し、最新版を取得後に `npm run db:migrate`、
 `npm run demo` の順に実行する。`.env`の再作成やDBの初期化は不要。
+
+## Macのフォルダー選択（2026-09-22）
+
+移行元のパス入力を「フォルダーを選択」ボタンに置き換える。
+Mac標準の選択画面からフォルダーを選び、名前と場所を確認してから移行を開始する。
+選択だけではジョブ作成・転送を行わず、キャンセル時は以前の選択を維持する。
+
+- macOS標準の `osascript` と `choose folder` を使用する。追加依存なし。
+- 選択画面はWebを起動したMacに表示する。同じMacのlocalhostから操作する。
+- Webの起動をloopbackに限定し、選択APIは同一オリジン・専用ヘッダーを検証する。
+- 実行するスクリプトは固定で、ユーザー入力や選択されたパスをコマンドへ埋め込まない。
+- 二重起動を防止し、キャンセル・通信中断・タイムアウト時にも次の選択を可能にする。
+- Mac以外では未対応を表示する。既存のパス指定APIは維持する。
+- D-006・D-017、Box上の配置先候補の設定は変更しない。
+
+仕様は[Apple公式のフォルダー選択ガイド](https://developer.apple.com/library/archive/documentation/LanguagesUtilities/Conceptual/MacAutomationScriptingGuide/PromptforaFileorFolder.html)
+と[AppleScriptのchoose folder仕様](https://developer.apple.com/library/archive/documentation/AppleScript/Conceptual/AppleScriptLangGuide/reference/ASLR_cmds.html)
+を参照した。選択APIのテストではネイティブ処理をモックし、Mac実機でのダイアログ表示・
+権限の確認、および選択したフォルダーから実Boxへの移行は社用Macで実施する。
+
+検証: 200テスト、ルートとWebの型チェック、lint、本番ビルドに成功。
+本番サーバーへのHTTP確認でパス入力欄の除去、選択ボタン、未対応OSの案内、
+選択APIのオリジン・ヘッダー検証を確認した。
+ビルドキャッシュの破損による初回エラーは、生成済みキャッシュの削除・再生成で解消した。
+既存の動的ファイル追跡に関するビルド警告は継続している。
