@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { formatBytes } from '@shuttle-lite/core/progress';
 import { withNameSuffix } from '@shuttle-lite/core/naming';
 import type { DestinationOption, ReviewCommandView, ReviewItemView } from '../lib/review-types';
@@ -160,6 +160,9 @@ export function ReviewList({
   function renderRow(item: ReviewItemView, bulk: boolean) {
     const queued = isReviewPending(item, submitted[item.itemId]);
     const changed = currentDraft(item).destinationKey !== draftFor(item).destinationKey;
+    const subtitle = duplicateNames.has(item.sourceFileName)
+      ? item.sourceRelativePath
+      : item.lastError;
     return (
       <li
         key={item.itemId}
@@ -186,11 +189,7 @@ export function ReviewList({
           <DocumentIcon name={item.sourceFileName} />
           <span className={styles.fileText}>
             <strong>{item.sourceFileName}</strong>
-            <span>
-              {duplicateNames.has(item.sourceFileName)
-                ? item.sourceRelativePath
-                : (item.lastError ?? item.suggestionReason ?? '配置先の確認が必要です')}
-            </span>
+            {subtitle ? <span>{subtitle}</span> : null}
           </span>
           <span className={`${styles.status} ${!bulk ? styles.warning : ''}`}>
             {queued
@@ -247,6 +246,15 @@ export function ReviewList({
     );
   }
   const draft = active ? currentDraft(active) : null;
+  const classificationReason = active ? draftFor(active).routingReason : '';
+  const classificationFields = [
+    ['文書種別', active?.extraction?.documentType],
+    ['業務区分', active?.extraction?.businessDomain],
+    ['識別情報', active?.extraction?.businessIdentifier],
+  ].filter(([, value]) => value);
+  const destinationPath = destinations.find(
+    (entry) => entry.key === draft?.destinationKey,
+  )?.boxPath;
   const boxLink =
     active && boxLinkBase && active.boxFileId ? `${boxLinkBase}${active.boxFileId}` : null;
   const locked = busy || !!(active && isReviewPending(active, submitted[active.itemId]));
@@ -399,9 +407,7 @@ export function ReviewList({
                 <a className={styles.openOriginal} href={boxLink} target="_blank" rel="noreferrer">
                   <Icon kind="external" /> Boxで原本を開く
                 </a>
-              ) : (
-                <p className={styles.hint}>Boxリンクなし</p>
-              )}
+              ) : null}
               {active.reviewCommand?.state === 'REJECTED' ? (
                 <p className="error" role="alert">
                   操作を反映できませんでした。
@@ -439,13 +445,7 @@ export function ReviewList({
                       </select>
                     </label>
                   </details>
-                  <p className={styles.path}>
-                    {destinations.find((entry) => entry.key === draft.destinationKey)?.boxPath ??
-                      '未選択'}
-                  </p>
-                  {draft.destinationKey !== draftFor(active).destinationKey ? (
-                    <p className={styles.warning}>配置先を変更済み</p>
-                  ) : null}
+                  {destinationPath ? <p className={styles.path}>{destinationPath}</p> : null}
                 </section>
                 {active.needsAttention ? (
                   <section className={styles.problem}>
@@ -454,7 +454,6 @@ export function ReviewList({
                     <p>{active.operatorAction}</p>
                     {active.lastErrorCategory === 'MOVE_CONFLICT' ? (
                       <>
-                        <p>同名ファイルあり。別の名前を指定してください。</p>
                         <label>
                           配置するファイル名
                           <input
@@ -478,18 +477,22 @@ export function ReviewList({
                     ) : null}
                   </section>
                 ) : null}
-                <section>
-                  <h3>分類理由</h3>
-                  <p>{active.suggestionReason ?? '分類理由なし'}</p>
-                  <dl className={styles.extracted}>
-                    <dt>文書種別</dt>
-                    <dd>{active.extraction?.documentType ?? '未取得'}</dd>
-                    <dt>業務区分</dt>
-                    <dd>{active.extraction?.businessDomain ?? '未取得'}</dd>
-                    <dt>識別情報</dt>
-                    <dd>{active.extraction?.businessIdentifier ?? '未取得'}</dd>
-                  </dl>
-                </section>
+                {classificationReason || classificationFields.length > 0 ? (
+                  <section>
+                    <h3>{classificationReason ? '分類理由' : '分類結果'}</h3>
+                    {classificationReason ? <p>{classificationReason}</p> : null}
+                    {classificationFields.length > 0 ? (
+                      <dl className={styles.extracted}>
+                        {classificationFields.map(([label, value]) => (
+                          <Fragment key={label}>
+                            <dt>{label}</dt>
+                            <dd>{value}</dd>
+                          </Fragment>
+                        ))}
+                      </dl>
+                    ) : null}
+                  </section>
+                ) : null}
                 <details className={styles.more}>
                   <summary>メタデータを確認・編集</summary>
                   {(

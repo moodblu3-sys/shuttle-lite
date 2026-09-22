@@ -150,12 +150,6 @@ export function NewJobForm({
           />{' '}
           テストモード
         </span>
-        {testMode ? (
-          <span className="small muted">
-            テスト終了時に今回転送したBoxファイルを削除します。
-            Boxの企業設定により完全削除になる場合があります。
-          </span>
-        ) : null}
       </label>
       <details className="migration-options">
         <summary>詳細オプション</summary>
@@ -171,7 +165,6 @@ export function NewJobForm({
               AI分類
             </span>
           </label>
-          {!aiEnabled ? <p className="small muted">共通設定でAI分類が無効</p> : null}
           <label>
             同名ファイルの扱い
             <select name="conflictPolicy" defaultValue="RENAME" disabled={busy}>

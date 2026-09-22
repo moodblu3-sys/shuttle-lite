@@ -13,7 +13,7 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
       itemId: item.id,
       suggestedDestinationKey: null,
       suggestionSource: 'MANUAL',
-      suggestionReason: 'AI routingが無効のため、destinationは手動入力です。',
+      suggestionReason: null,
       state: 'NEEDS_INPUT',
     });
     ctx.store.transitionItem({

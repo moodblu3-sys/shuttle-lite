@@ -70,7 +70,7 @@ describe('concise workspace screens', () => {
     );
     expect(html).toContain('role="status"');
     expect(html).toContain('フォルダー選択はMacのみ対応');
-    expect(html).toContain('共通設定でAI分類が無効');
+    expect(html).not.toContain('共通設定でAI分類が無効');
   });
 
   it('shows the selected destination and change action without a descriptive paragraph', () => {
@@ -177,6 +177,43 @@ describe('concise review and empty states', () => {
       expect(html).not.toContain(copy);
     expect(html).toContain('配置先の指定待ち');
     expect(html).toMatch(/<span>4<\/span>アップロード/);
+
+    // Previously saved manual-routing hints must disappear without recreating the job.
+    const manual = renderToStaticMarkup(
+      createElement(ReviewList, {
+        jobId: 'job_1',
+        items: [
+          {
+            ...item,
+            needsAttention: false,
+            lastError: null,
+            lastErrorCategory: null,
+            operatorAction: null,
+            hasRoutingDecision: false,
+            suggestedDestinationKey: null,
+            suggestionSource: 'MANUAL',
+            suggestionReason: 'AI routingが無効のため、destinationは手動入力です。',
+          },
+        ],
+        destinations: [{ key: 'contracts', label: '契約書', boxPath: '/契約書' }],
+        needsReviewKey: 'review',
+        defaultOperatorLabel: 'tester',
+        boxLinkBase: null,
+      }),
+    );
+    for (const copy of [
+      'AI routing',
+      '手動入力',
+      '配置先の確認が必要です',
+      '分類理由なし',
+      'Boxリンクなし',
+      '<h3>分類理由</h3>',
+      '<dt>文書種別</dt>',
+    ])
+      expect(manual).not.toContain(copy);
+    expect(manual).toContain('配置先の指定待ち');
+    expect(manual).toContain('配置先を選択');
+    expect(manual).toContain('メタデータを確認・編集');
   });
 
   it('shows an empty review list with a return action', () => {

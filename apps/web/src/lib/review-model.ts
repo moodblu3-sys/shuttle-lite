@@ -37,7 +37,7 @@ export function draftFor(item: ReviewItemView): ApprovalDraft {
     businessIdentifier: item.extraction?.businessIdentifier ?? '',
     effectiveDate: item.extraction?.effectiveDate ?? '',
     suggestedTags: item.extraction?.suggestedTags.join(',') ?? '',
-    routingReason: item.suggestionReason ?? '',
+    routingReason: item.suggestionSource === 'MANUAL' ? '' : (item.suggestionReason ?? ''),
   };
 }
 

@@ -66,9 +66,7 @@ export function JobCard({
       </dl>
 
       {job.cleanupState !== 'NONE' ? (
-        <p className="jobcard-note small muted">
-          {job.cleanupMessage} 件数は削除前の移行結果です。
-        </p>
+        <p className="jobcard-note small muted">{job.cleanupMessage}</p>
       ) : null}
       {job.cleanupState === 'NONE' && next && NOTE_KINDS.has(next.kind) ? (
         <p className="jobcard-note small muted">{next.message}</p>

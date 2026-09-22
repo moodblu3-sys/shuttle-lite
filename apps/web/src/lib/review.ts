@@ -42,7 +42,9 @@ export function buildReviewViews(jobId: string, limit = 200): ReviewItemView[] {
           needsReviewKey,
         ),
         suggestionSource: routing?.suggestionSource ?? null,
-        suggestionReason: routing?.suggestionReason ?? null,
+        // Show document-specific AI evidence, not routing diagnostics or legacy manual hints.
+        suggestionReason:
+          routing?.suggestionSource === 'MANUAL' ? null : (extraction?.reason ?? null),
         reviewCommand: command
           ? {
               id: command.id,

@@ -105,6 +105,17 @@ describe('review workspace approval boundaries', () => {
         .destinationKey,
     ).toBe('');
   });
+  it('does not copy a legacy manual-routing hint into approval metadata', () => {
+    const source = item('manual', {
+      suggestionSource: 'MANUAL',
+      hasRoutingDecision: false,
+      suggestionReason: 'AI routingが無効のため、destinationは手動入力です。',
+    });
+    expect(draftFor(source).routingReason).toBe('');
+    expect(
+      commandFor(source, draftFor(source), 'reviewer').payload.metadata.routingReason,
+    ).toBeNull();
+  });
   it('preserves the reviewed Box snapshot and human overrides in the command', () => {
     const row = item('one');
     const command = commandFor(
@@ -217,6 +228,9 @@ it('bulk places manually assigned files with AI off, leaving unassigned files wa
     const staged = harness.store.listItems(job.id);
     expect(staged).toHaveLength(3);
     expect(staged.every((source) => source.state === 'REVIEW_REQUIRED')).toBe(true);
+    for (const source of staged) {
+      expect(harness.store.getRouting(source.id)?.suggestionReason).toBeNull();
+    }
     const views = staged.map((source) =>
       item(source.id, {
         jobId: job.id,
