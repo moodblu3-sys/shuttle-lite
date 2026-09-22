@@ -67,6 +67,7 @@ describe('sqlite store', () => {
       'migration_jobs',
       'migration_profiles',
       'routing_decisions',
+      'runtime_settings',
       'snowflake_outbox',
       'upload_parts',
       'upload_sessions',

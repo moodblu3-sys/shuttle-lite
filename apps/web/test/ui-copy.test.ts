@@ -8,7 +8,10 @@ import { NewJobForm } from '../src/components/new-job-form';
 import { BoxFolderPicker } from '../src/components/box-folder-picker';
 import { getConfig } from '../src/lib/runtime';
 
-vi.mock('../src/lib/runtime', () => ({ getConfig: vi.fn() }));
+vi.mock('../src/lib/runtime', () => ({
+  getConfig: vi.fn(),
+  getStore: () => ({ getRuntimeSettings: () => ({ revision: 0, settings: null }) }),
+}));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => '/',
@@ -84,9 +87,13 @@ describe('concise workspace screens', () => {
       buildConfig(parseEnv({ NODE_ENV: 'test', BOX_MODE: 'real', BOX_ACCESS_TOKEN: 'test-only' })),
     );
     const html = renderToStaticMarkup(createElement(SettingsPage));
-    for (const label of ['Box接続', '実Box', 'アクセストークン', '通信経路', '詳細設定', 'AI分類'])
+    for (const label of ['認証情報', 'アクセストークン', '詳細設定', 'AI分類', '保存', 'Snowflake'])
       expect(html).toContain(label);
     for (const copy of [
+      '接続先',
+      '実Box',
+      '通信経路',
+      '直接接続',
       'すべての移行で使う',
       '新しい移行',
       '接続テストの結果',

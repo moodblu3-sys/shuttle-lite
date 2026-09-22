@@ -217,6 +217,12 @@ UPDATE migration_jobs
    SET name = (SELECT name FROM migration_profiles WHERE id = migration_jobs.profile_id);
 `;
 
+const RUNTIME_SETTINGS = `CREATE TABLE runtime_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  revision INTEGER NOT NULL,
+  settings TEXT NOT NULL
+) STRICT;`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: INITIAL },
   { version: 2, name: 'profile conflict policy', sql: CONFLICT_POLICY },
@@ -229,6 +235,7 @@ export const MIGRATIONS: readonly Migration[] = [
       snapshot TEXT NOT NULL
     ) STRICT;`,
   },
+  { version: 5, name: 'editable runtime settings', sql: RUNTIME_SETTINGS },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

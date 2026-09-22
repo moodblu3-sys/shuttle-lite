@@ -1,5 +1,12 @@
+import { applyRuntimeSettings } from '@shuttle-lite/config';
 import { ensureJobStagingFolder } from '@shuttle-lite/box';
-import { type ItemState, type MigrationItem, sleep, toShuttleError } from '@shuttle-lite/core';
+import {
+  type ItemState,
+  type MigrationItem,
+  Semaphore,
+  sleep,
+  toShuttleError,
+} from '@shuttle-lite/core';
 import { processCommands } from './commands';
 import { destinationsForJob, type JobContext, type WorkerContext } from './context';
 import { advanceItem, PLACEMENT_SCOPE, ROUTING_SCOPE, TRANSFER_SCOPE } from './pipeline';
@@ -22,7 +29,8 @@ const WAITING_FOR_HUMAN: readonly ItemState[] = ['REVIEW_REQUIRED', 'NEEDS_REVIE
  * pause request takes effect promptly.
  */
 export class WorkerRuntime {
-  readonly #ctx: WorkerContext;
+  #ctx: WorkerContext;
+  readonly #baseConfig: WorkerContext['config'];
   readonly #options: RuntimeOptions;
   readonly #reconciled = new Set<string>();
   #stopping = false;
@@ -30,6 +38,7 @@ export class WorkerRuntime {
 
   constructor(ctx: WorkerContext, options: RuntimeOptions = {}) {
     this.#ctx = ctx;
+    this.#baseConfig = ctx.config;
     this.#options = options;
   }
 
@@ -62,6 +71,16 @@ export class WorkerRuntime {
 
   /** Returns true when the tick did something, so the loop can poll faster. */
   async tick(): Promise<boolean> {
+    const config = applyRuntimeSettings(
+      this.#baseConfig,
+      this.#ctx.store.getRuntimeSettings().settings,
+    );
+    this.#ctx = {
+      ...this.#ctx,
+      config,
+      fileGate: new Semaphore(config.limits.fileConcurrency),
+      chunkGate: new Semaphore(config.limits.chunkConcurrency),
+    };
     const leaseTtl = this.#options.leaseTtlMs ?? 30_000;
     const claimed = this.#ctx.store.claimJob(this.#ctx.workerId, leaseTtl);
     if (!claimed) return false;

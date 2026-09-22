@@ -9,7 +9,15 @@ const alias = (name: string) => ({
 export default defineConfig({
   oxc: { jsx: { runtime: 'automatic' } },
   resolve: {
-    alias: ['core', 'db', 'config', 'box', 'routing', 'telemetry'].map(alias),
+    alias: [
+      {
+        find: '@shuttle-lite/config/settings-schema',
+        replacement: fileURLToPath(
+          new URL('./packages/config/src/settings-schema.ts', import.meta.url),
+        ),
+      },
+      ...['core', 'db', 'config', 'box', 'routing', 'telemetry'].map(alias),
+    ],
   },
   test: {
     include: ['packages/*/test/**/*.test.ts', 'test/**/*.test.ts', 'apps/web/test/**/*.test.ts'],

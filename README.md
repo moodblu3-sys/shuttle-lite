@@ -26,7 +26,9 @@ proxy経由が義務付けられた環境向けには、直接接続へfallback�
   移行した51 MBはすべてproxyを通っており、direct接続へ抜けた通信はありません
 - `BOX_MODE=fake` なら credential なしで同じpipelineを動かせる（22項目の検証が通る）
 
-未実装はSnowflake接続だけです。Windows固有の失敗（共有違反、Office lock file、
+Snowflake SQL APIへの送信処理を実装しました。実アカウントでの検証は未実施です。
+設定画面でAI分類・並列数・ログ出力先を変更できます。手順は[設定と処理ログ](docs/settings.md)を参照してください。
+Windows固有の失敗（共有違反、Office lock file、
 MAX_PATH、UNC）は実装済みですが実機では未検証で、検証は発表後に回しました。
 デモはmacOS上で実演します。残作業は
 [docs/integration-todo.md](docs/integration-todo.md)、検証状況は
@@ -89,7 +91,7 @@ flowchart TB
 
   proxy["接続経路<br/>直接 または 非透過型proxy"]
   box["Box Platform API<br/>auth / upload / metadata / AI / move"]
-  snow["Snowflake<br/>未接続。現在はJSONL"]
+  snow["Snowflake<br/>SQL API / 実機未検証"]
 
   browser --> web
   web -->|"commandのinsertと読み取りだけ"| sqlite
@@ -166,7 +168,7 @@ stateDiagram-v2
 
 ## 画面の流れ
 
-移行一覧から移行を開始し、進捗・承認画面へ進みます。共通設定は設定画面で確認します。
+移行一覧から移行を開始し、進捗・承認画面へ進みます。共通設定は設定画面で編集・保存します。
 
 ```mermaid
 flowchart LR

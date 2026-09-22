@@ -182,6 +182,28 @@ export class ShuttleStore {
     return this.db.transaction(fn)();
   }
 
+  getRuntimeSettings(): { revision: number; settings: unknown } {
+    const row = this.db
+      .prepare('SELECT revision, settings FROM runtime_settings WHERE id = 1')
+      .get() as { revision: number; settings: string } | undefined;
+    return row
+      ? { revision: row.revision, settings: JSON.parse(row.settings) }
+      : { revision: 0, settings: null };
+  }
+
+  saveRuntimeSettings(settings: unknown, expectedRevision: number): boolean {
+    return this.transaction(() => {
+      if (this.getRuntimeSettings().revision !== expectedRevision) return false;
+      this.db
+        .prepare(
+          `INSERT INTO runtime_settings (id, revision, settings) VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET revision = excluded.revision, settings = excluded.settings`,
+        )
+        .run(expectedRevision + 1, JSON.stringify(settings));
+      return true;
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Profiles
   // -------------------------------------------------------------------------
@@ -1102,16 +1124,17 @@ export class ShuttleStore {
       const rows = this.db
         .prepare(
           `SELECT * FROM snowflake_outbox
-             WHERE state IN ('PENDING','FAILED')
-               AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+             WHERE (state IN ('PENDING','FAILED') AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
+                OR (state = 'CLAIMED' AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
              ORDER BY created_at LIMIT ?`,
         )
-        .all(now, limit) as OutboxRow[];
+        .all(now, now, limit) as OutboxRow[];
       if (rows.length === 0) return [];
       const claim = this.db.prepare(
-        `UPDATE snowflake_outbox SET state = 'CLAIMED', attempts = attempts + 1 WHERE event_id = ?`,
+        `UPDATE snowflake_outbox SET state = 'CLAIMED', attempts = attempts + 1, next_attempt_at = ? WHERE event_id = ?`,
       );
-      for (const row of rows) claim.run(row.event_id);
+      const leaseUntil = new Date(Date.parse(now) + 120_000).toISOString();
+      for (const row of rows) claim.run(leaseUntil, row.event_id);
       const claimed = this.db
         .prepare(
           `SELECT * FROM snowflake_outbox WHERE event_id IN (${rows.map(() => '?').join(',')})
@@ -1119,6 +1142,16 @@ export class ShuttleStore {
         )
         .all(...rows.map((row) => row.event_id)) as OutboxRow[];
       return claimed.map(mapOutbox);
+    });
+  }
+
+  renewOutboxLease(eventIds: readonly string[]): void {
+    const statement = this.db.prepare(
+      "UPDATE snowflake_outbox SET next_attempt_at = ? WHERE event_id = ? AND state = 'CLAIMED'",
+    );
+    const until = new Date(Date.now() + 120_000).toISOString();
+    this.transaction(() => {
+      for (const id of eventIds) statement.run(until, id);
     });
   }
 

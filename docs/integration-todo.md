@@ -49,37 +49,14 @@ template作成をskipしたい場合は `npm run bootstrap:box -- --skip-templat
 
 ## 5. Snowflake (Q-007)
 
-- [ ] Account、warehouse、database、schema、roleを用意
-- [ ] Key pair認証用のprivate keyを配置し、`SNOWFLAKE_PRIVATE_KEY_PATH` を設定
-- [ ] Event tableを作成する
+SQL APIによる送信処理は実装済み。設定画面でログ出力先を選択できる。
+テーブル定義・秘密鍵・権限の準備は[設定と処理ログ](settings.md)を参照する。
 
-```sql
-CREATE TABLE IF NOT EXISTS shuttle_lite_events (
-  event_id        STRING NOT NULL PRIMARY KEY,
-  job_id          STRING NOT NULL,
-  item_id         STRING,
-  phase           STRING NOT NULL,
-  status          STRING NOT NULL,
-  size_bytes      NUMBER,
-  duration_ms     NUMBER,
-  retry_count     NUMBER,
-  error_category  STRING,
-  box_file_id     STRING,
-  destination_key STRING,
-  ai_used         BOOLEAN,
-  human_override  BOOLEAN,
-  occurred_at     TIMESTAMP_NTZ NOT NULL,
-  loaded_at       TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
-);
-```
-
-- [ ] `event_id` で重複排除するMERGEを実装する（再送は同じevent IDで届く）
-- [ ] `packages/telemetry/src/sink.ts` の `SnowflakeTelemetrySink.deliver` を実装する
-- [ ] Node driverのproxy設定とcustom CAを確認する
-- [ ] `TELEMETRY_SINK=snowflake` にして、Snowflake停止中もmigrationが継続することを確認
-
-未接続の間、`TELEMETRY_SINK=jsonl` でoutboxは `.shuttle-lite/telemetry/events.jsonl`
-へ配信される。送信するfieldは `packages/telemetry/src/payload.ts` のallowlistのみ。
+- [x] キーペアJWT・イベント単位のMERGE・非同期応答・再送を実装
+- [x] 共通のproxy / CA設定を利用
+- [x] 合成鍵と模擬応答で署名・送信・失敗時保持・再送を検証
+- [ ] 実Snowflakeのアカウント・ユーザー・公開鍵・ウェアハウス・テーブル・権限を準備
+- [ ] 社用Macで実送信、proxy経由、重複排除、停止中のmigration継続を確認
 
 ## 6. Squid (明示的proxy) の検証
 

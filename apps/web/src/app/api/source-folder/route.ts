@@ -31,9 +31,15 @@ export async function POST(request: Request) {
     );
   }
   try {
-    return NextResponse.json(await chooseSourceFolder(request.signal), {
-      headers: { 'Cache-Control': 'no-store' },
-    });
+    return NextResponse.json(
+      await chooseSourceFolder(
+        request.signal,
+        new URL(request.url).searchParams.get('purpose') === 'logs' ? 'logs' : 'source',
+      ),
+      {
+        headers: { 'Cache-Control': 'no-store' },
+      },
+    );
   } catch (error) {
     return NextResponse.json(
       {

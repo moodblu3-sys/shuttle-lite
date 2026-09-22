@@ -60,6 +60,17 @@ describe('local Mac folder selection', () => {
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('uses a fixed log-folder prompt without accepting script text from the URL', async () => {
+    result('selected:/Users/demo/ログ/\n');
+    const base = request();
+    const response = await POST(
+      new Request(`${base.url}?purpose=logs`, { method: 'POST', headers: base.headers }),
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.execFile.mock.calls[0]![1][1]).toContain('ログの保存先フォルダー');
+    expect(await response.json()).toMatchObject({ path: '/Users/demo/ログ/' });
+  });
+
   it('treats cancelling as a normal result without inventing a path', async () => {
     result('cancelled\n');
     const response = await POST(request());

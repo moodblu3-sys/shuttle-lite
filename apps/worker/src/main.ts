@@ -1,13 +1,18 @@
 import { hostname } from 'node:os';
 import { createBoxGateway, ensureBoxLayout, loadCachedLayout } from '@shuttle-lite/box';
 import {
+  applyRuntimeSettings,
   EMPTY_DESTINATION_CATALOG,
   loadConfig,
   loadDestinationCatalog,
 } from '@shuttle-lite/config';
 import { createLogger, randomId, Semaphore, toShuttleError } from '@shuttle-lite/core';
 import { migrate, openDatabase, ShuttleStore } from '@shuttle-lite/db';
-import { buildTelemetryPayload, createTelemetrySink, OutboxSender } from '@shuttle-lite/telemetry';
+import {
+  buildTelemetryPayload,
+  ConfiguredTelemetrySink,
+  OutboxSender,
+} from '@shuttle-lite/telemetry';
 import type { WorkerContext } from './context';
 import { WorkerRuntime } from './runtime';
 
@@ -52,7 +57,9 @@ async function main(): Promise<void> {
     workerId,
   };
 
-  const sink = createTelemetrySink(config);
+  const sink = new ConfiguredTelemetrySink(() =>
+    applyRuntimeSettings(config, store.getRuntimeSettings().settings),
+  );
   const sender = new OutboxSender({
     store,
     sink,

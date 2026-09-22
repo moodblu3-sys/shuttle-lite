@@ -131,6 +131,20 @@ describe('outbox sender', () => {
     expect(new Set(ids).size).toBe(2);
   });
 
+  it('recovers a crashed sender after its lease expires without stealing a live batch', async () => {
+    const { job, itemId } = seed(store);
+    store.transitionItem({ itemId, to: 'HASHING', event: { status: 'STARTED' } });
+    const initial = store.claimOutboxBatch(10);
+    expect(initial).toHaveLength(1);
+    expect(store.claimOutboxBatch(10)).toHaveLength(0);
+    store.renewOutboxLease(initial.map((row) => row.eventId));
+    expect(store.claimOutboxBatch(10, new Date(Date.now() + 60_000).toISOString())).toHaveLength(0);
+    const retried = store.claimOutboxBatch(10, new Date(Date.now() + 121_000).toISOString());
+    expect(retried.map((row) => row.eventId)).toEqual(initial.map((row) => row.eventId));
+    expect(retried[0]?.attempts).toBe(2);
+    expect(store.outboxStatus(job.id).pending).toBe(1);
+  });
+
   it('keeps the backlog and does not lose events when the sink is down', async () => {
     const { job, itemId } = seed(store);
     store.transitionItem({ itemId, to: 'HASHING', event: { status: 'STARTED' } });

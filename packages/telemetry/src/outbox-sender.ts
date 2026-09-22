@@ -44,12 +44,20 @@ export class OutboxSender {
     const batch = store.claimOutboxBatch(batchSize);
     if (batch.length === 0) return { claimed: 0, delivered: 0, failed: 0 };
 
-    const records = batch.map((row) => {
-      assertPayloadAllowlisted(row.payload);
-      return { eventId: row.eventId, jobId: row.jobId, payload: row.payload };
-    });
-
+    const eventIds = batch.map((row) => row.eventId);
+    const heartbeat = setInterval(() => {
+      try {
+        store.renewOutboxLease(eventIds);
+      } catch {
+        /* A crashed/blocked sender is retried after its lease expires. */
+      }
+    }, 30_000);
+    heartbeat.unref();
     try {
+      const records = batch.map((row) => {
+        assertPayloadAllowlisted(row.payload);
+        return { eventId: row.eventId, jobId: row.jobId, payload: row.payload };
+      });
       await sink.deliver(records);
       store.markOutboxDelivered(batch.map((row) => row.eventId));
       logger?.debug('telemetry delivered', { sink: sink.name, count: batch.length });
@@ -75,6 +83,8 @@ export class OutboxSender {
         category: shuttleError.category,
       });
       return { claimed: batch.length, delivered: 0, failed: batch.length };
+    } finally {
+      clearInterval(heartbeat);
     }
   }
 

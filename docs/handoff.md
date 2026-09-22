@@ -25,7 +25,8 @@ Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋�
   Box上のファイルとローカル履歴は保持する。新しい移行で移行先を選ぶ。
 - 実Boxへの移行は成功済み。Squid（明示proxy）経由も検証済み
 - 検証環境はmacOS。**Windows実機検証は発表後**（D-016）
-- Snowflake sinkは未実装。telemetryはJSONLに出している
+- 設定画面でAI分類・並列数・処理ログを保存できる（schema 5）。
+- Snowflake SQL API sinkを実装。JSONLと切り替え可能。実Snowflake検証は未実施。設定はdocs/settings.md参照。
 - Box AI routingは有効。15件のPDF fixtureで測定済み
 
 ## 触ってはいけないもの
@@ -107,7 +108,7 @@ git apply -R patch.diff        # 当てたものを戻したいとき
 
 1. デモ通しのリハーサル（「新しい移行」で名前を入力・Macの移行元とBoxの移行先を選択 → 開始 → 承認 → report）
 2. 発表資料（5W1H。progressや検証詳細は入れない）
-3. 発表後: Windows実機検証、Snowflake sink、TLS interception下の検証
+3. 発表後: Windows実機検証、Snowflake実機検証、TLS interception下の検証
 
 ## 構成の地図
 

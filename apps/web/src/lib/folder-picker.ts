@@ -29,7 +29,10 @@ end timeout
 
 let dialogOpen = false;
 
-export async function chooseSourceFolder(signal: AbortSignal): Promise<FolderSelection> {
+export async function chooseSourceFolder(
+  signal: AbortSignal,
+  purpose: 'source' | 'logs' = 'source',
+): Promise<FolderSelection> {
   if (platform() !== 'darwin') {
     throw new FolderPickerError(
       'フォルダー選択はMacで利用できます。Mac上でアプリを起動してください。',
@@ -48,7 +51,12 @@ export async function chooseSourceFolder(signal: AbortSignal): Promise<FolderSel
     const stdout = await new Promise<string>((resolve, reject) => {
       execFile(
         '/usr/bin/osascript',
-        ['-e', CHOOSE_FOLDER],
+        [
+          '-e',
+          purpose === 'logs'
+            ? CHOOSE_FOLDER.replace('移行元フォルダー', 'ログの保存先フォルダー')
+            : CHOOSE_FOLDER,
+        ],
         { encoding: 'utf8', shell: false, timeout: 180_000, maxBuffer: 64 * 1024, signal },
         (error, output) => (error ? reject(error) : resolve(output)),
       );

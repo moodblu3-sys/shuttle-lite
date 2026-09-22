@@ -1,4 +1,7 @@
-import { getConfig } from '../../lib/runtime';
+import { platform } from 'node:os';
+import { settingsFromConfig } from '@shuttle-lite/config';
+import { SettingsForm } from '../../components/settings-form';
+import { getConfig, getStore } from '../../lib/runtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,59 +10,33 @@ export default function SettingsPage() {
   return (
     <div className="page-content">
       <div className="page-head">
-        <div>
-          <h1 className="page-title">設定</h1>
-        </div>
+        <h1 className="page-title">設定</h1>
         <a className="linkbtn" href="/">
           移行一覧へ戻る
         </a>
       </div>
-
       <section className="card">
-        <h2>Box接続</h2>
+        <h2>認証情報</h2>
         <dl className="kv">
-          <dt>接続先</dt>
-          <dd>{config.box.mode === 'real' ? '実Box' : 'テスト環境'}</dd>
-          {config.box.mode === 'real' ? (
-            <>
-              <dt>認証方式</dt>
-              <dd>{config.box.accessToken ? 'アクセストークン' : 'アプリ認証（CCG）'}</dd>
-            </>
-          ) : null}
-          <dt>通信経路</dt>
+          <dt>Box</dt>
           <dd>
-            {config.proxy.mode === 'off'
-              ? '直接接続'
-              : config.proxy.mode === 'required'
-                ? 'プロキシ経由のみ'
-                : config.proxy.url
-                  ? 'プロキシ経由'
-                  : '直接接続（プロキシ未設定）'}
+            {config.box.mode === 'fake'
+              ? 'テスト用（認証不要）'
+              : config.box.accessToken
+                ? 'アクセストークン'
+                : 'アプリ認証（CCG）'}
           </dd>
         </dl>
       </section>
-
-      <details className="card quiet">
-        <summary>
-          <h2>詳細設定</h2>
-        </summary>
-        <div className="details-body">
-          <dl className="kv">
-            <dt>AI分類</dt>
-            <dd>{config.ai.enabled ? '有効' : '無効'}</dd>
-            <dt>ファイルの並列数</dt>
-            <dd>{config.limits.fileConcurrency}</dd>
-            <dt>分割転送の並列数</dt>
-            <dd>{config.limits.chunkConcurrency}</dd>
-            <dt>処理ログ</dt>
-            <dd>
-              {config.telemetry.sink === 'jsonl'
-                ? 'ローカルファイル'
-                : 'Snowflake（接続機能は未実装）'}
-            </dd>
-          </dl>
-        </div>
-      </details>
+      <section className="card">
+        <h2>詳細設定</h2>
+        <SettingsForm
+          initial={settingsFromConfig(config)}
+          revision={getStore().getRuntimeSettings().revision}
+          folderPickerAvailable={platform() === 'darwin'}
+          snowflakeKeyConfigured={Boolean(config.telemetry.snowflake.privateKeyPath)}
+        />
+      </section>
     </div>
   );
 }

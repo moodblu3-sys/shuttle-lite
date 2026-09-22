@@ -1,4 +1,5 @@
 import {
+  applyRuntimeSettings,
   EMPTY_DESTINATION_CATALOG,
   loadConfig,
   loadDestinationCatalog,
@@ -44,7 +45,8 @@ export function getStore(): ShuttleStore {
 }
 
 export function getConfig(): AppConfig {
-  return getRuntime().config;
+  const runtime = getRuntime();
+  return applyRuntimeSettings(runtime.config, runtime.store.getRuntimeSettings().settings);
 }
 
 export function getCatalog(jobId?: string): DestinationCatalogConfig {

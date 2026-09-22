@@ -3,6 +3,7 @@ import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 import { ShuttleError, unsafeStatePathReason, type LogLevel } from '@shuttle-lite/core';
 import { fromRepoRoot, resolvePath } from './paths';
+import { MAX_FILE_CONCURRENCY, MAX_CHUNK_CONCURRENCY } from './settings-schema';
 
 const boolish = z
   .union([z.boolean(), z.string()])
@@ -48,8 +49,8 @@ export const EnvSchema = z.object({
   PROXY_CA_BUNDLE_PATH: optionalString,
   NO_PROXY: z.string().default('localhost,127.0.0.1'),
 
-  FILE_CONCURRENCY: positiveInt(3),
-  CHUNK_CONCURRENCY: positiveInt(3),
+  FILE_CONCURRENCY: z.coerce.number().int().min(1).max(MAX_FILE_CONCURRENCY).default(3),
+  CHUNK_CONCURRENCY: z.coerce.number().int().min(1).max(MAX_CHUNK_CONCURRENCY).default(3),
   DIRECT_UPLOAD_MAX_BYTES: positiveInt(50 * 1024 * 1024),
   MAX_FILE_BYTES: positiveInt(15 * 1024 * 1024 * 1024),
   MAX_ATTEMPTS: positiveInt(5),
@@ -66,6 +67,11 @@ export const EnvSchema = z.object({
   SNOWFLAKE_DATABASE: optionalString,
   SNOWFLAKE_SCHEMA: optionalString,
   SNOWFLAKE_PRIVATE_KEY_PATH: optionalString,
+  SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: z.string().optional(),
+  SNOWFLAKE_TABLE: z
+    .string()
+    .regex(/^[A-Za-z_][A-Za-z0-9_$]*$/)
+    .default('SHUTTLE_LITE_EVENTS'),
 
   // Escape hatch for a deliberate, understood exception to the WAL placement
   // rule. Off by default: a corrupted WAL loses operational state.
@@ -131,6 +137,8 @@ export interface TelemetryConfig {
     readonly database?: string;
     readonly schema?: string;
     readonly privateKeyPath?: string;
+    readonly privateKeyPassphrase?: string;
+    readonly table?: string;
   };
 }
 
@@ -252,7 +260,11 @@ export function buildConfig(env: Env): AppConfig {
         warehouse: env.SNOWFLAKE_WAREHOUSE,
         database: env.SNOWFLAKE_DATABASE,
         schema: env.SNOWFLAKE_SCHEMA,
-        privateKeyPath: env.SNOWFLAKE_PRIVATE_KEY_PATH,
+        privateKeyPath: env.SNOWFLAKE_PRIVATE_KEY_PATH
+          ? resolvePath(env.SNOWFLAKE_PRIVATE_KEY_PATH)
+          : undefined,
+        privateKeyPassphrase: env.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE,
+        table: env.SNOWFLAKE_TABLE,
       },
     },
     fakeBox: {
