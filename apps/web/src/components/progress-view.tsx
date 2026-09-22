@@ -65,7 +65,7 @@ export function ProgressView({ jobId, initial }: { jobId: string; initial: JobSn
             }
           />
           <ProgressTrack
-            label="最終folderへ配置"
+            label="最終フォルダーへ配置"
             done={snapshot.completedItems}
             total={snapshot.totalItems}
             percent={percent(snapshot.completedItems)}
@@ -116,15 +116,15 @@ export function ProgressView({ jobId, initial }: { jobId: string; initial: JobSn
 
       <div className="card">
         <div className="card-head">
-          <h2>Phase</h2>
+          <h2>処理の内訳</h2>
           <span className="small muted">
-            Snowflake配信 待ち {snapshot.outbox.pending} / 済 {snapshot.outbox.delivered}
+            ログ記録 待ち {snapshot.outbox.pending} / 済 {snapshot.outbox.delivered}
             {snapshot.outbox.failed > 0 ? ` / 失敗 ${snapshot.outbox.failed}` : ''}
           </span>
         </div>
         <Stepper snapshot={snapshot} />
         <details className="footnote">
-          <summary className="small muted">phaseの読み方</summary>
+          <summary className="small muted">工程の読み方</summary>
           <p className="small muted">
             uploadとAI処理は別queueで動くため、AI待ちが別fileのtransferを止めることはありません。
             Snowflakeへの配信待ちはtransferの失敗ではなく、別のdelivery statusです。
@@ -222,7 +222,7 @@ function NextActionBanner({ jobId, snapshot }: { jobId: string; snapshot: JobSna
       ) : null}
       {nextAction.kind === 'REPORT' ? (
         <a className="next-action-cta" href={`/api/jobs/${jobId}/report?format=csv`}>
-          CSV reportをdownload
+          CSVレポートを取得
         </a>
       ) : null}
     </div>

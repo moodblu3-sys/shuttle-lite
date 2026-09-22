@@ -21,8 +21,8 @@ function buttonsFor(snapshot: JobSnapshot): {
 } {
   const primary: ControlButton[] = [];
   const secondary: ControlButton[] = [
-    { type: 'RESCAN_JOB', label: 'source folderを再scan', variant: 'ghost' },
-    { type: 'GENERATE_REPORT', label: 'ReportをBoxへupload', variant: 'ghost' },
+    { type: 'RESCAN_JOB', label: '移行元を再スキャン', variant: 'ghost' },
+    { type: 'GENERATE_REPORT', label: 'レポートをBoxに保存', variant: 'ghost' },
   ];
 
   switch (snapshot.job.state) {
@@ -130,9 +130,6 @@ export function JobControls({ jobId, snapshot }: { jobId: string; snapshot: JobS
       ) : null}
 
       {message ? <p className="small muted">{message}</p> : null}
-      <p className="small muted">
-        操作はcommandとしてSQLiteへ記録され、workerが実行します。UIから直接stateを書き換えません。
-      </p>
     </div>
   );
 }

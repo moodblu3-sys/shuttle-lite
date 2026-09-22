@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { WorkspaceNav } from '../components/workspace-nav';
 import { getConfig } from '../lib/runtime';
 import './globals.css';
 
@@ -8,47 +9,33 @@ export const metadata: Metadata = {
   description: 'Box Platformベースの軽量migration path PoC',
 };
 
-function Badge({ label, value, demo }: { label: string; value: string; demo: boolean }) {
-  return (
-    <span className={`badge${demo ? ' badge-demo' : ''}`}>
-      {label} <strong>{value}</strong>
-    </span>
-  );
-}
-
 export default function RootLayout({ children }: { children: ReactNode }) {
   const config = getConfig();
   return (
     <html lang="ja">
       <body>
-        <div className="shell">
-          <header className="topbar">
-            <a className="brand" href="/">
+        <div className="app-shell">
+          <aside className="workspace-sidebar">
+            <a className="workspace-brand" href="/">
+              <svg viewBox="0 0 40 40" aria-hidden="true">
+                <path d="M3 27 32 4c3-2 5 0 4 4l-7 27c-1 3-4 4-5 1l-6-12z" fill="#2467f4" />
+                <path d="m3 27 15-3L32 8 13 29z" fill="#83b4ff" />
+                <path d="m18 24 6 12-1-18z" fill="#1752cf" />
+              </svg>
               Shuttle Lite
             </a>
-            <span className="tagline">Shuttleが届きにくい場所へ、軽やかに。</span>
-            {/* These decide whether what you see is real. A demo-only setting
-                has to be obvious, not a grey chip that reads as decoration. */}
-            <div className="badges">
-              <Badge label="Box" value={config.box.mode} demo={config.box.mode !== 'real'} />
-              <Badge
-                label="Proxy"
-                value={config.proxy.mode}
-                demo={config.proxy.mode !== 'required'}
-              />
-              <Badge
-                label="Telemetry"
-                value={config.telemetry.sink}
-                demo={config.telemetry.sink !== 'snowflake'}
-              />
-              <Badge
-                label="AI"
-                value={config.ai.enabled ? 'enabled' : 'disabled'}
-                demo={!config.ai.enabled}
-              />
-            </div>
+            <WorkspaceNav />
+            <p className="workspace-sidebar-note">AIが提案し、人が確認して配置。</p>
+          </aside>
+          <header className="workspace-topbar">
+            <span>ファイル移行ワークスペース</span>
+            <span className={`workspace-mode workspace-mode-${config.box.mode}`}>
+              {config.box.mode === 'fake' ? 'デモモード' : '実Boxモード'}
+            </span>
           </header>
-          {children}
+          <main id="workspace-content" className="workspace-content">
+            {children}
+          </main>
         </div>
       </body>
     </html>

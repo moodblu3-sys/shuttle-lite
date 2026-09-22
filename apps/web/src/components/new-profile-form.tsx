@@ -52,17 +52,17 @@ export function NewProfileForm({
       {error ? <p className="error">{error}</p> : null}
       <div className="row">
         <label>
-          Profile name
+          設定名
           <input name="name" type="text" defaultValue="fixtures-demo" required />
         </label>
         <label style={{ flex: '2 1 320px' }}>
-          Source root path (macOSのlocal folder)
+          移行元フォルダー（macOSのパス）
           <input name="sourceRootPath" type="text" defaultValue={defaultSourceRoot} required />
         </label>
       </div>
       <div className="row">
         <label>
-          File concurrency
+          ファイルの並列数
           <input
             name="fileConcurrency"
             type="number"
@@ -72,7 +72,7 @@ export function NewProfileForm({
           />
         </label>
         <label>
-          Chunk concurrency
+          分割アップロードの並列数
           <input
             name="chunkConcurrency"
             type="number"
@@ -83,30 +83,28 @@ export function NewProfileForm({
         </label>
         {/* Box Shuttleと同じ2択。上書きはどちらでも起きない。 */}
         <label>
-          配置先に同名fileがあるとき
+          配置先に同名ファイルがあるとき
           <select name="conflictPolicy" defaultValue="RENAME">
             <option value="RENAME">改名して両方残す</option>
-            <option value="SKIP">skipして後で対応する</option>
+            <option value="SKIP">スキップして後で対応する</option>
           </select>
         </label>
         <label className="small">
           <span>
-            <input name="aiRoutingEnabled" type="checkbox" defaultChecked /> AI routingを使う
+            <input name="aiRoutingEnabled" type="checkbox" defaultChecked /> AI分類を使う
           </span>
         </label>
         <label className="small">
           <span>
-            <input name="snowflakeLoggingEnabled" type="checkbox" defaultChecked /> Snowflake
-            loggingを使う
+            <input name="snowflakeLoggingEnabled" type="checkbox" defaultChecked />{' '}
+            処理ログを記録する
           </span>
         </label>
       </div>
-      <p className="small muted">
-        Credentialとproxy passwordはprofileへ保存しません。環境変数から読み込みます。
-      </p>
+      <p className="small muted">認証情報やプロキシのパスワードは、この設定には保存されません。</p>
       <div className="actions">
         <button type="submit" disabled={busy}>
-          {busy ? '作成中…' : 'Profileを作成'}
+          {busy ? '作成中…' : '移行元を登録'}
         </button>
       </div>
     </form>

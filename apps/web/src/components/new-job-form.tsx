@@ -10,7 +10,7 @@ export function NewJobForm({ profiles }: { profiles: readonly MigrationProfile[]
   const [error, setError] = useState<string | null>(null);
 
   if (profiles.length === 0) {
-    return <p className="muted small">先にprofileを作成してください。</p>;
+    return <p className="muted small">先に移行元を登録してください。</p>;
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -42,7 +42,7 @@ export function NewJobForm({ profiles }: { profiles: readonly MigrationProfile[]
       {error ? <p className="error">{error}</p> : null}
       <div className="row">
         <label>
-          Profile
+          移行元
           <select name="profileId" defaultValue={profiles[0]?.id}>
             {profiles.map((profile) => (
               <option key={profile.id} value={profile.id}>
@@ -52,7 +52,7 @@ export function NewJobForm({ profiles }: { profiles: readonly MigrationProfile[]
           </select>
         </label>
         <label>
-          Operator label (local)
+          操作者名（ローカル記録）
           <input name="operatorLabel" type="text" defaultValue="local operator" required />
         </label>
         <label className="small">
@@ -63,7 +63,7 @@ export function NewJobForm({ profiles }: { profiles: readonly MigrationProfile[]
       </div>
       <div className="actions">
         <button type="submit" disabled={busy}>
-          {busy ? '作成中…' : 'Migration jobを作成'}
+          {busy ? '作成中…' : '移行を作成'}
         </button>
       </div>
     </form>

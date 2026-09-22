@@ -103,7 +103,7 @@ export function JobIdentity({
         )}
         <div className="jobcard-tags">
           <span className="typechip">
-            {profile?.aiRoutingEnabled ? 'MIGRATE DATA + AI ROUTING' : 'MIGRATE DATA ONLY'}
+            {profile?.aiRoutingEnabled ? 'AI分類あり' : 'ファイル移行'}
           </span>
           <span className={`jobstatus jobstatus-${tone}`}>
             <StatusGlyph tone={tone} />

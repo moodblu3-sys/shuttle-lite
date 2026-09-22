@@ -1,15 +1,15 @@
 :root {
-  --box-blue: #0061d5;
-  --box-blue-dark: #003c8a;
-  --ink: #1a1d21;
-  --ink-soft: #5b6770;
-  --line: #dfe3e8;
+  --box-blue: #2467f4;
+  --box-blue-dark: #1854d3;
+  --ink: #172338;
+  --ink-soft: #69768a;
+  --line: #e4eaf2;
   --surface: #ffffff;
-  --canvas: #f5f7fa;
+  --canvas: #f7f9fc;
   --ok: #1d7a46;
   --warn: #a6641c;
   --bad: #b3261e;
-  --wait: #5a4fbf;
+  --wait: #2467d8;
 }
 
 * {
@@ -38,67 +38,167 @@ a:hover {
   text-decoration: underline;
 }
 
-.shell {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 24px 20px 64px;
+.app-shell {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  grid-template-rows: 64px minmax(0, 1fr);
+  min-width: 1280px;
+  min-height: 640px;
+  height: 100dvh;
+  background: #fff;
 }
 
-.topbar {
+.workspace-sidebar {
+  grid-row: 1 / -1;
   display: flex;
-  align-items: baseline;
-  gap: 16px;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
-  margin-bottom: 24px;
+  flex-direction: column;
+  min-height: 0;
+  background: #f1f5fa;
+  border-right: 1px solid var(--line);
 }
 
-.topbar .brand {
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--ink);
+.workspace-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 64px;
+  flex: 0 0 auto;
+  padding: 0 20px;
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  color: #10213d;
 }
 
-.topbar .brand:hover {
-  color: var(--box-blue);
+.workspace-brand:hover {
   text-decoration: none;
 }
 
-.topbar .tagline {
-  color: var(--ink-soft);
-  font-size: 13px;
+.workspace-brand svg {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
 }
 
-.badges {
+.workspace-nav {
   display: flex;
-  gap: 8px;
-  margin-left: auto;
-  flex-wrap: wrap;
+  flex-direction: column;
+  flex: 1;
+  gap: 7px;
+  padding: 20px 10px 0;
 }
 
-.badge {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 999px;
-  padding: 2px 10px;
+.workspace-nav-label {
+  color: #64728a;
   font-size: 12px;
-  color: var(--ink-soft);
+  margin: 8px 12px 18px;
 }
 
-.badge strong {
-  color: var(--ink);
+.workspace-nav a,
+.workspace-nav-unavailable {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  min-height: 50px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  color: #33435c;
+  font-size: 15px;
+}
+
+.workspace-nav a:hover {
+  background: #e7eef9;
+  text-decoration: none;
+}
+
+.workspace-nav a[aria-current='page'] {
+  color: #155cee;
+  background: #dce9ff;
   font-weight: 600;
 }
 
-/* Not production: fake Box, no proxy, local telemetry, AI off. */
-.badge-demo {
-  border-color: #e0c49a;
-  background: #fdf8f1;
+.workspace-nav-unavailable {
+  color: #94a0b1;
 }
 
-.badge-demo strong {
-  color: var(--warn);
+.workspace-nav .workspace-settings {
+  margin-top: auto;
+}
+
+.workspace-sidebar-note {
+  margin: 20px 22px 24px;
+  color: #748299;
+  font-size: 11px;
+}
+
+.workspace-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  color: #7a8698;
+  font-size: 12px;
+}
+
+.workspace-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #53637c;
+}
+
+.workspace-mode::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--box-blue);
+}
+
+.workspace-mode-fake::before {
+  background: #d69536;
+}
+
+.workspace-content {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  scroll-padding-top: 28px;
+}
+
+.page-content {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px 36px 60px;
+}
+
+.workspace-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+.document-icon {
+  width: 28px;
+  height: 35px;
+  flex: 0 0 auto;
+  color: #7291b4;
+}
+
+.document-icon[data-format='PDF'] {
+  color: #fa474d;
+}
+
+.document-icon[data-format='DOCX'],
+.document-icon[data-format='DOC'] {
+  color: #2c72d6;
+}
+
+:is(a, button, input, select, summary):focus-visible {
+  outline: 3px solid #87b7fa;
+  outline-offset: 3px;
 }
 
 /* Jobs dashboard ---------------------------------------------------------- */
@@ -112,8 +212,8 @@ a:hover {
 }
 
 .page-title {
-  font-size: 26px;
-  font-weight: 400;
+  font-size: 32px;
+  font-weight: 700;
   letter-spacing: -0.01em;
   margin: 0;
 }
@@ -121,7 +221,7 @@ a:hover {
 .page-desc {
   color: var(--ink-soft);
   font-size: 13px;
-  margin: 2px 0 0;
+  margin: 6px 0 0;
 }
 
 .newjob {
@@ -175,7 +275,7 @@ a:hover {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 16px 20px;
+  padding: 22px 24px;
 }
 
 .jobcard:hover {
@@ -188,7 +288,7 @@ a:hover {
   gap: 16px;
 }
 
-/* 移行jobであることが一目で分かる identity. Shuttleと同じ紫。 */
+/* Shared identity for the dashboard and progress page. */
 .jobcard-icon {
   flex: 0 0 auto;
   width: 34px;
@@ -321,7 +421,7 @@ a:hover {
 
 .jobcard-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px 16px;
   border-top: 1px solid var(--line);
   margin: 14px 0 0;
@@ -362,7 +462,7 @@ a:hover {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 18px 20px;
+  padding: 24px;
   margin-bottom: 20px;
 }
 
@@ -435,7 +535,7 @@ th {
 }
 
 .grid.cols-4 {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .metric {
@@ -451,7 +551,7 @@ th {
 }
 
 .metric .value {
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 600;
 }
 
@@ -519,8 +619,8 @@ th {
 }
 
 .next-action-wait {
-  border-left-color: var(--wait);
-  background: #f7f6fd;
+  border-left-color: var(--box-blue);
+  background: #f1f6ff;
 }
 
 .next-action-bad {
@@ -572,7 +672,16 @@ th {
 }
 
 .job-head {
-  margin-bottom: 16px;
+  margin-bottom: 24px;
+  border: 0;
+  border-radius: 0;
+  padding: 8px 0 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.job-head .jobcard-name {
+  font-size: 26px;
+  margin: 0;
 }
 
 .job-head .job-ids {
@@ -610,8 +719,8 @@ th {
 }
 
 .metric-wait {
-  border-color: #cdc7f0;
-  background: #f7f6fd;
+  border-color: #cddffe;
+  background: #f3f7ff;
 }
 
 .metric-bad {
@@ -1125,7 +1234,62 @@ button.ghost:hover:not(:disabled) {
 }
 
 .breadcrumb {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ink-soft);
   margin-bottom: 8px;
+}
+
+.overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 28px 0 36px;
+  padding: 24px 0;
+  background: #fafcff;
+}
+
+.overview > div {
+  padding: 0 28px;
+}
+
+.overview > div + div {
+  border-left: 1px solid var(--line);
+}
+
+.overview span {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.overview strong {
+  display: block;
+  font-size: 30px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.overview small {
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 400;
+  margin-left: 8px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.section-heading h2 {
+  font-size: 17px;
+  margin: 0;
+}
+
+.section-heading span {
+  font-size: 12px;
+  color: var(--ink-soft);
 }

@@ -14,7 +14,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
   const profile = store.getProfile(snapshot.job.profileId);
 
   return (
-    <>
+    <div className="page-content">
       <p className="breadcrumb">
         <a href="/">移行一覧</a> / 進捗
       </p>
@@ -46,6 +46,6 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
       ) : null}
 
       <ProgressView jobId={jobId} initial={snapshot} />
-    </>
+    </div>
   );
 }
