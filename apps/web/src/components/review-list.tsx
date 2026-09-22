@@ -237,7 +237,7 @@ export function ReviewList({
             >
               {available.length > 0 && available.every((item) => isSelected(item))
                 ? '選択を解除'
-                : 'グループを選択'}
+                : '全選択'}
             </button>
           ) : null}
         </div>
