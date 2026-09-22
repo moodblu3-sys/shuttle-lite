@@ -212,36 +212,36 @@ export function decideNextAction(input: {
         command.type === type && (command.state === 'PENDING' || command.state === 'CLAIMED'),
     );
   if (job.state === 'QUEUED' && waitingFor('START_JOB')) {
-    return { kind: 'WORKING', message: '開始待ちです。' };
+    return { kind: 'WORKING', message: '開始待ち' };
   }
   if (job.state === 'PAUSED' && waitingFor('RESUME_JOB')) {
-    return { kind: 'WORKING', message: '再開待ちです。' };
+    return { kind: 'WORKING', message: '再開待ち' };
   }
 
   if (job.state === 'QUEUED') {
-    return { kind: 'START', message: '移行を開始できます。' };
+    return { kind: 'START', message: '未開始' };
   }
   if (job.state === 'PAUSED') {
-    return { kind: 'RESUME', message: '一時停止中です。' };
+    return { kind: 'RESUME', message: '一時停止中' };
   }
-  if (job.state === 'SCANNING') return { kind: 'WORKING', message: 'ファイルを確認中です。' };
+  if (job.state === 'SCANNING') return { kind: 'WORKING', message: 'スキャン中' };
   if (job.state === 'COMPLETED' && totalItems === 0)
-    return { kind: 'REPORT', message: '対象のファイルがありませんでした。' };
+    return { kind: 'REPORT', message: '対象ファイルなし' };
   if (reviewBacklog > 0) {
     return {
       kind: 'REVIEW',
       count: reviewBacklog,
-      message: `${reviewBacklog}件が承認待ちです。`,
+      message: `承認待ち ${reviewBacklog}件`,
     };
   }
   if (working) {
-    return { kind: 'WORKING', message: '転送と分類を実行中です。' };
+    return { kind: 'WORKING', message: '処理中' };
   }
   if (failedItems > 0) {
     return {
       kind: 'RETRY_FAILED',
       count: failedItems,
-      message: `${failedItems}件が失敗しています。原因を確認してから再実行できます。`,
+      message: `失敗 ${failedItems}件`,
     };
   }
   if (totalItems > 0 && processedItems === totalItems) {
@@ -249,11 +249,11 @@ export function decideNextAction(input: {
       kind: 'REPORT',
       message:
         skippedItems > 0
-          ? `処理が終了しました。完了 ${completedItems}件・スキップ ${skippedItems}件。`
-          : `全${completedItems}件の配置が完了しました。`,
+          ? `完了 ${completedItems}件・スキップ ${skippedItems}件`
+          : `配置完了 ${completedItems}件`,
     };
   }
-  return { kind: 'IDLE', message: '処理待ちです。' };
+  return { kind: 'IDLE', message: '処理待ち' };
 }
 
 export function resetThroughputSamples(jobId?: string): void {

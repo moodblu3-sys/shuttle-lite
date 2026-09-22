@@ -65,7 +65,7 @@ export function ProgressView({
               ? '自動更新中'
               : live === 'connecting'
                 ? '接続中…'
-                : '更新が止まっています'}
+                : '自動更新が切断されました'}
           </span>
         </div>
 
@@ -78,11 +78,6 @@ export function ProgressView({
             total={snapshot.totalItems}
             percent={percent(snapshot.transferredItems)}
             tone="staged"
-            note={
-              snapshot.reviewBacklog > 0
-                ? `うち ${snapshot.reviewBacklog} 件が承認待ちで止まっています`
-                : null
-            }
           />
           <ProgressTrack
             label="最終フォルダーへ配置"
@@ -90,11 +85,6 @@ export function ProgressView({
             total={snapshot.totalItems}
             percent={percent(snapshot.completedItems)}
             tone="done"
-            note={
-              snapshot.completedItems === 0 && snapshot.reviewBacklog > 0
-                ? '承認するとここが進みます'
-                : null
-            }
           />
         </div>
 
@@ -107,13 +97,12 @@ export function ProgressView({
           <Metric
             label="承認待ち"
             value={String(snapshot.reviewBacklog)}
-            sub={snapshot.reviewBacklog > 0 ? '人の判断が必要' : '待ちなし'}
             tone={snapshot.reviewBacklog > 0 ? 'wait' : undefined}
           />
           <Metric
             label="失敗"
             value={String(snapshot.failedItems)}
-            sub={snapshot.skippedItems > 0 ? `skip ${snapshot.skippedItems} 件` : '—'}
+            sub={snapshot.skippedItems > 0 ? `スキップ ${snapshot.skippedItems} 件` : undefined}
             tone={snapshot.failedItems > 0 ? 'bad' : undefined}
           />
           <Metric
@@ -145,20 +134,13 @@ export function ProgressView({
           </span>
         </div>
         <Stepper snapshot={snapshot} />
-        <details className="footnote">
-          <summary className="small muted">工程の読み方</summary>
-          <p className="small muted">
-            uploadとAI処理は別queueで動くため、AI待ちが別fileのtransferを止めることはありません。
-            Snowflakeへの配信待ちはtransferの失敗ではなく、別のdelivery statusです。
-          </p>
-        </details>
       </div>
 
       <JobControls jobId={jobId} snapshot={snapshot} />
 
       <details className="card" onToggle={(event) => setShowDetail(event.currentTarget.open)}>
         <summary>
-          <h2>詳しい状況</h2>
+          <h2>詳細</h2>
         </summary>
         {/* Mounted only while open so the tables stay out of the initial paint. */}
         <div className="details-body">
@@ -184,9 +166,9 @@ export function ProgressIdentity({
           <details className="job-ids">
             <summary className="small muted">ID</summary>
             <dl className="kv small">
-              <dt>Job</dt>
+              <dt>移行ID</dt>
               <dd className="mono">{snapshot.job.id}</dd>
-              <dt>Staging folder</dt>
+              <dt>一時保管先ID</dt>
               <dd className="mono">{snapshot.job.stagingFolderId ?? '未作成'}</dd>
             </dl>
           </details>
@@ -211,14 +193,12 @@ function ProgressTrack({
   total,
   percent,
   tone,
-  note,
 }: {
   label: string;
   done: number;
   total: number;
   percent: number;
   tone: 'done' | 'staged';
-  note: string | null;
 }) {
   return (
     <div className="track">
@@ -231,7 +211,6 @@ function ProgressTrack({
       <div className="bar">
         <span className={`bar-${tone}`} style={{ width: `${percent}%` }} />
       </div>
-      {note ? <p className="small muted track-note">{note}</p> : null}
     </div>
   );
 }
@@ -244,14 +223,14 @@ function Metric({
 }: {
   label: string;
   value: string;
-  sub: string;
+  sub?: string;
   tone?: 'wait' | 'bad';
 }) {
   return (
     <div className={`metric${tone ? ` metric-${tone}` : ''}`}>
       <div className="label">{label}</div>
       <div className="value">{value}</div>
-      <div className="small muted">{sub}</div>
+      {sub ? <div className="small muted">{sub}</div> : null}
     </div>
   );
 }
@@ -263,9 +242,7 @@ function NextActionBanner({ jobId, snapshot }: { jobId: string; snapshot: JobSna
         <div>
           <div className="next-action-label">テスト終了</div>
           <div className="next-action-message">{snapshot.job.cleanupMessage}</div>
-          <p className="small">
-            以下の件数と履歴は削除前の移行結果です。再テストは「新しい移行」から開始してください。
-          </p>
+          <p className="small">削除前の移行結果</p>
         </div>
       </div>
     );
@@ -282,12 +259,11 @@ function NextActionBanner({ jobId, snapshot }: { jobId: string; snapshot: JobSna
   return (
     <div className={`next-action next-action-${tone}`}>
       <div>
-        <div className="next-action-label">次にやること</div>
         <div className="next-action-message">{nextAction.message}</div>
       </div>
       {nextAction.kind === 'REVIEW' ? (
         <a className="next-action-cta" href={`/jobs/${jobId}/review`}>
-          承認画面をひらく（{nextAction.count}件）
+          承認待ちを確認（{nextAction.count}件）
         </a>
       ) : null}
       {nextAction.kind === 'REPORT' ? (
@@ -332,17 +308,17 @@ function DetailPanels({ snapshot }: { snapshot: JobSnapshot }) {
   return (
     <div className="grid cols-2" style={{ marginTop: 12 }}>
       <div>
-        <h3>処理中のfile</h3>
+        <h3>処理中のファイル</h3>
         {snapshot.activeItems.length === 0 ? (
-          <p className="muted small">処理中のfileはありません。</p>
+          <p className="muted small">処理中のファイルなし</p>
         ) : (
           <table>
             <thead>
               <tr>
-                <th>File</th>
-                <th>State</th>
+                <th>ファイル</th>
+                <th>状態</th>
                 <th>転送</th>
-                <th>Retry</th>
+                <th>再試行</th>
               </tr>
             </thead>
             <tbody>
@@ -365,9 +341,9 @@ function DetailPanels({ snapshot }: { snapshot: JobSnapshot }) {
           </table>
         )}
 
-        <h3>Error category</h3>
+        <h3>エラー種別</h3>
         {snapshot.errorCategories.length === 0 ? (
-          <p className="muted small">errorはありません。</p>
+          <p className="muted small">エラーなし</p>
         ) : (
           <ul className="small">
             {snapshot.errorCategories.map((entry) => (
@@ -380,14 +356,14 @@ function DetailPanels({ snapshot }: { snapshot: JobSnapshot }) {
       </div>
 
       <div>
-        <h3>最近のevent</h3>
+        <h3>処理履歴</h3>
         <div className="events">
           <table>
             <thead>
               <tr>
                 <th>時刻</th>
-                <th>Phase</th>
-                <th>Status</th>
+                <th>工程</th>
+                <th>結果</th>
                 <th>内容</th>
               </tr>
             </thead>
@@ -395,7 +371,7 @@ function DetailPanels({ snapshot }: { snapshot: JobSnapshot }) {
               {snapshot.recentEvents.map((event) => (
                 <tr key={event.id}>
                   <td className="small mono">{event.createdAt.slice(11, 19)}</td>
-                  <td className="small">{event.phase}</td>
+                  <td className="small">{PHASE_LABELS[event.phase]}</td>
                   <td className="small">
                     {event.status}
                     {event.errorCategory ? (

@@ -152,7 +152,7 @@ export function BoxFolderPicker({
             ))}
           </ul>
           {listing && !loading && !error && listing.folders.length === 0 ? (
-            <p className="small muted">この中に選択できる子フォルダーはありません。</p>
+            <p className="small muted">子フォルダーなし</p>
           ) : null}
           <div className="actions">
             <button

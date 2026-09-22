@@ -95,7 +95,7 @@ describe('accurate completion messages', () => {
   it('reports an empty completed job without calling it pending', () => {
     expect(decideNextAction({ ...base, job: job('COMPLETED'), totalItems: 0 })).toEqual({
       kind: 'REPORT',
-      message: '対象のファイルがありませんでした。',
+      message: '対象ファイルなし',
     });
     expect(decideNextAction({ ...base, job: job('SCANNING'), totalItems: 0 }).kind).toBe('WORKING');
   });
@@ -128,16 +128,14 @@ describe('accurate completion messages', () => {
         { ...command, id: 'cmd_report', type: 'GENERATE_REPORT' },
         command,
       ];
-      expect(decideNextAction({ ...base, job: job('QUEUED'), commands }).message).toBe(
-        '開始待ちです。',
-      );
+      expect(decideNextAction({ ...base, job: job('QUEUED'), commands }).message).toBe('開始待ち');
       expect(
         decideNextAction({
           ...base,
           job: job('PAUSED'),
           commands: [{ ...command, type: 'RESUME_JOB' }],
         }).message,
-      ).toBe('再開待ちです。');
+      ).toBe('再開待ち');
     },
   );
 });

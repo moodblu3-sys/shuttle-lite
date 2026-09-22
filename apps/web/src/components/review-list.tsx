@@ -148,9 +148,7 @@ export function ReviewList({
       }
       setSelected((previous) => new Map([...previous].filter(([id]) => !accepted.includes(id))));
       if (accepted.length > 0)
-        setNotice(
-          `${accepted.length}件の${skip ? '除外' : '承認'}を送信しました。処理結果は進捗画面で確認してください。`,
-        );
+        setNotice(`${accepted.length}件の${skip ? '除外' : '承認'}を受け付けました。`);
       if (failures.length > 0) setError(failures.join(' / '));
       // 202 means queued; server command state unlocks rejected or returned items.
       router.refresh();
@@ -214,7 +212,6 @@ export function ReviewList({
     title: string,
     group: readonly ReviewItemView[],
     bulk: boolean,
-    subtitle?: string,
   ) {
     const visible = group.filter((item) => matchesReviewSearch(item, query));
     if (visible.length === 0) return null;
@@ -231,7 +228,6 @@ export function ReviewList({
             <h2>
               {title} <span>{visible.length}件</span>
             </h2>
-            {subtitle ? <p>{subtitle}</p> : null}
           </div>
           {bulk ? (
             <button
@@ -314,31 +310,19 @@ export function ReviewList({
           </p>
         ) : null}
         <div className={styles.list}>
-          {renderSection(
-            'attention',
-            '対応が必要',
-            attention,
-            false,
-            '前回の処理で問題が発生しました。内容を確認し、個別に承認してください。',
-          )}
+          {renderSection('attention', '対応が必要', attention, false)}
           {groups.map(({ destination, items: group }) =>
             renderSection(destination.key, destination.label, group, true),
           )}
-          {renderSection(
-            'undecided',
-            '配置先の判断待ち',
-            undecided,
-            false,
-            '承認するまで一時保管先に残ります。配置先を指定して個別に承認してください。',
-          )}
+          {renderSection('undecided', '配置先の判断待ち', undecided, false)}
           {items.length === 0 ? (
             <div className={styles.empty}>
               <Icon kind="check" />
-              <h2>表示できる承認待ちはありません</h2>
+              <h2>承認待ちなし</h2>
               <a href={`/jobs/${jobId}`}>進捗画面へ戻る →</a>
             </div>
           ) : !items.some((item) => matchesReviewSearch(item, query)) ? (
-            <p className={styles.empty}>一致するファイルはありません。</p>
+            <p className={styles.empty}>該当するファイルなし</p>
           ) : null}
         </div>
         <footer className={styles.approvalBar}>
@@ -374,7 +358,7 @@ export function ReviewList({
           <details className={styles.operator}>
             <summary>承認者</summary>
             <label>
-              承認者名（ローカル記録）
+              承認者名
               <input
                 type="text"
                 value={operatorLabel}
@@ -414,11 +398,11 @@ export function ReviewList({
                   <Icon kind="external" /> Boxで原本を開く
                 </a>
               ) : (
-                <p className={styles.hint}>このデモモードではBoxの原本を開けません。</p>
+                <p className={styles.hint}>Boxリンクなし</p>
               )}
               {active.reviewCommand?.state === 'REJECTED' ? (
                 <p className="error" role="alert">
-                  承認・除外の処理が受け付けられませんでした。内容を修正して再送してください。
+                  操作を反映できませんでした。
                   {active.reviewCommand.rejectionReason}
                 </p>
               ) : null}
@@ -455,20 +439,20 @@ export function ReviewList({
                   </details>
                   <p className={styles.path}>
                     {destinations.find((entry) => entry.key === draft.destinationKey)?.boxPath ??
-                      '配置先は未確定です。'}
+                      '未選択'}
                   </p>
                   {draft.destinationKey !== draftFor(active).destinationKey ? (
-                    <p className={styles.warning}>配置先の手動変更として記録します。</p>
+                    <p className={styles.warning}>配置先を変更済み</p>
                   ) : null}
                 </section>
                 {active.needsAttention ? (
                   <section className={styles.problem}>
-                    <h3>対応が必要です</h3>
+                    <h3>要対応</h3>
                     <p>{active.lastError}</p>
                     <p>{active.operatorAction}</p>
                     {active.lastErrorCategory === 'MOVE_CONFLICT' ? (
                       <>
-                        <p>同名ファイルは上書きしません。配置する名前を確認してください。</p>
+                        <p>同名ファイルあり。別の名前を指定してください。</p>
                         <label>
                           配置するファイル名
                           <input
@@ -494,10 +478,7 @@ export function ReviewList({
                 ) : null}
                 <section>
                   <h3>分類理由</h3>
-                  <p>
-                    {active.suggestionReason ??
-                      '分類理由は取得されていません。原本を確認して配置先を指定してください。'}
-                  </p>
+                  <p>{active.suggestionReason ?? '分類理由なし'}</p>
                   <dl className={styles.extracted}>
                     <dt>文書種別</dt>
                     <dd>{active.extraction?.documentType ?? '未取得'}</dd>
@@ -506,12 +487,6 @@ export function ReviewList({
                     <dt>識別情報</dt>
                     <dd>{active.extraction?.businessIdentifier ?? '未取得'}</dd>
                   </dl>
-                </section>
-                <section>
-                  <h3>根拠となる本文</h3>
-                  <p className={styles.evidence}>
-                    原文の抜粋はまだ取得していません。分類理由とあわせて、Boxの原本を確認してください。
-                  </p>
                 </section>
                 <details className={styles.more}>
                   <summary>メタデータを確認・編集</summary>
@@ -575,9 +550,7 @@ export function ReviewList({
             </div>
           </>
         ) : (
-          <p className={styles.inspectorEmpty}>
-            一覧からファイルを選ぶと、分類理由と配置先を確認できます。
-          </p>
+          <p className={styles.inspectorEmpty}>ファイル未選択</p>
         )}
       </aside>
     </div>

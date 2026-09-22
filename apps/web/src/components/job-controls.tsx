@@ -38,17 +38,17 @@ function buttonsFor(snapshot: JobSnapshot): {
 
   switch (snapshot.job.state) {
     case 'QUEUED':
-      primary.push({ type: 'START_JOB', label: 'この移行を開始する', variant: 'primary' });
+      primary.push({ type: 'START_JOB', label: '移行を開始', variant: 'primary' });
       break;
     case 'PAUSED':
-      primary.push({ type: 'RESUME_JOB', label: '再開する', variant: 'primary' });
+      primary.push({ type: 'RESUME_JOB', label: '再開', variant: 'primary' });
       break;
     case 'SCANNING':
     case 'RUNNING':
       primary.push({ type: 'PAUSE_JOB', label: '一時停止', variant: 'secondary' });
       break;
     case 'FAILED':
-      primary.push({ type: 'START_JOB', label: '再開する', variant: 'primary' });
+      primary.push({ type: 'START_JOB', label: '再開', variant: 'primary' });
       break;
     case 'COMPLETED':
       break;
@@ -124,30 +124,21 @@ export function JobControls({ jobId, snapshot }: { jobId: string; snapshot: JobS
         </button>
       </div>
 
-      {snapshot.job.testMode ? (
-        <p className="small muted">
-          テストモード
-          {snapshot.job.cleanupMessage
-            ? `：${snapshot.job.cleanupMessage}`
-            : '：結果を確認したらテストを終了してください'}
-        </p>
+      {snapshot.job.testMode && snapshot.job.cleanupMessage ? (
+        <p className="small muted">{snapshot.job.cleanupMessage}</p>
       ) : null}
       <div className="actions">
-        {primary.length === 0 ? (
-          <span className="muted small">この状態で必要な操作はありません。</span>
-        ) : (
-          primary.map((button) => (
-            <button
-              key={button.type}
-              type="button"
-              className={button.variant === 'primary' ? undefined : button.variant}
-              disabled={disabled}
-              onClick={() => void send(button)}
-            >
-              {pending === button.type ? '送信中…' : button.label}
-            </button>
-          ))
-        )}
+        {primary.map((button) => (
+          <button
+            key={button.type}
+            type="button"
+            className={button.variant === 'primary' ? undefined : button.variant}
+            disabled={disabled}
+            onClick={() => void send(button)}
+          >
+            {pending === button.type ? '送信中…' : button.label}
+          </button>
+        ))}
         <a className="linkbtn" href={`/api/jobs/${jobId}/report?format=csv`}>
           CSV
         </a>

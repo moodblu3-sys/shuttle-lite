@@ -22,13 +22,10 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
       <ProgressView jobId={jobId} initial={snapshot} profile={profile}>
         {destinations ? (
           <p className="small muted">
-            移行先：{destinations.rootFolderName}（選択時の既存フォルダー{' '}
-            {destinations.entries.length}件）
+            移行先：{destinations.rootFolderName}（フォルダー {destinations.entries.length}件）
           </p>
         ) : getConfig().box.mode === 'real' ? (
-          <p className="error">
-            この移行にはBoxの移行先が設定されていません。「新しい移行」で移行先を選択してください。既存のファイルと履歴は残っています。
-          </p>
+          <p className="error">移行先が未設定です。「新しい移行」で移行先を指定してください。</p>
         ) : null}
       </ProgressView>
     </div>

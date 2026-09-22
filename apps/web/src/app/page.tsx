@@ -61,7 +61,7 @@ export default function HomePage() {
         <span>直近20件まで表示</span>
       </div>
       {jobs.length === 0 ? (
-        <p className="empty">まだ移行ジョブはありません。右上の「新しい移行」から作成します。</p>
+        <p className="empty">移行履歴なし</p>
       ) : (
         <div className="jobcards">
           {jobs.map(({ job, snapshot, profile }) => (

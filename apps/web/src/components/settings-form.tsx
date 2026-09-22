@@ -137,9 +137,7 @@ export function SettingsForm({
               >
                 フォルダーを選択
               </button>
-              {!folderPickerAvailable && (
-                <span className="hint">フォルダー選択はMacで利用できます。</span>
-              )}
+              {!folderPickerAvailable && <span className="hint">フォルダー選択はMacのみ対応</span>}
             </div>
           </div>
         ) : (

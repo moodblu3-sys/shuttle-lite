@@ -2,6 +2,10 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { buildConfig, parseEnv } from '@shuttle-lite/config';
+import { ReviewList } from '../src/components/review-list';
+import { StatePill } from '../src/components/state-pill';
+import type { ReviewItemView } from '../src/lib/review-types';
+import HomePage from '../src/app/page';
 import RootLayout from '../src/app/layout';
 import SettingsPage from '../src/app/settings/page';
 import { NewJobForm } from '../src/components/new-job-form';
@@ -10,7 +14,10 @@ import { getConfig } from '../src/lib/runtime';
 
 vi.mock('../src/lib/runtime', () => ({
   getConfig: vi.fn(),
-  getStore: () => ({ getRuntimeSettings: () => ({ revision: 0, settings: null }) }),
+  getStore: () => ({
+    listJobs: () => [],
+    getRuntimeSettings: () => ({ revision: 0, settings: null }),
+  }),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -62,7 +69,7 @@ describe('concise workspace screens', () => {
       }),
     );
     expect(html).toContain('role="status"');
-    expect(html).toContain('フォルダー選択はMacで利用できます');
+    expect(html).toContain('フォルダー選択はMacのみ対応');
     expect(html).toContain('共通設定でAI分類が無効');
   });
 
@@ -102,5 +109,92 @@ describe('concise workspace screens', () => {
       'このMac',
     ])
       expect(html).not.toContain(copy);
+  });
+});
+
+describe('concise review and empty states', () => {
+  it('keeps the new migration action in an empty list without a tutorial', () => {
+    vi.mocked(getConfig).mockReturnValue(
+      buildConfig(parseEnv({ NODE_ENV: 'test', BOX_MODE: 'fake' })),
+    );
+    const html = renderToStaticMarkup(createElement(HomePage));
+    expect(html).toContain('新しい移行');
+    expect(html).toContain('移行履歴なし');
+    expect(html).not.toContain('右上の');
+  });
+
+  it('keeps conflict recovery, approval and original-file access without placeholder content', () => {
+    const item: ReviewItemView = {
+      itemId: 'itm_1',
+      jobId: 'job_1',
+      state: 'NEEDS_REVIEW',
+      sourceRelativePath: 'contract.pdf',
+      sourceFileName: 'contract.pdf',
+      sourceSize: 100,
+      sourceSha1: 'abc',
+      boxFileId: '123',
+      boxSha1: 'abc',
+      boxVersionId: '1',
+      lastErrorCategory: 'MOVE_CONFLICT',
+      lastError: '同名ファイルがあります',
+      operatorAction: 'ファイル名を変更してください。',
+      needsAttention: true,
+      finalName: null,
+      suggestedDestinationKey: 'contracts',
+      hasRoutingDecision: true,
+      suggestionSource: 'BOX_AI',
+      suggestionReason: '契約書に該当',
+      extraction: null,
+      reviewCommand: null,
+    };
+    const html = renderToStaticMarkup(
+      createElement(ReviewList, {
+        jobId: 'job_1',
+        items: [item],
+        destinations: [{ key: 'contracts', label: '契約書', boxPath: '/契約書' }],
+        needsReviewKey: 'review',
+        defaultOperatorLabel: 'tester',
+        boxLinkBase: 'https://app.box.com/file/',
+      }),
+    );
+    for (const value of [
+      '契約書に該当',
+      '同名ファイル',
+      '配置するファイル名',
+      'このファイルを承認',
+      'https://app.box.com/file/123',
+    ])
+      expect(html).toContain(value);
+    for (const copy of [
+      '根拠となる本文',
+      '原文の抜粋はまだ',
+      '承認するまで一時保管',
+      '個別に承認してください',
+    ])
+      expect(html).not.toContain(copy);
+  });
+
+  it('shows an empty review list with a return action', () => {
+    const html = renderToStaticMarkup(
+      createElement(ReviewList, {
+        jobId: 'job_1',
+        items: [],
+        destinations: [],
+        needsReviewKey: 'review',
+        defaultOperatorLabel: 'tester',
+        boxLinkBase: null,
+      }),
+    );
+    expect(html).toContain('承認待ちなし');
+    expect(html).toContain('/jobs/job_1');
+    expect(html).toContain('ファイル未選択');
+    expect(html).not.toContain('一覧からファイルを選ぶと');
+  });
+
+  it('uses a Japanese label for a pending approval without changing its status style', () => {
+    const html = renderToStaticMarkup(createElement(StatePill, { state: 'REVIEW_REQUIRED' }));
+    expect(html).toContain('pill wait');
+    expect(html).toContain('承認待ち');
+    expect(html).not.toContain('REVIEW_REQUIRED');
   });
 });

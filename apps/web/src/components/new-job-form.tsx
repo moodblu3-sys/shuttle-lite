@@ -129,9 +129,7 @@ export function NewJobForm({
         </div>
         {!folderPickerAvailable || picking ? (
           <p className="small muted" role="status">
-            {!folderPickerAvailable
-              ? 'フォルダー選択はMacで利用できます。Mac上でアプリを起動してください。'
-              : 'フォルダーを選択中…'}
+            {!folderPickerAvailable ? 'フォルダー選択はMacのみ対応' : 'フォルダーを選択中…'}
           </p>
         ) : null}
       </div>
@@ -154,7 +152,7 @@ export function NewJobForm({
         </span>
         {testMode ? (
           <span className="small muted">
-            結果確認後、「テストを終了」で今回転送したファイルをまとめて削除します。
+            テスト終了時に今回転送したBoxファイルを削除します。
             Boxの企業設定により完全削除になる場合があります。
           </span>
         ) : null}
@@ -170,21 +168,19 @@ export function NewJobForm({
                 defaultChecked={aiEnabled}
                 disabled={busy || !aiEnabled}
               />{' '}
-              AIに配置先を提案してもらう
+              AI分類
             </span>
           </label>
-          {!aiEnabled ? (
-            <p className="small muted">共通設定でAI分類が無効になっています。</p>
-          ) : null}
+          {!aiEnabled ? <p className="small muted">共通設定でAI分類が無効</p> : null}
           <label>
-            同じ名前のファイルがあるとき
+            同名ファイルの扱い
             <select name="conflictPolicy" defaultValue="RENAME" disabled={busy}>
               <option value="RENAME">改名して両方残す</option>
-              <option value="SKIP">スキップする</option>
+              <option value="SKIP">スキップ</option>
             </select>
           </label>
           <label>
-            操作者名（任意・記録用）
+            操作者名（任意）
             <input name="operatorLabel" type="text" placeholder="ローカル操作者" disabled={busy} />
           </label>
         </div>
@@ -204,7 +200,7 @@ export function NewJobForm({
           type="submit"
           disabled={busy || picking || selectingDestination || !folder || !destination}
         >
-          {busy ? '開始しています…' : '移行を開始'}
+          {busy ? '開始中…' : '移行を開始'}
         </button>
       </div>
     </form>

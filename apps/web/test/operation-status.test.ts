@@ -39,11 +39,31 @@ describe('live operation feedback', () => {
     expect(after).not.toContain('全件転送済み');
   });
 
+  it('keeps review counts and navigation without instructional progress copy', async () => {
+    h.writeSource('contract.txt', 'NDA contract');
+    h.store.enqueueCommand(jobId, 'START_JOB');
+    await runUntilIdle(h);
+    const html = page();
+    expect(snapshot().reviewBacklog).toBe(1);
+    expect(html).toContain('承認待ち 1件');
+    expect(html).toContain(`/jobs/${jobId}/review`);
+    expect(html).toContain('最終フォルダーへ配置');
+    for (const copy of [
+      '承認するとここが進みます',
+      '止まっています',
+      '人の判断',
+      '工程の読み方',
+      '別queue',
+      '次にやること',
+    ])
+      expect(html).not.toContain(copy);
+  });
+
   it('shows an empty completed job as no files, including its header', () => {
     h.store.setJobState(jobId, 'COMPLETED');
     const html = page();
     expect(html).toContain('終了（対象なし）');
-    expect(html).toContain('対象のファイルがありませんでした');
+    expect(html).toContain('対象ファイルなし');
     expect(html).not.toContain('全件転送済み');
   });
 
@@ -53,7 +73,7 @@ describe('live operation feedback', () => {
       if (claimed) h.store.claimCommands();
       const current = snapshot();
       const html = renderToStaticMarkup(createElement(JobControls, { jobId, snapshot: current }));
-      expect(html).toMatch(/<button[^>]*disabled=""[^>]*>この移行を開始する/);
+      expect(html).toMatch(/<button[^>]*disabled=""[^>]*>移行を開始/);
       expect(html).toContain(claimed ? '移行開始を実行中です' : '移行開始を受け付けました');
       expect(page()).toContain('開始待ち');
     }
@@ -116,7 +136,7 @@ describe('command submission', () => {
     expect(snapshot().commands[0]).toMatchObject({ type: 'END_TEST', state: 'DONE' });
     const html = page();
     expect(html).toContain('0件のテストファイルを削除しました');
-    expect(html).not.toContain('再開する');
+    expect(html).not.toContain('再開');
     expect((await submit({ type: 'START_JOB' })).status).toBe(409);
   });
 
