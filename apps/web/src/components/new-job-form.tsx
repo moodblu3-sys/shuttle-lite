@@ -109,7 +109,7 @@ export function NewJobForm({
       </label>
       <div className="source-folder" role="group" aria-labelledby="source-folder-label">
         <span id="source-folder-label" className="small">
-          移行元 · このMac
+          移行元
         </span>
         <div className="source-folder-choice">
           <div aria-live="polite">
@@ -125,13 +125,13 @@ export function NewJobForm({
             {picking ? '選択中…' : folder ? '変更' : 'フォルダーを選択'}
           </button>
         </div>
-        <p className="small muted" role="status">
-          {!folderPickerAvailable
-            ? 'フォルダー選択はMacで利用できます。Mac上でアプリを起動してください。'
-            : picking
-              ? 'Macのフォルダー選択画面で、移行元を選んでください。'
-              : 'このMacのフォルダーを選びます。選択だけでは移行は始まりません。'}
-        </p>
+        {!folderPickerAvailable || picking ? (
+          <p className="small muted" role="status">
+            {!folderPickerAvailable
+              ? 'フォルダー選択はMacで利用できます。Mac上でアプリを起動してください。'
+              : 'フォルダーを選択中…'}
+          </p>
+        ) : null}
       </div>
       <BoxFolderPicker
         value={destination}
@@ -170,12 +170,6 @@ export function NewJobForm({
           </label>
         </div>
       </details>
-      <p className="small muted">
-        {boxMode === 'real'
-          ? '開始するとBoxの一時保管先へアップロードします。'
-          : '現在はテスト環境です。実Boxへのアップロードは行いません。'}
-        最終配置は確認・承認後に行います。元ファイルは残ります。
-      </p>
       <div className="actions">
         <button
           type="button"

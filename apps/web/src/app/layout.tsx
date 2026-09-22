@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { WorkspaceNav } from '../components/workspace-nav';
-import { getConfig } from '../lib/runtime';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -10,7 +9,6 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  const config = getConfig();
   return (
     <html lang="ja">
       <body>
@@ -25,14 +23,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               Shuttle Lite
             </a>
             <WorkspaceNav />
-            <p className="workspace-sidebar-note">AIが提案し、人が確認して配置。</p>
           </aside>
-          <header className="workspace-topbar">
-            <span>ファイル移行ワークスペース</span>
-            <span className={`workspace-mode workspace-mode-${config.box.mode}`}>
-              {config.box.mode === 'fake' ? 'デモモード' : '実Boxモード'}
-            </span>
-          </header>
           <main id="workspace-content" className="workspace-content">
             {children}
           </main>

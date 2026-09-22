@@ -41,7 +41,7 @@ a:hover {
 .app-shell {
   display: grid;
   grid-template-columns: 224px minmax(0, 1fr);
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 1280px;
   min-height: 640px;
   height: 100dvh;
@@ -85,7 +85,7 @@ a:hover {
   flex-direction: column;
   flex: 1;
   gap: 7px;
-  padding: 20px 10px 0;
+  padding: 20px 10px 24px;
 }
 
 .workspace-nav-label {
@@ -123,42 +123,6 @@ a:hover {
 
 .workspace-nav .workspace-settings {
   margin-top: auto;
-}
-
-.workspace-sidebar-note {
-  margin: 20px 22px 24px;
-  color: #748299;
-  font-size: 11px;
-}
-
-.workspace-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 28px;
-  border-bottom: 1px solid var(--line);
-  background: #fff;
-  color: #7a8698;
-  font-size: 12px;
-}
-
-.workspace-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #53637c;
-}
-
-.workspace-mode::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--box-blue);
-}
-
-.workspace-mode-fake::before {
-  background: #d69536;
 }
 
 .workspace-content {
@@ -216,12 +180,6 @@ a:hover {
   font-weight: 700;
   letter-spacing: -0.01em;
   margin: 0;
-}
-
-.page-desc {
-  color: var(--ink-soft);
-  font-size: 13px;
-  margin: 6px 0 0;
 }
 
 .newjob {

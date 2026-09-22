@@ -273,10 +273,6 @@
   color: #6c798b;
   overflow-wrap: anywhere;
 }
-.approvalBar > .hint {
-  text-align: right;
-  margin: 9px 0 5px;
-}
 .notice {
   font-size: 12px;
   color: #28589b;

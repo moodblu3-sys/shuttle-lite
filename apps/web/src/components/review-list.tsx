@@ -262,7 +262,6 @@ export function ReviewList({
             <a href="/">移行一覧</a> / <a href={`/jobs/${jobId}`}>進捗</a> / 承認
           </p>
           <h1>分類結果を確認</h1>
-          <p>AIの提案を確認して、Boxへの配置を承認します。</p>
         </header>
         <ol className={styles.workflow} aria-label="移行の工程">
           <li>
@@ -336,7 +335,6 @@ export function ReviewList({
             <div className={styles.empty}>
               <Icon kind="check" />
               <h2>表示できる承認待ちはありません</h2>
-              <p>全体の処理状況は進捗画面で確認できます。</p>
               <a href={`/jobs/${jobId}`}>進捗画面へ戻る →</a>
             </div>
           ) : !items.some((item) => matchesReviewSearch(item, query)) ? (
@@ -373,11 +371,8 @@ export function ReviewList({
               {busy ? '送信中…' : `選択した${ready.length}件を承認`}
             </button>
           </div>
-          <p className={styles.hint}>
-            承認したファイルから順に配置します。未選択のファイルは承認待ちのまま残ります。
-          </p>
           <details className={styles.operator}>
-            <summary>承認者と承認の扱い</summary>
+            <summary>承認者</summary>
             <label>
               承認者名（ローカル記録）
               <input
@@ -387,9 +382,6 @@ export function ReviewList({
                 onChange={(event) => setOperatorLabel(event.target.value)}
               />
             </label>
-            <p>
-              Boxで本人確認されたユーザーの承認ではありません。承認後にファイルの状態を再検証して配置します。
-            </p>
           </details>
         </footer>
       </section>
@@ -580,7 +572,6 @@ export function ReviewList({
                   ? '処理待ち'
                   : 'このファイルを承認'}
               </button>
-              <p className={styles.hint}>判断を保留する場合は、承認せずに残してください。</p>
             </div>
           </>
         ) : (

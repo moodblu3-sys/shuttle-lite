@@ -9,21 +9,17 @@ export default function SettingsPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">設定</h1>
-          <p className="page-desc">すべての移行で使う、Box接続の設定を確認します。</p>
         </div>
         <a className="linkbtn" href="/">
           移行一覧へ戻る
         </a>
       </div>
-      <p className="small muted">
-        移行名・移行元・Boxの移行先は、移行一覧の「新しい移行」で指定します。
-      </p>
 
       <section className="card">
         <h2>Box接続</h2>
         <dl className="kv">
           <dt>接続先</dt>
-          <dd>{config.box.mode === 'real' ? '実Box' : 'テスト環境（このMac内）'}</dd>
+          <dd>{config.box.mode === 'real' ? '実Box' : 'テスト環境'}</dd>
           {config.box.mode === 'real' ? (
             <>
               <dt>認証方式</dt>
@@ -41,7 +37,6 @@ export default function SettingsPage() {
                   : '直接接続（プロキシ未設定）'}
           </dd>
         </dl>
-        <p className="small muted">接続設定の表示です。接続テストの結果ではありません。</p>
       </section>
 
       <details className="card quiet">
@@ -51,7 +46,7 @@ export default function SettingsPage() {
         <div className="details-body">
           <dl className="kv">
             <dt>AI分類</dt>
-            <dd>{config.ai.enabled ? '有効（移行ごとにオフにできます）' : '無効'}</dd>
+            <dd>{config.ai.enabled ? '有効' : '無効'}</dd>
             <dt>ファイルの並列数</dt>
             <dd>{config.limits.fileConcurrency}</dd>
             <dt>分割転送の並列数</dt>
@@ -59,13 +54,10 @@ export default function SettingsPage() {
             <dt>処理ログ</dt>
             <dd>
               {config.telemetry.sink === 'jsonl'
-                ? 'このMac内のファイルに記録'
+                ? 'ローカルファイル'
                 : 'Snowflake（接続機能は未実装）'}
             </dd>
           </dl>
-          <p className="small muted">
-            共通設定の変更は、このMacの.envで行い、アプリを再起動してください。
-          </p>
         </div>
       </details>
     </div>

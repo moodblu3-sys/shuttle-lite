@@ -87,11 +87,6 @@ export function BoxFolderPicker({
       <div className="source-folder-choice">
         <div aria-live="polite">
           <strong>{value?.name ?? 'フォルダー未選択'}</strong>
-          {value ? (
-            <p className="small muted">
-              このフォルダーと配下の既存フォルダー {value.folderCount}件
-            </p>
-          ) : null}
         </div>
         <button
           type="button"
@@ -106,9 +101,6 @@ export function BoxFolderPicker({
           {value ? '変更' : 'Boxから選択'}
         </button>
       </div>
-      <p className="small muted">
-        選んだ範囲内でAIが配置先を提案します。配置先のフォルダーは新しく作りません。
-      </p>
       {open ? (
         <div className="box-folder-browser">
           <div className="actions">

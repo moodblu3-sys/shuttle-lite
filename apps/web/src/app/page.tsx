@@ -19,7 +19,6 @@ export default function HomePage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">移行一覧</h1>
-          <p className="page-desc">ファイルの移行状況を確認して、分類と承認を進めます。</p>
         </div>
         {/* Admin Consoleと同じく、新規作成は右上のprimary actionに置く。 */}
         <details className="newjob">
