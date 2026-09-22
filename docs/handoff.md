@@ -55,7 +55,21 @@ credential無しで全pipelineが動く。
 5. 実Boxの確認結果を共有し、必要な修正を同じ手順で取り込む。
 
 新しい変更のbaseは、着手時に確認したGitHub上のコミットとする。
-公開先は作成・確認後に案内する。元の非公開リポジトリを公開済みとは扱わない。
+開発先は [moodblu3-sys/shuttle-lite](https://github.com/moodblu3-sys/shuttle-lite)。
+2026-09-22にPublicへの変更を確認済み。
+
+### Boxデモ環境への接続
+
+現行コードにはCCG認証と実Box用のGatewayが実装されている。
+認証方式は [Box公式のCCG仕様](https://developer.box.com/guides/authentication/client-credentials/)
+を参照する。接続処理の実装とfake Boxによる検証はChatGPT側で担当する。
+
+実Boxへの接続は社用Macで行う。以前の検証に使った`.env`をローカルで保持し、
+`BOX_MODE=real`と接続対象の設定を確認する。認証情報をチャットやGitHubに載せない。
+このChatGPTの開発環境には実Boxの認証は設定されておらず、実Box疎通は未実行。
+
+`npm run verify:box`は認証確認だけでなく、検証用のfolder、metadata template、
+合成fileを作成・更新する。新しい移行コードの実Box確認では、専用のデモ領域を使う。
 
 ## パッチで受け渡す場合の補助手順
 
