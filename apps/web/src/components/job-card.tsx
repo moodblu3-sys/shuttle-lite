@@ -88,7 +88,7 @@ export function JobIdentity({
   const failed = snapshot?.failedItems ?? 0;
   const withErrors = job.state === 'COMPLETED' && failed > 0;
   const tone = withErrors ? 'warn' : status.tone;
-  const name = profile?.name ?? '(削除済みprofile)';
+  const name = job.name ?? profile?.name ?? '移行';
 
   return (
     <>

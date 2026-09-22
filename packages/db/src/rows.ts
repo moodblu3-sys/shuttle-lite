@@ -53,6 +53,7 @@ export function mapProfile(row: ProfileRow): MigrationProfile {
 
 export interface JobRow {
   id: string;
+  name: string | null;
   profile_id: string;
   state: string;
   operator_label: string;
@@ -73,6 +74,7 @@ export interface JobRow {
 export function mapJob(row: JobRow): MigrationJob {
   return {
     id: row.id,
+    name: row.name,
     profileId: row.profile_id,
     state: row.state as JobState,
     operatorLabel: row.operator_label,

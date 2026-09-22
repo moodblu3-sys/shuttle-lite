@@ -2,16 +2,17 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { MigrationProfile } from '@shuttle-lite/core';
 
-export function NewJobForm({ profiles }: { profiles: readonly MigrationProfile[] }) {
+export function NewJobForm({
+  aiEnabled,
+  boxMode,
+}: {
+  aiEnabled: boolean;
+  boxMode: 'real' | 'fake';
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  if (profiles.length === 0) {
-    return <p className="muted small">先に移行元を登録してください。</p>;
-  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -23,9 +24,12 @@ export function NewJobForm({ profiles }: { profiles: readonly MigrationProfile[]
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          profileId: form.get('profileId'),
+          name: form.get('name'),
+          sourceRootPath: form.get('sourceRootPath'),
           operatorLabel: form.get('operatorLabel'),
-          autoStart: form.get('autoStart') === 'on',
+          aiRoutingEnabled: aiEnabled && form.get('aiRoutingEnabled') === 'on',
+          conflictPolicy: form.get('conflictPolicy'),
+          autoStart: true,
         }),
       });
       const body = (await response.json()) as { job?: { id: string }; error?: string };
@@ -38,32 +42,87 @@ export function NewJobForm({ profiles }: { profiles: readonly MigrationProfile[]
   }
 
   return (
-    <form className="stack" onSubmit={submit}>
-      {error ? <p className="error">{error}</p> : null}
-      <div className="row">
-        <label>
-          移行元
-          <select name="profileId" defaultValue={profiles[0]?.id}>
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          操作者名（ローカル記録）
-          <input name="operatorLabel" type="text" defaultValue="local operator" required />
-        </label>
-        <label className="small">
-          <span>
-            <input name="autoStart" type="checkbox" defaultChecked /> 作成後すぐ開始する
-          </span>
-        </label>
-      </div>
+    <form className="stack new-migration-form" onSubmit={submit}>
+      <h2>新しい移行</h2>
+      {error ? (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <label>
+        移行名
+        <input
+          name="name"
+          type="text"
+          placeholder="例：営業部の文書整理"
+          maxLength={100}
+          required
+          disabled={busy}
+        />
+      </label>
+      <label>
+        移行元フォルダー
+        <input
+          name="sourceRootPath"
+          type="text"
+          placeholder="/Users/…/Documents/移行する文書"
+          required
+          disabled={busy}
+          aria-describedby="source-path-help"
+        />
+      </label>
+      <p id="source-path-help" className="small muted">
+        Finderでフォルダーを選び、⌥⌘Cでパスをコピーして貼り付けます。
+      </p>
+      <details className="migration-options">
+        <summary>詳細オプション</summary>
+        <div className="migration-options-body">
+          <label>
+            <span>
+              <input
+                name="aiRoutingEnabled"
+                type="checkbox"
+                defaultChecked={aiEnabled}
+                disabled={busy || !aiEnabled}
+              />{' '}
+              AIに配置先を提案してもらう
+            </span>
+          </label>
+          {!aiEnabled ? (
+            <p className="small muted">共通設定でAI分類が無効になっています。</p>
+          ) : null}
+          <label>
+            同じ名前のファイルがあるとき
+            <select name="conflictPolicy" defaultValue="RENAME" disabled={busy}>
+              <option value="RENAME">改名して両方残す</option>
+              <option value="SKIP">スキップする</option>
+            </select>
+          </label>
+          <label>
+            操作者名（任意・記録用）
+            <input name="operatorLabel" type="text" placeholder="ローカル操作者" disabled={busy} />
+          </label>
+        </div>
+      </details>
+      <p className="small muted">
+        {boxMode === 'real'
+          ? '開始するとBoxの一時保管先へアップロードします。'
+          : '現在はテスト環境です。実Boxへのアップロードは行いません。'}
+        最終配置は確認・承認後に行います。元ファイルは残ります。
+      </p>
       <div className="actions">
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          onClick={(event) =>
+            event.currentTarget.closest('details.newjob')?.removeAttribute('open')
+          }
+        >
+          キャンセル
+        </button>
         <button type="submit" disabled={busy}>
-          {busy ? '作成中…' : '移行を作成'}
+          {busy ? '開始しています…' : '移行を開始'}
         </button>
       </div>
     </form>

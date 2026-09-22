@@ -210,9 +210,17 @@ const CONFLICT_POLICY = `
 ALTER TABLE migration_profiles ADD COLUMN conflict_policy TEXT NOT NULL DEFAULT 'RENAME';
 `;
 
+// Keep existing job titles while allowing new jobs to share a display name.
+const JOB_NAME = `
+ALTER TABLE migration_jobs ADD COLUMN name TEXT;
+UPDATE migration_jobs
+   SET name = (SELECT name FROM migration_profiles WHERE id = migration_jobs.profile_id);
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: INITIAL },
   { version: 2, name: 'profile conflict policy', sql: CONFLICT_POLICY },
+  { version: 3, name: 'migration display name', sql: JOB_NAME },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

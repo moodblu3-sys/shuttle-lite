@@ -1,13 +1,13 @@
 import { buildJobSnapshot } from '@shuttle-lite/telemetry';
 import { JobCard } from '../components/job-card';
 import { NewJobForm } from '../components/new-job-form';
-import { getStore } from '../lib/runtime';
+import { getConfig, getStore } from '../lib/runtime';
 
 export const dynamic = 'force-dynamic';
 
 export default function HomePage() {
   const store = getStore();
-  const profiles = store.listProfiles();
+  const config = getConfig();
   const jobs = store.listJobs(20).map((job) => ({
     job,
     snapshot: buildJobSnapshot(store, job.id),
@@ -25,13 +25,7 @@ export default function HomePage() {
         <details className="newjob">
           <summary className="newjob-trigger">新しい移行</summary>
           <div className="newjob-panel">
-            {profiles.length === 0 ? (
-              <p className="muted small">
-                まず<a href="/settings">設定画面で移行元フォルダーを登録</a>してください。
-              </p>
-            ) : (
-              <NewJobForm profiles={profiles} />
-            )}
+            <NewJobForm aiEnabled={config.ai.enabled} boxMode={config.box.mode} />
           </div>
         </details>
       </div>

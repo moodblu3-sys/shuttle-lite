@@ -166,11 +166,11 @@ stateDiagram-v2
 
 ## 画面の流れ
 
-操作者が見るのは3画面だけです。各画面は次にやることを1つだけ提示します。
+移行一覧から移行を開始し、進捗・承認画面へ進みます。共通設定は設定画面で確認します。
 
 ```mermaid
 flowchart LR
-  home["トップ<br/>移行をはじめる<br/>profile選択とjob作成"]
+  home["トップ<br/>新しい移行<br/>移行名と移行元を指定"]
   progress["進捗<br/>次にやることbanner<br/>phase stepper / 自動更新"]
   review["承認<br/>1行1file<br/>一括承認と詳細編集"]
   report["Report<br/>CSV / JSON<br/>Boxの_reportsへupload"]
@@ -183,7 +183,7 @@ flowchart LR
 
 | 画面 | 見えるもの | できること |
 |---|---|---|
-| トップ | 移行の一覧、進捗bar、次にやること | profile作成、job作成と開始 |
+| トップ | 移行の一覧、進捗bar、次にやること | 移行名・移行元を入力して開始 |
 | 進捗 | 完了 / 承認待ち / 失敗の件数、phaseごとの滞留、転送速度とETA、最近のevent | 一時停止、再開、失敗の再実行、report出力 |
 | 承認 | file名、AI提案、confidence、抽出値、SHA-1、Box file ID | 一括承認、個別承認、配置先の変更、metadata修正、skip |
 
@@ -229,7 +229,10 @@ npm run fixtures:pdf          # 業務文書らしいPDFを15件生成（demoと
 npm run dev                   # web (http://localhost:3000) と worker を別 process で起動
 ```
 
-http://localhost:3000 でprofileとjobを作成すると、workerがscanから実行します。
+http://localhost:3000 の「新しい移行」で移行名とMac上の移行元フォルダーの絶対パスを
+入力し、「移行を開始」を押すとworkerがscanから実行します。移行元の事前登録は不要です。
+AI分類・同名ファイルの扱い・操作者名は「詳細オプション」にまとめています。
+Box接続と配置先候補は設定画面で確認し、変更は既存の設定ファイルで行います。
 全件がreview待ちになったら承認画面で「AI提案どおりN件をまとめて承認」を押すと、
 Box内moveと最終検証まで進みます。
 

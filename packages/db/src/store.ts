@@ -238,15 +238,16 @@ export class ShuttleStore {
   // Jobs
   // -------------------------------------------------------------------------
 
-  createJob(input: { profileId: string; operatorLabel: string }): MigrationJob {
+  createJob(input: { profileId: string; operatorLabel: string; name?: string }): MigrationJob {
     const id = newJobId();
     const at = nowIso();
+    const name = input.name ?? this.getProfile(input.profileId)?.name ?? null;
     this.db
       .prepare(
-        `INSERT INTO migration_jobs (id, profile_id, state, operator_label, created_at, updated_at)
-         VALUES (?,?,?,?,?,?)`,
+        `INSERT INTO migration_jobs (id, profile_id, state, operator_label, created_at, updated_at, name)
+         VALUES (?,?,?,?,?,?,?)`,
       )
-      .run(id, input.profileId, 'QUEUED', input.operatorLabel, at, at);
+      .run(id, input.profileId, 'QUEUED', input.operatorLabel, at, at, name);
     const job = this.getJob(id);
     if (!job) throw new ShuttleError('UNKNOWN', 'jobの作成直後に読み出せませんでした');
     return job;

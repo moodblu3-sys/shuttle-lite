@@ -31,6 +31,7 @@ export type JobState = 'QUEUED' | 'SCANNING' | 'RUNNING' | 'PAUSED' | 'COMPLETED
 
 export interface MigrationJob {
   readonly id: string;
+  readonly name: string | null;
   readonly profileId: string;
   readonly state: JobState;
   readonly operatorLabel: string;
