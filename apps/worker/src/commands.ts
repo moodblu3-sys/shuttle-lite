@@ -6,7 +6,7 @@ import {
   toShuttleError,
 } from '@shuttle-lite/core';
 import { parseApprovalRequest } from '@shuttle-lite/routing';
-import { destinationKeys, type WorkerContext } from './context';
+import { destinationKeys, destinationsForJob, type WorkerContext } from './context';
 import { generateReport } from './report';
 
 const RESUMABLE_FROM: ItemState = 'PREFLIGHT';
@@ -51,6 +51,18 @@ async function applyCommand(ctx: WorkerContext, command: JobCommandRecord): Prom
     if (!item || item.jobId !== job.id) {
       throw new ShuttleError('APPROVAL_INVALID', '指定されたitemはこのjobに属していません');
     }
+  }
+  if (
+    [
+      'START_JOB',
+      'RESUME_JOB',
+      'RESCAN_JOB',
+      'RETRY_ITEM',
+      'RETRY_FAILED',
+      'APPROVE_ITEM',
+    ].includes(command.type)
+  ) {
+    ctx = { ...ctx, ...destinationsForJob(ctx, job.id) };
   }
   const telemetry = ctx.store.getProfile(job.profileId)?.snowflakeLoggingEnabled ?? true;
 

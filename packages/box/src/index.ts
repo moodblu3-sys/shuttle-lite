@@ -1,4 +1,5 @@
 export * from './factory';
+export * from './destinations';
 export * from './fake/classify';
 export * from './fake/gateway';
 export * from './fake/state';

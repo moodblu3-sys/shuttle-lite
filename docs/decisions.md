@@ -42,6 +42,12 @@
 
 - AIはextractとdestination suggestionを担当する
 - AIへ任意のfolder IDを生成させない
+- 2026-09-22: 配置先は「新しい移行」で選んだBoxフォルダーと配下の既存フォルダーに限定する。
+  Webは読み取りAPIで選択範囲を取得し、jobと同一transactionでsnapshotを保存する。
+  Workerと承認画面はそのjobのsnapshotを使い、共通サンプルへfallbackしない。
+  AIには不透明なkeyとフォルダー名・階層を渡す。key→folder IDの対応付けはアプリ側で行う。
+  最終配置前にfolderの存在・階層・名前を確認し、変わっていれば確認待ちに戻す。
+  `config/destinations.json` はfake Box専用。実Boxでは分類先を自動作成しない。
 - MVPでは全件human approvalを必須とする
 - AI無効・失敗・対象外でもmanualに完了できる
 
@@ -50,6 +56,10 @@
 - 共通provenance/routing templateを一つ用意する
 - MVPのbusiness fieldsはdocument type共通のgeneric fieldsに限定する
 - Domain固有templateとfolder metadata/cascadeは自動的にscopeへ追加しない
+- 2026-09-22: 新規の実Box用templateは配置先keyをstringにする。既存templateは変更しない。
+  既存templateがサンプル固定enumの場合、未定義のkeyをenumへ書かず、既存のroutingReasonに
+  配置先pathとkeyを記録する。最終検証ではその記録・承認者・実際の親folder IDを照合する。
+  SQLiteの承認記録とreportには引き続き正確なkey・folder IDを保持する。
 
 ### D-009: Approval identity
 

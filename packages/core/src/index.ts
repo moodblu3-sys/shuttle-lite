@@ -1,4 +1,5 @@
 export * from './dates';
+export * from './destinations';
 export * from './errors';
 export * from './hash';
 export * from './ids';

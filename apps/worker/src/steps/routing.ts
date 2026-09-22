@@ -45,10 +45,11 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
   }
 
   const started = Date.now();
-  const allowed = destinationKeys(ctx);
+  const allowed = [...new Set([...destinationKeys(ctx), ctx.catalog.needsReviewKey])];
   const response = await ctx.gateway.extractStructured({
     fileId: item.boxFileId,
     destinationKeys: allowed,
+    destinations: ctx.catalog.entries,
     fileName: item.sourceFileName,
   });
   const extraction = normalizeExtraction(response, allowed);
@@ -69,7 +70,13 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
     references: extraction.references,
   });
 
-  const outcome = routingOutcome(extraction);
+  const outcome =
+    extraction.suggestedDestinationKey === ctx.catalog.needsReviewKey
+      ? {
+          kind: 'NEEDS_INPUT' as const,
+          reason: extraction.reason ?? '配置先を判断できませんでした。',
+        }
+      : routingOutcome(extraction);
   ctx.store.upsertSuggestion({
     itemId: item.id,
     suggestedDestinationKey: outcome.kind === 'SUGGESTED' ? outcome.destinationKey : null,

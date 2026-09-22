@@ -1354,3 +1354,27 @@ button.ghost:hover:not(:disabled) {
   font-size: 12px;
   color: var(--ink-soft);
 }
+
+.box-folder-browser {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.box-folder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.box-folder-list button {
+  width: 100%;
+  text-align: left;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}

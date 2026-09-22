@@ -61,6 +61,7 @@ describe('sqlite store', () => {
     expect(tables.map((t) => t.name)).toEqual([
       'extraction_results',
       'job_commands',
+      'job_destinations',
       'migration_events',
       'migration_items',
       'migration_jobs',

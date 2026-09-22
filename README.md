@@ -170,7 +170,7 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-  home["トップ<br/>新しい移行<br/>移行名と移行元を指定"]
+  home["トップ<br/>新しい移行<br/>移行名・移行元・Box移行先を指定"]
   progress["進捗<br/>次にやることbanner<br/>phase stepper / 自動更新"]
   review["承認<br/>1行1file<br/>一括承認と詳細編集"]
   report["Report<br/>CSV / JSON<br/>Boxの_reportsへupload"]
@@ -230,12 +230,21 @@ npm run dev                   # web (http://localhost:3000) と worker を別 pr
 ```
 
 http://localhost:3000 の「新しい移行」で移行名を入力し、「フォルダーを選択」から
-Mac標準の選択画面で移行元を選びます。「移行を開始」を押すとworkerがscanから実行します。
+Mac標準の選択画面で移行元を選びます。続けて「Boxから選択」で既存の移行先フォルダーを
+開き、「このフォルダーを選択」を押します。「移行を開始」でworkerがscanから実行します。
 パスの手入力や移行元の事前登録は不要です。フォルダーの選択だけでは移行は始まりません。
 選択ダイアログはアプリを起動したMacに表示されるため、同じMacのブラウザーを使います。
 Webはローカル接続で起動します。Windows・Linuxでのフォルダー選択は未対応です。
 AI分類・同名ファイルの扱い・操作者名は「詳細オプション」にまとめています。
-Box接続と配置先候補は設定画面で確認し、変更は既存の設定ファイルで行います。
+設定画面はBox接続などの共通設定のみです。配置先は移行ごとに選択します。
+AIは選んだフォルダーと、その配下の既存フォルダーの名前・階層を参照します。
+判断できない文書は確認待ちに残り、最終配置には必ず承認が必要です。
+実Boxでは `config/destinations.json` のデモ分類を読み込まず、分類先を自動作成しません。
+一時保管先・レポート用の内部フォルダー作成は従来どおり行います。
+候補は選択範囲全体を取得し、移行作成時に保存します。200フォルダー・20階層を超える場合や
+読み取れない階層がある場合は開始せず、範囲を選び直します。
+移行先が未設定の過去の実Boxジョブは開始・再開できません。履歴とファイルを残したまま、
+「新しい移行」で移行先を選びます。既存のBoxフォルダーやファイルは削除しません。
 全件がreview待ちになったら承認画面で「AI提案どおりN件をまとめて承認」を押すと、
 Box内moveと最終検証まで進みます。
 
@@ -310,7 +319,7 @@ infra/
 fixtures/
   source/       Synthetic migration files（gitignore）
 config/
-  destinations.json  許可済みdestination catalog
+  destinations.json  fake Box・合成デモ専用の分類例
 docs/
 scripts/
 ```

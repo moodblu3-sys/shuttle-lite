@@ -530,6 +530,33 @@ export class FakeBoxGateway implements BoxGateway {
     await this.#throttle();
     const text = readTextHead(this.#state.objectPath(file.id));
     const classification = classifyText(text, file.name, request.destinationKeys);
+    if (request.destinations?.some((entry) => entry.key.startsWith('DEST_'))) {
+      const haystack = `${request.fileName} ${text}`.toLocaleLowerCase();
+      const scored = request.destinations
+        .map((entry) => ({
+          key: entry.key,
+          score: entry.label
+            .split(/[\s/]+/)
+            .filter((word) => word.length >= 2 && haystack.includes(word.toLocaleLowerCase()))
+            .length,
+        }))
+        .filter((entry) => entry.score > 0 && request.destinationKeys.includes(entry.key))
+        .sort((a, b) => b.score - a.score);
+      const best = scored[0];
+      const match = best && best.score !== scored[1]?.score ? best.key : null;
+      return {
+        provider: 'fake-folder-name-matcher',
+        confidence: null,
+        references: [],
+        fields: {
+          ...classification,
+          suggestedDestinationKey: match,
+          reason: match
+            ? 'テスト環境：文書中の語句とフォルダー名が一致しました。'
+            : 'テスト環境：配置先を一意に判断できません。手動で選択してください。',
+        },
+      };
+    }
     return {
       provider: 'fake-heuristic',
       fields: {

@@ -9,7 +9,7 @@ import { getCatalog, getStore } from './runtime';
  */
 export function buildReviewViews(jobId: string, limit = 200): ReviewItemView[] {
   const store = getStore();
-  const { needsReviewKey } = getCatalog();
+  const { needsReviewKey } = getCatalog(jobId);
   return store
     .listItems(jobId, { states: ['REVIEW_REQUIRED', 'NEEDS_REVIEW'], limit })
     .map((item) => {

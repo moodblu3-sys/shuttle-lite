@@ -12,7 +12,7 @@ export async function GET(_request: Request, context: { params: Promise<{ jobId:
   }
   return NextResponse.json({
     items: buildReviewViews(jobId),
-    destinations: getCatalog().entries.map((entry) => ({
+    destinations: getCatalog(jobId).entries.map((entry) => ({
       key: entry.key,
       label: entry.label,
       boxPath: entry.boxPath,

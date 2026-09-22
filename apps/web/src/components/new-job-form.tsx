@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { BoxFolderPicker, type SelectedBoxFolder } from './box-folder-picker';
 import type { FolderSelection } from '../lib/folder-picker';
 
 export function NewJobForm({
@@ -17,6 +18,8 @@ export function NewJobForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [folder, setFolder] = useState<Extract<FolderSelection, { cancelled: false }> | null>(null);
+  const [destination, setDestination] = useState<SelectedBoxFolder | null>(null);
+  const [selectingDestination, setSelectingDestination] = useState(false);
   const [picking, setPicking] = useState(false);
   const pickerRequest = useRef<AbortController | null>(null);
 
@@ -50,9 +53,13 @@ export function NewJobForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || picking) return;
+    if (busy || picking || selectingDestination) return;
     if (!folder) {
       setError('移行元フォルダーを選択してください。');
+      return;
+    }
+    if (!destination) {
+      setError('Boxの移行先フォルダーを選択してください。');
       return;
     }
     const form = new FormData(event.currentTarget);
@@ -65,6 +72,7 @@ export function NewJobForm({
         body: JSON.stringify({
           name: form.get('name'),
           sourceRootPath: folder.path,
+          destinationFolderId: destination.folderId,
           operatorLabel: form.get('operatorLabel'),
           aiRoutingEnabled: aiEnabled && form.get('aiRoutingEnabled') === 'on',
           conflictPolicy: form.get('conflictPolicy'),
@@ -101,7 +109,7 @@ export function NewJobForm({
       </label>
       <div className="source-folder" role="group" aria-labelledby="source-folder-label">
         <span id="source-folder-label" className="small">
-          移行元フォルダー
+          移行元 · このMac
         </span>
         <div className="source-folder-choice">
           <div aria-live="polite">
@@ -125,6 +133,13 @@ export function NewJobForm({
               : 'このMacのフォルダーを選びます。選択だけでは移行は始まりません。'}
         </p>
       </div>
+      <BoxFolderPicker
+        value={destination}
+        onChange={setDestination}
+        onBusyChange={setSelectingDestination}
+        disabled={busy || picking}
+        boxMode={boxMode}
+      />
       <details className="migration-options">
         <summary>詳細オプション</summary>
         <div className="migration-options-body">
@@ -172,7 +187,10 @@ export function NewJobForm({
         >
           キャンセル
         </button>
-        <button type="submit" disabled={busy || picking || !folder}>
+        <button
+          type="submit"
+          disabled={busy || picking || selectingDestination || !folder || !destination}
+        >
           {busy ? '開始しています…' : '移行を開始'}
         </button>
       </div>

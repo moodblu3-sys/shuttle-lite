@@ -1,4 +1,10 @@
-import { type BoxGateway, destinationFolderId } from '@shuttle-lite/box';
+import {
+  assertDestinationCurrent,
+  compatibleRoutingMetadata,
+  destinationRoutingEvidence,
+  type BoxGateway,
+  destinationFolderId,
+} from '@shuttle-lite/box';
 import { type MigrationItem, ShuttleError, withNameSuffix } from '@shuttle-lite/core';
 import {
   buildRoutingMetadata,
@@ -69,23 +75,31 @@ export async function placeItem(ctx: JobContext, item: MigrationItem): Promise<v
   }
 
   const targetFolderId = destinationFolderId(ctx.layout, routing.approvedDestinationKey);
+  const destinations = ctx.store.getJobDestinations(item.jobId);
+  if (destinations) await assertDestinationCurrent(ctx.gateway, destinations, targetFolderId);
   const extraction = ctx.store.latestExtraction(item.id);
   const approved = (routing.approvedMetadata ?? {}) as Record<string, string | null | undefined>;
 
-  await ctx.gateway.updateMetadata(
-    item.boxFileId,
-    buildRoutingMetadata({
-      documentType: approved.documentType ?? extraction?.documentType ?? null,
-      businessDomain: approved.businessDomain ?? extraction?.businessDomain ?? null,
-      businessIdentifier: approved.businessIdentifier ?? extraction?.businessIdentifier ?? null,
-      effectiveDate: approved.effectiveDate ?? extraction?.effectiveDate ?? null,
-      suggestedTags: approved.suggestedTags ?? extraction?.suggestedTags.join(',') ?? null,
-      suggestedDestinationKey: routing.suggestedDestinationKey,
-      approvedDestinationKey: routing.approvedDestinationKey,
-      routingReason: approved.routingReason ?? routing.suggestionReason ?? null,
-      approvedBy: routing.operatorLabel,
-    }),
-  );
+  let metadata = buildRoutingMetadata({
+    documentType: approved.documentType ?? extraction?.documentType ?? null,
+    businessDomain: approved.businessDomain ?? extraction?.businessDomain ?? null,
+    businessIdentifier: approved.businessIdentifier ?? extraction?.businessIdentifier ?? null,
+    effectiveDate: approved.effectiveDate ?? extraction?.effectiveDate ?? null,
+    suggestedTags: approved.suggestedTags ?? extraction?.suggestedTags.join(',') ?? null,
+    suggestedDestinationKey: routing.suggestedDestinationKey,
+    approvedDestinationKey: routing.approvedDestinationKey,
+    routingReason: approved.routingReason ?? routing.suggestionReason ?? null,
+    approvedBy: routing.operatorLabel,
+  });
+  if (destinations) {
+    const target = destinations.entries.find((entry) => entry.folderId === targetFolderId)!;
+    metadata = {
+      ...metadata,
+      routingReason: `${metadata.routingReason ?? ''} ${destinationRoutingEvidence(target)}`,
+    };
+    metadata = compatibleRoutingMetadata(metadata, await ctx.gateway.getMetadataTemplate());
+  }
+  await ctx.gateway.updateMetadata(item.boxFileId, metadata);
 
   // The original name is restored only at final placement; staging used the
   // deterministic name so that recovery could find it. 同名衝突を操作者が
@@ -265,7 +279,26 @@ export async function finalVerify(ctx: JobContext, item: MigrationItem): Promise
       `必須provenance metadataが不足しています: ${missing.join(', ')}`,
     );
   }
-  if (metadata?.approvedDestinationKey !== routing.approvedDestinationKey) {
+  let destinationRecorded = metadata?.approvedDestinationKey === routing.approvedDestinationKey;
+  const destinations = ctx.store.getJobDestinations(item.jobId);
+  if (!destinationRecorded && destinations) {
+    const template = await ctx.gateway.getMetadataTemplate();
+    const field = template?.fields.find((entry) => entry.key === 'approvedDestinationKey');
+    const target = destinations.entries.find(
+      (entry) => entry.key === routing.approvedDestinationKey,
+    );
+    // A legacy fixed enum cannot store a new key. Verify the exact evidence
+    // written to the existing string field, plus the actual folder ID above.
+    destinationRecorded = Boolean(
+      target &&
+      field?.type === 'enum' &&
+      !field.options?.includes(routing.approvedDestinationKey) &&
+      typeof metadata?.routingReason === 'string' &&
+      metadata.routingReason.endsWith(destinationRoutingEvidence(target)) &&
+      metadata.approvedBy === routing.operatorLabel,
+    );
+  }
+  if (!destinationRecorded) {
     throw new ShuttleError(
       'METADATA_SCHEMA',
       'approvedDestinationKeyがmetadataに反映されていません',

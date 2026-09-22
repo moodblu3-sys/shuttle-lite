@@ -40,7 +40,7 @@ export function loadCachedLayout(config: AppConfig): BoxLayout | null {
     if (config.box.stagingFolderId && layout.stagingRootFolderId !== config.box.stagingFolderId) {
       return null;
     }
-    return layout;
+    return config.box.mode === 'real' ? { ...layout, destinations: {} } : layout;
   } catch {
     return null;
   }
@@ -87,7 +87,7 @@ export async function ensureBoxLayout(
     config.box.reportsFolderId ?? (await gateway.ensureFolder(root.id, REPORTS_FOLDER_NAME)).id;
 
   const destinations: Record<string, string> = {};
-  for (const entry of catalog.entries) {
+  for (const entry of config.box.mode === 'fake' ? catalog.entries : []) {
     const segments = segmentsUnderRoot(entry.boxPath);
     if (segments.length === 0) {
       destinations[entry.key] = root.id;

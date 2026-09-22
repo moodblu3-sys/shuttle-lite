@@ -3,20 +3,25 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MigrationJob } from '@shuttle-lite/core';
 import { POST } from '../apps/web/src/app/api/jobs/route';
-import { getCatalog, getConfig, getStore } from '../apps/web/src/lib/runtime';
+import { getBoxGateway, getCatalog, getConfig, getStore } from '../apps/web/src/lib/runtime';
 import { approveItem, createHarness, runUntilIdle, type Harness } from './harness';
 
 vi.mock('../apps/web/src/lib/runtime', () => ({
   getCatalog: vi.fn(),
+  getBoxGateway: vi.fn(),
   getConfig: vi.fn(),
   getStore: vi.fn(),
 }));
+
+let destinationFolderId: string;
 
 function request(body: unknown): Request {
   return new Request('http://localhost/api/jobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(
+      body && typeof body === 'object' ? { destinationFolderId, ...body } : body,
+    ),
   });
 }
 
@@ -25,6 +30,8 @@ describe('creating a migration without registering a source first', () => {
 
   beforeEach(async () => {
     harness = await createHarness();
+    destinationFolderId = (await harness.gateway.ensureFolder('0', '営業部')).id;
+    vi.mocked(getBoxGateway).mockReturnValue(harness.gateway);
     vi.mocked(getStore).mockReturnValue(harness.store);
     vi.mocked(getConfig).mockReturnValue(harness.config);
     vi.mocked(getCatalog).mockReturnValue(harness.catalog);
@@ -64,7 +71,7 @@ describe('creating a migration without registering a source first', () => {
     expect(item.state).toBe('REVIEW_REQUIRED');
     expect(item.boxSha1).toBe(source.sha1);
     expect(item.finalFolderId).toBeNull();
-    approveItem(harness, item, 'LEGAL_CONTRACTS');
+    approveItem(harness, item, harness.store.getJobDestinations(job.id)!.entries[0]!.key);
     await runUntilIdle(harness);
     expect(harness.store.getItem(item.id)).toMatchObject({
       state: 'COMPLETED',
@@ -108,6 +115,10 @@ describe('creating a migration without registering a source first', () => {
 
   it.each([
     { name: '' },
+    { destinationFolderId: undefined },
+    { destinationFolderId: '0' },
+    { destinationFolderId: '../outside' },
+    { destinationFolderId: 'missing-folder' },
     { name: 'x'.repeat(101) },
     { sourceRootPath: 'relative/path' },
     { sourceRootPath: '~/Documents' },

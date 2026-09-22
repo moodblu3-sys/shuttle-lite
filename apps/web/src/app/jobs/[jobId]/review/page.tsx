@@ -16,12 +16,12 @@ export default async function ReviewPage({ params }: { params: Promise<{ jobId: 
         key={jobId}
         jobId={jobId}
         items={buildReviewViews(jobId)}
-        destinations={getCatalog().entries.map((entry) => ({
+        destinations={getCatalog(jobId).entries.map((entry) => ({
           key: entry.key,
           label: entry.label,
           boxPath: entry.boxPath,
         }))}
-        needsReviewKey={getCatalog().needsReviewKey}
+        needsReviewKey={getCatalog(jobId).needsReviewKey}
         defaultOperatorLabel={job.operatorLabel}
         boxLinkBase={getConfig().box.mode === 'real' ? 'https://app.box.com/file/' : null}
       />

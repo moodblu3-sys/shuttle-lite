@@ -30,6 +30,12 @@ export const DestinationCatalogSchema = z
 export type DestinationEntryConfig = z.infer<typeof DestinationEntrySchema>;
 export type DestinationCatalogConfig = z.infer<typeof DestinationCatalogSchema>;
 
+export const EMPTY_DESTINATION_CATALOG: DestinationCatalogConfig = {
+  id: 'unselected',
+  needsReviewKey: 'NEEDS_REVIEW',
+  entries: [],
+};
+
 export const DEFAULT_CATALOG_PATH = 'config/destinations.json';
 
 /**

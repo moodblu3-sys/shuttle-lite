@@ -18,7 +18,11 @@ Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋�
 
 ## いまの状態
 
-- 実装はMVP完了。`npm test` 129件green、`npm run verify`（fake Box）18項目green
+- 元のMVPは129テスト・fake Box検証18項目で引き継ぎ済み。以降の変更はdevelopment-plan.md参照。
+- 現在は「新しい移行」でMacの移行元とBoxの既存移行先を選ぶ。配置先はjobごとに保存する。
+- 設定画面に共通の配置先候補は置かない。実Boxでサンプルの分類先を自動作成しない。
+- schema 4へ更新する。過去の実Boxジョブで移行先未設定のものは開始・再開できない。
+  Box上のファイルとローカル履歴は保持する。新しい移行で移行先を選ぶ。
 - 実Boxへの移行は成功済み。Squid（明示proxy）経由も検証済み
 - 検証環境はmacOS。**Windows実機検証は発表後**（D-016）
 - Snowflake sinkは未実装。telemetryはJSONLに出している
@@ -37,7 +41,7 @@ Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋�
 ```bash
 npm ci
 npm run fixtures        # fresh cloneでは先に合成データを生成する
-npm test                 # 129件
+npm test                 # 現行の全テスト
 npm run verify           # fake Boxで18項目の独立検証
 npm run demo             # web(:3000) + worker を production buildで起動
 npm run demo:reset       # local stateを消す（Box側は消えない）
@@ -101,7 +105,7 @@ git apply -R patch.diff        # 当てたものを戻したいとき
 
 ## 残作業（発表まで）
 
-1. デモ通しのリハーサル（「新しい移行」で名前を入力・フォルダーを選択 → 開始 → 承認 → report）
+1. デモ通しのリハーサル（「新しい移行」で名前を入力・Macの移行元とBoxの移行先を選択 → 開始 → 承認 → report）
 2. 発表資料（5W1H。progressや検証詳細は入れない）
 3. 発表後: Windows実機検証、Snowflake sink、TLS interception下の検証
 

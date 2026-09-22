@@ -11,6 +11,7 @@ export interface BoxFolder {
   readonly id: string;
   readonly name: string;
   readonly parentFolderId: string | null;
+  readonly ancestors?: readonly { id: string; name: string }[];
 }
 
 export interface BoxFile {
@@ -130,6 +131,7 @@ export interface AiExtractionRequest {
   readonly fileId: string;
   /** Allowed destination keys. The model may not invent a folder ID. */
   readonly destinationKeys: readonly string[];
+  readonly destinations?: readonly { key: string; label: string; boxPath: string }[];
   readonly fileName: string;
   readonly signal?: AbortSignal;
 }

@@ -221,6 +221,14 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: INITIAL },
   { version: 2, name: 'profile conflict policy', sql: CONFLICT_POLICY },
   { version: 3, name: 'migration display name', sql: JOB_NAME },
+  {
+    version: 4,
+    name: 'job destination snapshot',
+    sql: `CREATE TABLE job_destinations (
+      job_id TEXT PRIMARY KEY REFERENCES migration_jobs(id),
+      snapshot TEXT NOT NULL
+    ) STRICT;`,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

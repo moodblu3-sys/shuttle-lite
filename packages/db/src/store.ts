@@ -8,6 +8,7 @@ import {
   type ItemState,
   type JobCommandRecord,
   type JobState,
+  type JobDestinations,
   type MigrationEventRecord,
   type MigrationItem,
   type MigrationJob,
@@ -251,6 +252,20 @@ export class ShuttleStore {
     const job = this.getJob(id);
     if (!job) throw new ShuttleError('UNKNOWN', 'jobの作成直後に読み出せませんでした');
     return job;
+  }
+
+  /** Insert only: a later migration must not change an earlier approval's meaning. */
+  saveJobDestinations(jobId: string, destinations: JobDestinations): void {
+    this.db
+      .prepare('INSERT INTO job_destinations (job_id, snapshot) VALUES (?, ?)')
+      .run(jobId, JSON.stringify(destinations));
+  }
+
+  getJobDestinations(jobId: string): JobDestinations | null {
+    const row = this.db
+      .prepare('SELECT snapshot FROM job_destinations WHERE job_id = ?')
+      .get(jobId) as { snapshot: string } | undefined;
+    return row ? (JSON.parse(row.snapshot) as JobDestinations) : null;
   }
 
   getJob(id: string): MigrationJob | null {

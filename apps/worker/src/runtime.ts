@@ -1,7 +1,7 @@
 import { ensureJobStagingFolder } from '@shuttle-lite/box';
 import { type ItemState, type MigrationItem, sleep, toShuttleError } from '@shuttle-lite/core';
 import { processCommands } from './commands';
-import type { JobContext, WorkerContext } from './context';
+import { destinationsForJob, type JobContext, type WorkerContext } from './context';
 import { advanceItem, PLACEMENT_SCOPE, ROUTING_SCOPE, TRANSFER_SCOPE } from './pipeline';
 import { reconcileJob } from './reconcile';
 import { LocalSourceAdapter } from './source/local';
@@ -100,6 +100,19 @@ export class WorkerRuntime {
       return false;
     }
 
+    let destinations: Pick<WorkerContext, 'catalog' | 'layout'>;
+    try {
+      destinations = destinationsForJob(this.#ctx, job.id);
+    } catch (error) {
+      const failure = toShuttleError(error);
+      this.#ctx.store.setJobState(job.id, 'PAUSED', {
+        pauseRequested: true,
+        lastError: failure.message,
+        lastErrorCategory: failure.category,
+      });
+      return true;
+    }
+
     const stagingFolderId = await ensureJobStagingFolder(
       this.#ctx.gateway,
       this.#ctx.layout,
@@ -111,6 +124,7 @@ export class WorkerRuntime {
 
     const ctx: JobContext = {
       ...this.#ctx,
+      ...destinations,
       job,
       profile,
       source: new LocalSourceAdapter({ rootPath: profile.sourceRootPath }),

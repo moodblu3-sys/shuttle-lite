@@ -14,12 +14,16 @@ import {
   layoutPath,
   migrationTemplateSpec,
 } from '@shuttle-lite/box';
-import { loadConfig, loadDestinationCatalog } from '@shuttle-lite/config';
+import {
+  EMPTY_DESTINATION_CATALOG,
+  loadConfig,
+  loadDestinationCatalog,
+} from '@shuttle-lite/config';
 import { createLogger, toShuttleError } from '@shuttle-lite/core';
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel, { script: 'bootstrap-box' });
-const catalog = loadDestinationCatalog();
+const catalog = config.box.mode === 'fake' ? loadDestinationCatalog() : EMPTY_DESTINATION_CATALOG;
 const gateway = createBoxGateway(config, logger);
 const skipTemplate = process.argv.includes('--skip-template');
 

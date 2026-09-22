@@ -3,7 +3,9 @@ import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { NextResponse } from 'next/server';
-import { getCatalog, getConfig, getStore } from '../../../lib/runtime';
+import { getConfig, getStore } from '../../../lib/runtime';
+import { destinationError, readJobDestinations } from '../../../lib/box-destinations';
+import type { JobDestinations } from '@shuttle-lite/core';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,8 +50,17 @@ export async function POST(request: Request) {
     if (!profile) {
       return NextResponse.json({ error: '登録済みの移行元が見つかりません。' }, { status: 404 });
     }
+    let destinations: JobDestinations | null = null;
+    if (body.destinationFolderId !== undefined || getConfig().box.mode === 'real') {
+      try {
+        destinations = await readJobDestinations(body.destinationFolderId);
+      } catch (error) {
+        return NextResponse.json(destinationError(error), { status: 400 });
+      }
+    }
     const job = store.transaction(() => {
       const created = store.createJob({ profileId: profile.id, operatorLabel });
+      if (destinations) store.saveJobDestinations(created.id, destinations);
       if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB');
       return created;
     });
@@ -57,7 +68,7 @@ export async function POST(request: Request) {
   }
 
   const name = typeof body.name === 'string' ? body.name.trim() : '';
-  const sourceRootPath = typeof body.sourceRootPath === 'string' ? body.sourceRootPath.trim() : '';
+  const sourceRootPath = typeof body.sourceRootPath === 'string' ? body.sourceRootPath : '';
   if (!name || name.length > 100) {
     return NextResponse.json({ error: '移行名を1〜100文字で入力してください。' }, { status: 400 });
   }
@@ -93,8 +104,13 @@ export async function POST(request: Request) {
     );
   }
 
+  let destinations: JobDestinations;
+  try {
+    destinations = await readJobDestinations(body.destinationFolderId);
+  } catch (error) {
+    return NextResponse.json(destinationError(error), { status: 400 });
+  }
   const config = getConfig();
-  const catalog = getCatalog();
   const store = getStore();
   // Each job retains its own settings; an incomplete creation must leave no profile or job behind.
   const job = store.transaction(() => {
@@ -102,7 +118,7 @@ export async function POST(request: Request) {
       name: `migration-${randomUUID()}`,
       sourceRootPath,
       targetStagingFolderId: config.box.stagingFolderId ?? 'resolved-at-runtime',
-      destinationCatalogId: catalog.id,
+      destinationCatalogId: 'job:' + destinations.rootFolderId,
       proxyProfileName: config.proxy.mode === 'off' ? 'none' : config.proxy.mode,
       metadataTemplateKey: config.box.metadataTemplateKey,
       fileConcurrency: config.limits.fileConcurrency,
@@ -112,6 +128,7 @@ export async function POST(request: Request) {
       conflictPolicy: body.conflictPolicy === 'SKIP' ? 'SKIP' : 'RENAME',
     });
     const created = store.createJob({ name, profileId: profile.id, operatorLabel });
+    store.saveJobDestinations(created.id, destinations);
     if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB');
     return created;
   });

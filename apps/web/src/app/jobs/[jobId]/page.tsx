@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { buildJobSnapshot } from '@shuttle-lite/telemetry';
 import { JobIdentity } from '../../../components/job-card';
 import { ProgressView } from '../../../components/progress-view';
-import { getStore } from '../../../lib/runtime';
+import { getConfig, getStore } from '../../../lib/runtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +12,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
   const snapshot = buildJobSnapshot(store, jobId);
   if (!snapshot) notFound();
   const profile = store.getProfile(snapshot.job.profileId);
+  const destinations = store.getJobDestinations(jobId);
 
   return (
     <div className="page-content">
@@ -38,6 +39,17 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
           <span className="mono">{profile?.sourceRootPath ?? '-'}</span>
         </p>
       </div>
+
+      {destinations ? (
+        <p className="small muted">
+          移行先：{destinations.rootFolderName}（選択時の既存フォルダー{' '}
+          {destinations.entries.length}件）
+        </p>
+      ) : getConfig().box.mode === 'real' ? (
+        <p className="error">
+          この移行にはBoxの移行先が設定されていません。「新しい移行」で移行先を選択してください。既存のファイルと履歴は残っています。
+        </p>
+      ) : null}
 
       {snapshot.job.lastError ? (
         <p className="error">
