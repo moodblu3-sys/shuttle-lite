@@ -495,3 +495,11 @@
   align-items: center;
   gap: 10px;
 }
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 16px;
+}

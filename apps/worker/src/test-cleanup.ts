@@ -58,8 +58,16 @@ export async function processTestCleanup(ctx: WorkerContext): Promise<boolean> {
             'BOX_NOT_FOUND',
             '対象の所在を確認できません。Box上で確認してください',
           );
-        const metadata = await ctx.gateway.getMetadata(file.id);
-        if (metadata?.migrationJobId !== job.id || metadata?.migrationItemId !== item.id) {
+        const businessMode = ctx.store.getJobMetadata(job.id) !== null;
+        const owned = businessMode
+          ? ctx.store.hasUploadRecord(job.id, item.id, file.id)
+          : await ctx.gateway
+              .getMetadata(file.id)
+              .then(
+                (metadata) =>
+                  metadata?.migrationJobId === job.id && metadata?.migrationItemId === item.id,
+              );
+        if (!owned) {
           throw new ShuttleError(
             'STATE_INVALID',
             'このテストが転送したファイルであることを確認できません',
@@ -68,6 +76,10 @@ export async function processTestCleanup(ctx: WorkerContext): Promise<boolean> {
         if (
           !item.boxSha1 ||
           !item.boxFileVersionId ||
+          !item.sourceSha1 ||
+          file.sha1 !== item.sourceSha1 ||
+          file.size !== item.sourceSize ||
+          file.size !== item.boxSize ||
           file.sha1 !== item.boxSha1 ||
           file.versionId !== item.boxFileVersionId
         ) {
@@ -76,11 +88,7 @@ export async function processTestCleanup(ctx: WorkerContext): Promise<boolean> {
             '転送後に内容またはバージョンが変更されています',
           );
         }
-        const allowedParents = [
-          job.stagingFolderId,
-          item.finalFolderId,
-          ...(snapshot?.entries.map((entry) => entry.folderId) ?? []),
-        ].filter(Boolean);
+        const allowedParents = [job.stagingFolderId, item.finalFolderId].filter(Boolean);
         if (!file.parentFolderId || !allowedParents.includes(file.parentFolderId)) {
           throw new ShuttleError('STATE_INVALID', 'ファイルがテストの配置先から移動されています');
         }

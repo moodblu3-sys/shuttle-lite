@@ -95,6 +95,7 @@ describe('sqlite store', () => {
       'test_deleted_files',
       'upload_parts',
       'upload_sessions',
+      'worker_heartbeats',
     ]);
   });
 

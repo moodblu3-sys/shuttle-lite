@@ -1,11 +1,17 @@
 import { notFound } from 'next/navigation';
 import { ReviewList } from '../../../../components/review-list';
-import { buildReviewViews } from '../../../../lib/review';
+import { buildReviewPage } from '../../../../lib/review';
 import { getCatalog, getConfig, getStore } from '../../../../lib/runtime';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ReviewPage({ params }: { params: Promise<{ jobId: string }> }) {
+export default async function ReviewPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ jobId: string }>;
+  searchParams: Promise<{ page?: string | string[]; q?: string | string[] }>;
+}) {
   const { jobId } = await params;
   const job = getStore().getJob(jobId);
   if (!job) notFound();
@@ -18,13 +24,20 @@ export default async function ReviewPage({ params }: { params: Promise<{ jobId: 
       </div>
     );
 
+  const search = await searchParams;
+  const { items, ...pagination } = buildReviewPage(
+    jobId,
+    Number(Array.isArray(search.page) ? search.page[0] : (search.page ?? 1)),
+    (Array.isArray(search.q) ? search.q[0] : search.q) ?? '',
+  );
   return (
     <>
       <ReviewList
-        key={jobId}
+        key={`${jobId}:${pagination.page}:${pagination.query}`}
         metadataTemplates={getStore().getJobMetadata(jobId) ?? []}
         jobId={jobId}
-        items={buildReviewViews(jobId)}
+        items={items}
+        pagination={pagination}
         destinations={getCatalog(jobId).entries.map((entry) => ({
           key: entry.key,
           label: entry.label,

@@ -100,6 +100,7 @@ for (const [index, state] of PIPELINE_STATES.entries()) {
 }
 
 export interface PhaseCountable {
+  readonly count?: number;
   readonly state: ItemState;
   readonly resumeState: ItemState | null;
 }
@@ -127,12 +128,12 @@ export function buildPhaseCounters(items: readonly PhaseCountable[]): PhaseCount
       if (!bucket) continue;
       if (phase === 'TELEMETRY' || !range) continue;
       if (item.state === 'COMPLETED' || progress > range.max) {
-        bucket.done += 1;
+        bucket.done += item.count ?? 1;
       } else if (currentPhase === phase) {
-        if (failed) bucket.failed += 1;
-        else bucket.active += 1;
+        if (failed) bucket.failed += item.count ?? 1;
+        else bucket.active += item.count ?? 1;
       } else {
-        bucket.pending += 1;
+        bucket.pending += item.count ?? 1;
       }
     }
   }

@@ -181,6 +181,11 @@ export class ShuttleStore {
 
   constructor(db: SqliteDatabase, options: { telemetryPayload?: TelemetryPayloadBuilder } = {}) {
     this.db = db;
+    db.function('search_text', { deterministic: true }, (value) =>
+      String(value ?? '')
+        .normalize('NFKC')
+        .toLocaleLowerCase('ja'),
+    );
     this.#telemetryPayload = options.telemetryPayload ?? null;
   }
 
@@ -799,6 +804,53 @@ export class ShuttleStore {
     return Object.fromEntries(rows.map((row) => [row.state, row.count]));
   }
 
+  countItemsByPhaseState(
+    jobId: string,
+  ): Array<{ state: ItemState; resumeState: ItemState | null; count: number }> {
+    return this.db
+      .prepare(
+        `SELECT state, resume_state AS resumeState, COUNT(*) AS count
+      FROM migration_items WHERE job_id = ? GROUP BY state, resume_state`,
+      )
+      .all(jobId) as Array<{ state: ItemState; resumeState: ItemState | null; count: number }>;
+  }
+
+  reviewPage(jobId: string, requestedPage = 1, query = '') {
+    const pageSize = 100;
+    const normalized = query.trim().slice(0, 200).normalize('NFKC').toLocaleLowerCase('ja');
+    const where = `job_id = ? AND state IN ('REVIEW_REQUIRED', 'NEEDS_REVIEW')
+      AND (instr(search_text(source_relative_path), ?) > 0
+      OR instr(search_text(source_file_name), ?) > 0
+      OR instr(search_text(CASE WHEN (SELECT suggestion_source FROM routing_decisions WHERE item_id = migration_items.id) = 'AI'
+        THEN (SELECT reason FROM extraction_results WHERE item_id = migration_items.id ORDER BY attempt DESC, created_at DESC LIMIT 1)
+        ELSE '' END), ?) > 0)`;
+    const values = [jobId, normalized, normalized, normalized];
+    return this.transaction(() => {
+      const { total } = this.db
+        .prepare(`SELECT COUNT(*) AS total FROM migration_items WHERE ${where}`)
+        .get(...values) as { total: number };
+      const page = Math.min(
+        Math.max(1, Math.ceil(total / pageSize)),
+        Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+      );
+      const rows = this.db
+        .prepare(
+          `SELECT * FROM migration_items WHERE ${where}
+        ORDER BY source_relative_path, id LIMIT ? OFFSET ?`,
+        )
+        .all(...values, pageSize, (page - 1) * pageSize) as ItemRow[];
+      const counts = this.countItemsByState(jobId);
+      return {
+        items: rows.map(mapItem),
+        total,
+        page,
+        pageSize,
+        query: query.trim().slice(0, 200),
+        allTotal: (counts.REVIEW_REQUIRED ?? 0) + (counts.NEEDS_REVIEW ?? 0),
+      };
+    });
+  }
+
   byteTotals(jobId: string): { totalBytes: number; transferredBytes: number } {
     const row = this.db
       .prepare(
@@ -1007,6 +1059,54 @@ export class ShuttleStore {
       ExtractionRow | undefined;
     if (!row) throw new ShuttleError('UNKNOWN', 'extraction結果を読み出せませんでした');
     return mapExtraction(row);
+  }
+
+  cachedExtraction(itemId: string, key: string): ExtractionResultRecord | null {
+    const row = this.db
+      .prepare(
+        'SELECT * FROM extraction_results WHERE item_id = ? AND classification_key = ? ORDER BY attempt DESC LIMIT 1',
+      )
+      .get(itemId, key) as ExtractionRow | undefined;
+    return row ? mapExtraction(row) : null;
+  }
+
+  cacheExtraction(extractionId: string, key: string): void {
+    this.db
+      .prepare('UPDATE extraction_results SET classification_key = ? WHERE id = ?')
+      .run(key, extractionId);
+  }
+
+  hasUploadRecord(jobId: string, itemId: string, fileId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare(
+          `SELECT 1 FROM migration_events
+      WHERE job_id = ? AND item_id = ? AND box_file_id = ?
+      AND phase = 'UPLOAD' AND status = 'SUCCEEDED' LIMIT 1`,
+        )
+        .get(jobId, itemId, fileId),
+    );
+  }
+
+  heartbeat(workerId: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO worker_heartbeats (worker_id, last_seen) VALUES (?, ?)
+      ON CONFLICT(worker_id) DO UPDATE SET last_seen = excluded.last_seen`,
+      )
+      .run(workerId, nowIso());
+  }
+
+  removeHeartbeat(workerId: string): void {
+    this.db.prepare('DELETE FROM worker_heartbeats WHERE worker_id = ?').run(workerId);
+  }
+
+  isWorkerAvailable(now = Date.now()): boolean {
+    return Boolean(
+      this.db
+        .prepare('SELECT 1 FROM worker_heartbeats WHERE last_seen >= ? LIMIT 1')
+        .get(new Date(now - 15_000).toISOString()),
+    );
   }
 
   latestExtraction(itemId: string): ExtractionResultRecord | null {

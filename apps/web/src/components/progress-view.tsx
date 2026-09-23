@@ -47,7 +47,13 @@ export function ProgressView({
     <>
       <ProgressIdentity snapshot={snapshot} profile={profile} />
       {children}
-      <NextActionBanner jobId={jobId} snapshot={snapshot} />
+      {snapshot.workerUnavailable ? (
+        <p className="error" role="alert">
+          転送処理の応答がありません
+        </p>
+      ) : (
+        <NextActionBanner jobId={jobId} snapshot={snapshot} />
+      )}
 
       <div className="card">
         <div className="card-head">

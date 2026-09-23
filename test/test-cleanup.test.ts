@@ -18,7 +18,7 @@ describe('test run cleanup', () => {
     vi.restoreAllMocks();
     h.cleanup();
   });
-  async function staged(testMode = true) {
+  async function staged(testMode = true, businessMode = false) {
     h.writeSource('契約書.txt', '業務委託契約書 契約番号 LEG-2026-0042');
     h.writeSource('検討メモ.txt', '検討メモ 案件未定');
     const job = h.store.createJob({
@@ -26,6 +26,7 @@ describe('test run cleanup', () => {
       operatorLabel: 'test',
       testMode,
     });
+    if (businessMode) h.store.saveJobMetadata(job.id, []);
     h.store.enqueueCommand(job.id, 'START_JOB');
     await runUntilIdle(h);
     return job;
@@ -53,6 +54,34 @@ describe('test run cleanup', () => {
     expect(h.store.listCommands(job.id).find((c) => c.type === 'RESCAN_JOB')!.state).toBe(
       'REJECTED',
     );
+  });
+  it('cleans new metadata jobs before and after approval without a legacy metadata instance', async () => {
+    const job = await staged(true, true);
+    const items = h.store.listItems(job.id);
+    expect(await h.gateway.getMetadata(items[0]!.boxFileId!)).toBeNull();
+    approveItem(h, items[0]!, h.catalog.entries[0]!.key);
+    await runUntilIdle(h);
+    expect(h.store.getItem(items[0]!.id)?.state).toBe('COMPLETED');
+    h.store.enqueueCommand(job.id, 'END_TEST');
+    await runUntilIdle(h);
+    expect(h.store.getJob(job.id)?.cleanupState).toBe('DONE');
+    for (const item of items) expect(await h.gateway.getFile(item.boxFileId!)).toBeNull();
+  });
+  it('keeps new-mode files without a matching upload record or moved to another candidate', async () => {
+    const job = await staged(true, true);
+    const items = h.store.listItems(job.id);
+    h.store.db
+      .prepare("DELETE FROM migration_events WHERE item_id = ? AND phase = 'UPLOAD'")
+      .run(items[0]!.id);
+    await h.gateway.moveFile({
+      fileId: items[1]!.boxFileId!,
+      targetFolderId: h.ctx.layout.destinations[h.catalog.entries[0]!.key]!,
+    });
+    const remove = vi.spyOn(h.gateway, 'deleteTestFile');
+    h.store.enqueueCommand(job.id, 'END_TEST');
+    await runUntilIdle(h);
+    expect(h.store.getJob(job.id)?.cleanupState).toBe('FAILED');
+    expect(remove).not.toHaveBeenCalled();
   });
   it('refuses a normal run even if a cleanup command bypasses the web API', async () => {
     const job = await staged(false);

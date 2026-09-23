@@ -279,6 +279,14 @@ export const MIGRATIONS: readonly Migration[] = [
       template_id TEXT, values_json TEXT NOT NULL
     ) STRICT;`,
   },
+  {
+    version: 9,
+    name: 'classification cache and worker heartbeat',
+    sql: `ALTER TABLE extraction_results ADD COLUMN classification_key TEXT;
+    CREATE TABLE worker_heartbeats (
+      worker_id TEXT PRIMARY KEY, last_seen TEXT NOT NULL
+    ) STRICT;`,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

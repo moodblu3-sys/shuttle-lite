@@ -1,5 +1,11 @@
 'use client';
 
+import {
+  loadReviewDraft,
+  saveReviewDraft,
+  validReviewDraft,
+  type SavedReviewDraft,
+} from '../lib/review-drafts';
 import type { TemplateMapping } from '@shuttle-lite/core';
 import { BusinessMetadataFields } from './business-metadata-fields';
 import { FilePreviewButton } from './file-preview-dialog';
@@ -30,6 +36,7 @@ export function ReviewList({
   defaultOperatorLabel,
   boxLinkBase,
   metadataTemplates = [],
+  pagination,
 }: {
   jobId: string;
   items: readonly ReviewItemView[];
@@ -38,15 +45,14 @@ export function ReviewList({
   defaultOperatorLabel: string;
   boxLinkBase: string | null;
   metadataTemplates?: readonly TemplateMapping[];
+  pagination?: { page: number; pageSize: number; total: number; allTotal: number; query: string };
 }) {
   const router = useRouter();
   const [operatorLabel, setOperatorLabel] = useState(defaultOperatorLabel);
-  const [edits, setEdits] = useState<Record<string, { revision: string; draft: ApprovalDraft }>>(
-    {},
-  );
+  const [edits, setEdits] = useState<Record<string, SavedReviewDraft>>({});
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
   const [activeId, setActiveId] = useState<string | null>(items[0]?.itemId ?? null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(pagination?.query ?? '');
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
   const [submitted, setSubmitted] = useState<Record<string, ReviewCommandView>>({});
@@ -75,7 +81,7 @@ export function ReviewList({
   function currentDraft(item: ReviewItemView) {
     const edit = edits[item.itemId];
     // Never reuse edits against a new worker snapshot (version, error or AI result).
-    return edit?.revision === reviewRevision(item) ? edit.draft : draftFor(item);
+    return validReviewDraft(item, edit) ? edit!.draft : draftFor(item);
   }
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -83,6 +89,29 @@ export function ReviewList({
     }, 3000);
     return () => window.clearInterval(timer);
   }, [router]);
+
+  useEffect(() => {
+    try {
+      const restored: Record<string, SavedReviewDraft> = {};
+      for (const item of items) {
+        const draft = loadReviewDraft(window.localStorage, item);
+        if (draft) restored[item.itemId] = draft;
+      }
+      setEdits((previous) => {
+        for (const item of items) {
+          if (validReviewDraft(item, previous[item.itemId]))
+            restored[item.itemId] = previous[item.itemId]!;
+        }
+        return restored;
+      });
+    } catch {
+      setError('下書きを保存できません。ブラウザーの保存設定を確認してください。');
+    }
+  }, [items]);
+
+  function pageUrl(page: number, search = query) {
+    return `/jobs/${jobId}/review?${new URLSearchParams({ page: String(page), q: search })}`;
+  }
 
   function isSelected(item: ReviewItemView) {
     return selected.get(item.itemId) === reviewRevision(item);
@@ -93,10 +122,19 @@ export function ReviewList({
       next.delete(item.itemId);
       return next;
     });
-    setEdits((previous) => ({
-      ...previous,
-      [item.itemId]: { revision: reviewRevision(item), draft: { ...currentDraft(item), ...patch } },
-    }));
+    const draft = { ...currentDraft(item), ...patch };
+    let saved: SavedReviewDraft = {
+      revision: reviewRevision(item),
+      commandId: item.reviewCommand?.id ?? null,
+      draft,
+      savedAt: Date.now(),
+    };
+    try {
+      saved = saveReviewDraft(window.localStorage, item, draft);
+    } catch {
+      setError('下書きを保存できません。ブラウザーの保存設定を確認してください。');
+    }
+    setEdits((previous) => ({ ...previous, [item.itemId]: saved }));
   }
   function toggleGroup(group: readonly ReviewItemView[]) {
     const available = group.filter((item) => !isReviewPending(item, submitted[item.itemId]));
@@ -254,7 +292,7 @@ export function ReviewList({
     group: readonly ReviewItemView[],
     bulk: boolean,
   ) {
-    const visible = group.filter((item) => matchesReviewSearch(item, query));
+    const visible = pagination ? group : group.filter((item) => matchesReviewSearch(item, query));
     if (visible.length === 0) return null;
     const available = visible.filter((item) => !isReviewPending(item, submitted[item.itemId]));
     return (
@@ -325,25 +363,37 @@ export function ReviewList({
         </ol>
         <div className={styles.toolbar}>
           <div>
-            全 <strong>{items.length}</strong> 件
-            <span className={styles.count}>
-              承認待ち{' '}
-              <strong>
-                {groups.reduce(
-                  (sum, group) =>
-                    sum +
-                    group.items.filter((item) => !isReviewPending(item, submitted[item.itemId]))
-                      .length,
-                  0,
-                )}
-              </strong>
-            </span>
-            <span className={`${styles.count} ${styles.warning}`}>未選択 {undecided.length}</span>
-            {attention.length ? (
-              <span className={styles.warning}>要対応 {attention.length}</span>
+            全 <strong>{pagination?.allTotal ?? items.length}</strong> 件
+            {!pagination || pagination.allTotal <= pagination.pageSize ? (
+              <>
+                <span className={styles.count}>
+                  承認待ち{' '}
+                  <strong>
+                    {groups.reduce(
+                      (sum, group) =>
+                        sum +
+                        group.items.filter((item) => !isReviewPending(item, submitted[item.itemId]))
+                          .length,
+                      0,
+                    )}
+                  </strong>
+                </span>
+                <span className={`${styles.count} ${styles.warning}`}>
+                  未選択 {undecided.length}
+                </span>
+                {attention.length ? (
+                  <span className={styles.warning}>要対応 {attention.length}</span>
+                ) : null}
+              </>
             ) : null}
           </div>
-          <div className={styles.search}>
+          <form
+            className={styles.search}
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (pagination) router.push(pageUrl(1));
+            }}
+          >
             <Icon kind="search" />
             <input
               type="search"
@@ -352,11 +402,17 @@ export function ReviewList({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
-          </div>
+            {pagination ? (
+              <button type="submit" className={styles.textButton}>
+                検索
+              </button>
+            ) : null}
+          </form>
         </div>
-        {query ? (
+        {(pagination ? pagination.query : query) ? (
           <p className={styles.searchResult}>
-            検索結果 {items.filter((item) => matchesReviewSearch(item, query)).length}件
+            検索結果{' '}
+            {pagination?.total ?? items.filter((item) => matchesReviewSearch(item, query)).length}件
           </p>
         ) : null}
         <div className={styles.list}>
@@ -368,14 +424,39 @@ export function ReviewList({
           {items.length === 0 ? (
             <div className={styles.empty}>
               <Icon kind="check" />
-              <h2>承認待ちなし</h2>
+              <h2>{pagination?.query ? '該当するファイルなし' : '承認待ちなし'}</h2>
               <a href={`/jobs/${jobId}`}>進捗画面へ戻る →</a>
             </div>
-          ) : !items.some((item) => matchesReviewSearch(item, query)) ? (
+          ) : !pagination && !items.some((item) => matchesReviewSearch(item, query)) ? (
             <p className={styles.empty}>該当するファイルなし</p>
           ) : null}
         </div>
         <footer className={styles.approvalBar}>
+          {pagination && pagination.total > pagination.pageSize ? (
+            <nav className={styles.pagination} aria-label="承認一覧のページ">
+              <button
+                type="button"
+                className={styles.textButton}
+                disabled={busy || pagination.page <= 1}
+                onClick={() => router.push(pageUrl(pagination.page - 1, pagination.query))}
+              >
+                前へ
+              </button>
+              <span>
+                {(pagination.page - 1) * pagination.pageSize + 1}–
+                {Math.min(pagination.page * pagination.pageSize, pagination.total)} /{' '}
+                {pagination.total}件
+              </span>
+              <button
+                type="button"
+                className={styles.textButton}
+                disabled={busy || pagination.page * pagination.pageSize >= pagination.total}
+                onClick={() => router.push(pageUrl(pagination.page + 1, pagination.query))}
+              >
+                次へ
+              </button>
+            </nav>
+          ) : null}
           {error ? (
             <p className="error" role="alert">
               {error}

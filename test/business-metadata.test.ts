@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   normalizeBusinessValues,
+  ShuttleError,
   templateId,
   type MigrationItem,
   type TemplateMapping,
 } from '@shuttle-lite/core';
 import { demoBusinessTemplates } from '../packages/box/src/fake/business-templates';
 import { createHarness, runUntilIdle, approveItem, type Harness } from './harness';
+import { runRouting } from '../apps/worker/src/steps/routing';
 import { processCommands } from '../apps/worker/src/commands';
 import { applyBusinessMetadata } from '../apps/worker/src/business-metadata';
 
@@ -104,6 +106,44 @@ describe('document-specific business metadata', () => {
     });
     expect(await h.gateway.getMetadata(c.boxFileId!)).toBeNull();
     expect(h.store.getItem(c.id)?.boxFileId).toBe(c.boxFileId);
+  });
+
+  it('reuses successful classification when metadata extraction needs a retry', async () => {
+    h.writeSource('contract.txt', '契約書\n契約先：青葉株式会社');
+    const classify = vi.spyOn(h.gateway, 'extractStructured');
+    const fields = vi
+      .spyOn(h.gateway, 'extractTemplate')
+      .mockRejectedValueOnce(new ShuttleError('AI_NOT_READY', 'pending', { retryAfterMs: 0 }));
+    const { items } = await stage();
+    expect(items[0]?.state).toBe('REVIEW_REQUIRED');
+    expect(classify).toHaveBeenCalledTimes(1);
+    expect(fields).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains classification across worker recreation and invalidates it when file identity changes', async () => {
+    h.writeSource('contract.txt', '契約書\n契約先：青葉株式会社');
+    const { job, items } = await stage(false);
+    const item = items[0]!;
+    h.store.updateItem(item.id, { state: 'AI_PENDING' });
+    const classify = vi.spyOn(h.gateway, 'extractStructured');
+    const fields = vi
+      .spyOn(h.gateway, 'extractTemplate')
+      .mockRejectedValueOnce(new ShuttleError('AI_NOT_READY', 'pending', { retryAfterMs: 0 }));
+    await expect(
+      runRouting({ ...(await h.jobContext(job.id)), aiEnabled: true }, h.store.getItem(item.id)!),
+    ).rejects.toThrow('pending');
+    await runRouting(
+      { ...(await h.jobContext(job.id)), aiEnabled: true },
+      h.store.getItem(item.id)!,
+    );
+    expect(classify).toHaveBeenCalledTimes(1);
+    expect(fields).toHaveBeenCalledTimes(2);
+    h.store.updateItem(item.id, { state: 'AI_PENDING', boxFileVersionId: 'another-version' });
+    await runRouting(
+      { ...(await h.jobContext(job.id)), aiEnabled: true },
+      h.store.getItem(item.id)!,
+    );
+    expect(classify).toHaveBeenCalledTimes(2);
   });
 
   it('allows manual template and values with AI off and rejects stale template selections', async () => {

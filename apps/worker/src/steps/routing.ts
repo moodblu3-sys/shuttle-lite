@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { prepareDocumentMetadata } from '../business-metadata';
 import { type MigrationItem, ShuttleError } from '@shuttle-lite/core';
 import { normalizeExtraction, routingOutcome } from '@shuttle-lite/routing';
@@ -47,32 +48,62 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
 
   const started = Date.now();
   const allowed = [...new Set([...destinationKeys(ctx), ctx.catalog.needsReviewKey])];
-  const response = await ctx.gateway.extractStructured({
-    fileId: item.boxFileId,
-    ...(ctx.store.getJobMetadata(item.jobId)
-      ? { documentTypes: ['契約書', '請求書', 'その他'] }
-      : {}),
-    destinationKeys: allowed,
-    destinations: ctx.catalog.entries,
-    fileName: item.sourceFileName,
-  });
-  const extraction = normalizeExtraction(response, allowed);
-  const attempt = ctx.store.countExtractionAttempts(item.id) + 1;
-  ctx.store.insertExtraction({
-    itemId: item.id,
-    attempt,
-    provider: extraction.provider,
-    rawFields: extraction.rawFields,
-    documentType: extraction.documentType,
-    businessDomain: extraction.businessDomain,
-    businessIdentifier: extraction.businessIdentifier,
-    effectiveDate: extraction.effectiveDate,
-    suggestedDestinationKey: extraction.suggestedDestinationKey,
-    suggestedTags: extraction.suggestedTags,
-    reason: extraction.reason,
-    confidence: extraction.confidence,
-    references: extraction.references,
-  });
+  const cacheKey = createHash('sha256')
+    .update(
+      JSON.stringify([
+        item.boxFileId,
+        item.boxFileVersionId,
+        item.boxSha1,
+        item.sourceSha1,
+        allowed,
+        ctx.catalog.entries,
+        ctx.store.getJobMetadata(item.jobId),
+      ]),
+    )
+    .digest('hex');
+  let record = ctx.store.cachedExtraction(item.id, cacheKey);
+  if (!record) {
+    const response = await ctx.gateway.extractStructured({
+      fileId: item.boxFileId,
+      ...(ctx.store.getJobMetadata(item.jobId)
+        ? { documentTypes: ['契約書', '請求書', 'その他'] }
+        : {}),
+      destinationKeys: allowed,
+      destinations: ctx.catalog.entries,
+      fileName: item.sourceFileName,
+    });
+    const normalized = normalizeExtraction(response, allowed);
+    const attempt = ctx.store.countExtractionAttempts(item.id) + 1;
+    record = ctx.store.transaction(() => {
+      const record = ctx.store.insertExtraction({
+        itemId: item.id,
+        attempt,
+        provider: normalized.provider,
+        rawFields: normalized.rawFields,
+        documentType: normalized.documentType,
+        businessDomain: normalized.businessDomain,
+        businessIdentifier: normalized.businessIdentifier,
+        effectiveDate: normalized.effectiveDate,
+        suggestedDestinationKey: normalized.suggestedDestinationKey,
+        suggestedTags: normalized.suggestedTags,
+        reason: normalized.reason,
+        confidence: normalized.confidence,
+        references: normalized.references,
+      });
+
+      ctx.store.cacheExtraction(record.id, cacheKey);
+      return record;
+    });
+  }
+  const extraction = normalizeExtraction(
+    {
+      provider: record.provider,
+      fields: record.rawFields,
+      confidence: record.confidence,
+      references: record.references,
+    },
+    allowed,
+  );
 
   await prepareDocumentMetadata(ctx, item, extraction.documentType);
 

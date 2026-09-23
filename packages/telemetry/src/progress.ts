@@ -51,6 +51,7 @@ export interface JobSnapshot {
   readonly failedItems: number;
   /** True while the worker still has transfer or AI work it can do. */
   readonly working: boolean;
+  readonly workerUnavailable: boolean;
   readonly nextAction: NextAction;
   readonly outbox: { pending: number; failed: number; delivered: number };
   readonly errorCategories: ReadonlyArray<{ category: string; count: number }>;
@@ -77,6 +78,8 @@ const TRANSFERRED: readonly ItemState[] = [
   'COMPLETED',
 ];
 const ACTIVE: readonly ItemState[] = [
+  'DISCOVERED',
+  'AI_COMPLETED',
   'HASHING',
   'PREFLIGHT',
   'READY',
@@ -120,7 +123,7 @@ export function buildJobSnapshot(store: ShuttleStore, jobId: string): JobSnapsho
   const commands = store.listJobOperations(jobId);
   const counts = store.countItemsByState(jobId);
   const bytes = store.byteTotals(jobId);
-  const items = store.listItems(jobId, { limit: 10_000 });
+  const totalItems = Object.values(counts).reduce((sum, count) => sum + count, 0);
   const series = recordSample(jobId, bytes.transferredBytes);
   const rate = throughputBytesPerSecond(series);
 
@@ -132,14 +135,20 @@ export function buildJobSnapshot(store: ShuttleStore, jobId: string): JobSnapsho
   const failedItems = counts.FAILED ?? 0;
   const completedItems = counts.COMPLETED ?? 0;
   const skippedItems = counts.SKIPPED ?? 0;
-  const working = items.some((item) => ACTIVE.includes(item.state));
+  const working = sum(ACTIVE) > 0;
+  const needsWorker =
+    store.hasOutstandingCommands(jobId) ||
+    ['REQUESTED', 'RUNNING'].includes(job.cleanupState) ||
+    (job.cleanupState === 'NONE' &&
+      !job.pauseRequested &&
+      (job.state === 'SCANNING' || (job.state === 'RUNNING' && working)));
 
   return {
     job,
     commands,
     counts,
-    phases: buildPhaseCounters(items),
-    totalItems: items.length,
+    phases: buildPhaseCounters(store.countItemsByPhaseState(jobId)),
+    totalItems,
     processedItems,
     transferredItems,
     completedItems,
@@ -151,9 +160,10 @@ export function buildJobSnapshot(store: ShuttleStore, jobId: string): JobSnapsho
     reviewBacklog,
     failedItems,
     working,
+    workerUnavailable: needsWorker && !store.isWorkerAvailable(),
     nextAction: decideNextAction({
       job,
-      totalItems: items.length,
+      totalItems,
       reviewBacklog,
       failedItems,
       processedItems,
@@ -164,18 +174,15 @@ export function buildJobSnapshot(store: ShuttleStore, jobId: string): JobSnapsho
     }),
     outbox: store.outboxStatus(jobId),
     errorCategories: store.errorCategoryCounts(jobId),
-    activeItems: items
-      .filter((item) => ACTIVE.includes(item.state))
-      .slice(0, 12)
-      .map((item) => ({
-        itemId: item.id,
-        sourceRelativePath: item.sourceRelativePath,
-        state: item.state,
-        bytesTransferred: item.bytesTransferred,
-        sourceSize: item.sourceSize,
-        retryCount: item.retryCount,
-        lastErrorCategory: item.lastErrorCategory,
-      })),
+    activeItems: store.listItems(jobId, { states: ACTIVE, limit: 12 }).map((item) => ({
+      itemId: item.id,
+      sourceRelativePath: item.sourceRelativePath,
+      state: item.state,
+      bytesTransferred: item.bytesTransferred,
+      sourceSize: item.sourceSize,
+      retryCount: item.retryCount,
+      lastErrorCategory: item.lastErrorCategory,
+    })),
     recentEvents: store.listEvents(jobId, { limit: 25 }),
     at: new Date().toISOString(),
   };

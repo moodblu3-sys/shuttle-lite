@@ -50,21 +50,35 @@ export class WorkerRuntime {
 
   async run(): Promise<void> {
     const idle = this.#options.idleDelayMs ?? 500;
-    while (!this.#stopping) {
-      let worked = false;
+    this.#ctx.store.heartbeat(this.#ctx.workerId);
+    const heartbeat = setInterval(() => {
       try {
-        worked = (await processCommands(this.#ctx)) > 0;
-        worked = (await this.tick()) || worked;
-      } catch (error) {
-        const shuttleError = toShuttleError(error);
-        this.#ctx.logger.error('worker tick failed', {
-          category: shuttleError.category,
-          message: shuttleError.message,
-        });
+        this.#ctx.store.heartbeat(this.#ctx.workerId);
+      } catch {
+        this.requestStop();
       }
-      if (!worked) await sleep(idle);
+    }, 5_000);
+    heartbeat.unref();
+    try {
+      while (!this.#stopping) {
+        let worked = false;
+        try {
+          worked = (await processCommands(this.#ctx)) > 0;
+          worked = (await this.tick()) || worked;
+        } catch (error) {
+          const shuttleError = toShuttleError(error);
+          this.#ctx.logger.error('worker tick failed', {
+            category: shuttleError.category,
+            message: shuttleError.message,
+          });
+        }
+        if (!worked) await sleep(idle);
+      }
+    } finally {
+      clearInterval(heartbeat);
+      this.#releaseCurrentJob();
+      this.#ctx.store.removeHeartbeat(this.#ctx.workerId);
     }
-    this.#releaseCurrentJob();
   }
 
   /** Returns true when the tick did something, so the loop can poll faster. */
