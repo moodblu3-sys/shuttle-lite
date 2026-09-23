@@ -1,6 +1,9 @@
 # Shuttle Lite 要件
 
-更新日: 2026-09-13
+更新日: 2026-09-23（メタデータ・設定・承認の現行仕様を反映）
+
+この文書は要件を記録する。実装・検証済みの範囲は[README](../README.md)と
+[検証状況](acceptance.md)で確認する。特に最新のAI選択精度とSnowflakeの実機確認は未完了。
 
 ## 1. 背景
 
@@ -21,8 +24,8 @@ Shuttle Liteは、Box Shuttleの内部を変更する製品ではない。Box Sh
 しにくい制約環境向けに、Box Platform APIで限定的なmigration pathを実装するPoC
 である。
 
-> local fileをBoxへ移行し、同一job内でprovenance metadata、Box AIによる
-> 配置先提案、人による承認、最終配置、検証、進捗表示、Snowflake loggingまで行う。
+> local fileをBoxへ移行し、Box AIによる配置先・メタデータテンプレートの選択と項目抽出、
+> 人による承認、業務メタデータ付与、最終配置、検証、進捗表示、処理ログの出力を行う。
 > 外部接続は直接でも、企業が許可した非透過型（明示的）proxy経由でも動作する。
 
 proxyは前提条件ではなく、対応する接続形態の一つである。既定は直接接続
@@ -41,18 +44,14 @@ proxyは前提条件ではなく、対応する接続形態の一つである。
 
 ### 4.1 Migration profile
 
-以下の設定を保存できる。
+利用者が入力する場所を分ける。
 
-- Profile name
-- Source root path
-- Target staging folder ID
-- Destination catalog
-- Proxy profile
-- Metadata template key
-- File concurrency
-- Chunk concurrency
-- AI routingの有効・無効
-- Snowflake loggingの有効・無効
+- 共通設定: 使用するメタデータテンプレート、AI分類、並列数、ログ出力先。
+- 新しい移行: 移行名、Macの移行元フォルダー、Boxの移行先、移行ごとの詳細オプション。
+- `.env`: 認証情報、プロキシ・CAなどの接続設定。
+
+profileは内部記録として保持するが、移行元の事前登録は求めない。
+Boxの配置先候補は選択したフォルダーとその配下の既存フォルダーから作り、移行ごとに保存する。
 
 Credentialとproxy passwordはprofileへ平文保存しない。
 
@@ -145,7 +144,15 @@ stagingへのupload後、以下を確認する。
 
 検証前のitemを転送完了として扱わない。
 
-### 4.8 Provenance metadata
+### 4.8 業務メタデータと移行記録
+
+新規移行では、設定で複数選択したBoxテンプレートから文書に合うものを選び、項目を抽出する。
+承認前はSQLiteの下書きとして保持し、承認後にBoxへ付与する。
+値の確認・編集は承認画面の詳細に置き、全件の項目確認を必須にしない。
+テンプレート未選択なら業務メタデータを付けない。AIが有効な場合は手動選択後も自動抽出する。
+
+移行ID、元のファイル情報、SHA-1、検証結果はローカルDBとレポートに保持する。
+以下の共通メタデータは旧方式で作成済みのジョブだけに適用し、新規移行には付けない。
 
 共通のmigration metadata templateへ以下を保存する。
 
@@ -164,7 +171,8 @@ Extract結果の受領とMetadata APIへの書き込みは別工程とする。m
 
 ### 4.9 Box AI extraction and routing suggestion
 
-Box AI Structured Extractで、MVPでは以下のgeneric fieldsを取得する。
+Box AI Structured Extractで配置先を判定する。分類用の項目は以下で、
+新方式ではこれらを共通のBoxメタデータとして書き込まない。
 
 - `documentType`
 - `businessDomain`
@@ -173,6 +181,10 @@ Box AI Structured Extractで、MVPでは以下のgeneric fieldsを取得する�
 - `suggestedDestinationKey`
 - `suggestedTags`
 - `reason`
+- `metadataTemplateId`（有効なテンプレート候補がある場合）
+
+テンプレート選択は名前だけの固定ルールにせず、文書本文と候補の名前・項目をAIへ渡す。
+該当なし・区別不能は`NONE`とし、候補外のIDも採用しない。決まったテンプレートで別途項目抽出する。
 
 利用できる場合だけconfidence scoreとreferenceを保存し、取得できない値を生成しない。
 抽出field confidenceとdestination提案の正解確率を同一視しない。
@@ -182,7 +194,8 @@ Box AI Structured Extractで、MVPでは以下のgeneric fieldsを取得する�
 AIへ任意のfolder IDを生成させない。事前に許可したkeyとBox folder IDを
 application側で対応付ける。
 
-例:
+実Boxでは利用者が選んだフォルダー配下の既存フォルダーを候補にする。
+以下はfake Boxと旧MVPの検証用カタログであり、共通設定の既定の配置先ではない。
 
 ```text
 LEGAL_CONTRACTS  → /Shuttle Lite/destinations/Legal/Contracts
@@ -195,18 +208,19 @@ NEEDS_REVIEW     → /Shuttle Lite/_needs_review
 
 ### 4.11 Human approval
 
-画面に以下を表示する。
+通常の一覧は配置先ごとにまとめ、ファイル名・テンプレート・抽出状況を表示する。
+詳細では以下を扱う。
 
 - Source file
 - Box file IDまたはPreview/link
-- Extracted values
+- Extracted values（「項目を確認・編集」を開いた場合）
 - Suggested destination
 - Reason
-- Confidenceとreference（取得できた場合）
 - Proposed metadata
 
 利用者はapprove、destination変更、metadata修正、skip、needs reviewを選べる。
-MVPではhigh confidenceでも自動moveしない。
+配置先が決まったファイルをチェックボックスで一括承認できる。抽出失敗は個別対応に分ける。
+テンプレートを変更すると、AIが有効なら自動抽出する。AIの判断だけで自動moveはしない。
 
 承認recordは少なくとも以下へ結び付ける。
 
@@ -233,7 +247,7 @@ move後に以下を確認する。
 - Final parent folder ID
 - Size
 - SHA-1
-- 必須provenance metadata
+- 必須provenance metadata（旧方式のジョブのみ）
 - 採用したbusiness metadata
 - Approval record
 

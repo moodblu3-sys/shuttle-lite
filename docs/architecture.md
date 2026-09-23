@@ -1,9 +1,12 @@
 # Shuttle Lite Architecture
 
+現行仕様の確認日: 2026-09-23（実装`cff6760`、schema 10）。操作手順は[README](../README.md)、
+設定と抽出の詳細は[metadata-templates.md](metadata-templates.md)を参照する。
+
 ## 1. Architecture goals
 
 - macOSで開発・実証できる
-- file contentをbrowserや独自cloudへ送らない
+- 転送はローカルファイルからBoxへ直接行う。プレビューはBoxの表示機能を利用する
 - long-running transferをWeb request lifecycleから分離する
 - process crashとunknown API outcomeから復旧できる
 - upload、metadata、AI、approval、move、Snowflakeを独立してretryできる
@@ -11,33 +14,21 @@
 
 ## 2. Logical components
 
-```text
-Browser
-  │ localhost
-  ▼
-Next.js Web
-  ├── Command API
-  ├── Review API
-  └── SSE progress
-        │
-        ▼
-      SQLite
-  ┌─────┼───────────────┐
-  │     │               │
-  ▼     ▼               ▼
-Transfer Worker    Routing Worker    Snowflake Outbox Worker
-  │                  │                 │
-  │                  │                 └── proxy ── Snowflake
-  │                  │
-  │                  └── proxy ── Box AI / Metadata / Move API
-  │
-  └── source stream ── explicit proxy ── Box Upload API
+```mermaid
+flowchart TB
+  web["ローカルWeb UI"] --> db[("SQLite")]
+  worker["移行Worker"] --> db
+  worker --> source["移行元フォルダー"]
+  worker --> box["Box：転送・AI・メタデータ・配置"]
+  sender["ログ送信処理"] --> db
+  sender --> sink["ローカルログ または Snowflake"]
 ```
 
-MVPでは各Workerを一つのNode.js process内の別queueとして実装してもよい。ただし
-Next.js Route Handler内でlong-running operationを実行しない。
+WebとWorkerは別プロセス。Worker内で転送・分類・配置の独立した枠とログ送信を実行する。
+BoxとSnowflakeへの接続は、設定に応じて直接または明示プロキシ経由となる。
+Next.js Route Handler内で長時間の転送・AI処理を実行しない。
 
-## 3. Planned repository boundaries
+## 3. Repository boundaries
 
 ```text
 apps/web
@@ -98,19 +89,14 @@ deterministicな名前を使う。
 
 ### 4.3 Metadata
 
-1. Verified staging fileへprovenance metadataを作る
-2. 409の場合は既存instanceを読み、同一job/itemか確認する
-3. updateまたはno-opを決定する
-4. Boxへの反映結果をSQLiteへ保存する
+1. 設定で有効にした既存のBoxテンプレートを候補にする。
+2. AIが文書本文と候補の名前・項目からテンプレートを選び、その項目を抽出する。
+3. テンプレート・抽出値・抽出状況をSQLiteへ保存し、承認を待つ。
+4. 承認後、項目定義と承認内容の整合性を確認してBoxへ付与し、ファイルをmoveする。
+5. Box側の値を読み直して検証する。テンプレート未選択なら業務メタデータは付けない。
 
-MVPの共通templateは一つに限定する。
-
-```text
-ShuttleLiteMigration
-```
-
-複数document type固有のfieldsを無制限に増やさず、基本版はgenericなbusiness fields
-だけを扱う。
+新方式では共通の移行管理テンプレートを付けない。旧共通メタデータ方式で作成済みのジョブは、
+転送検証後にprovenanceを付ける従来の処理を維持する。判定は`job_metadata`の行の有無で行う。
 
 ## 5. AI routing
 
@@ -129,9 +115,14 @@ effectiveDate
 suggestedDestinationKey
 suggestedTags
 reason
+metadataTemplateId（新方式で候補がある場合）
 ```
 
 `suggestedDestinationKey`はdestination catalogのenumに限定する。
+`metadataTemplateId`は有効な候補IDと`NONE`に限定し、アプリでも候補外を採用しない。
+テンプレート決定後の項目抽出は別リクエストで行う。分類結果はファイルの同一性と候補を含むキーで
+キャッシュし、項目抽出の再試行だけなら分類を呼び直さない。
+手動でテンプレートを変更した場合も、AIが有効なら自動で項目を抽出する。
 
 ### 5.3 Decision ownership
 
@@ -149,11 +140,14 @@ AI responseだけではmoveできない。backendがapproval recordとcurrent fi
 
 - AI disabled
 - Unsupported file type
-- AI request failure
+- AIが対象外・出力不正の場合（新方式の項目抽出では「抽出失敗」として下書きを残す）
 - Missing result
 - Unknown destination key
 - Stale approval
 - File version changed
+
+一時的なAPIエラーはretry、認証・権限などの恒久的エラーはfailedとして扱う。
+承認画面からの抽出失敗は下書きの抽出状況へ記録し、詳細から再抽出できる。
 
 ## 6. Approval model
 

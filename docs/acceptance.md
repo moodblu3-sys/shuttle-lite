@@ -1,6 +1,20 @@
-# MVP acceptance criteria の検証状況
+# 検証状況と旧MVPの実測記録
 
-更新日: 2026-09-14
+更新日: 2026-09-23
+
+## 現行版の検証範囲
+
+実装`cff6760`で自動テスト410件、fake Box検証22項目、型チェック・lint・本番ビルドが成功。
+自動テストには候補テンプレートの受け渡し、不正なAI回答の不採用、自動抽出、抽出失敗と再抽出、
+詳細を開かない一括承認、旧DBの更新を含む。
+独立した22項目の`verify`は旧共通メタデータ方式のfixtureによる転送検証。
+新方式は`test/business-metadata.test.ts`などの自動テストとMac側の実Box確認で検証する。
+
+最新のテンプレート自動選択の精度と実Boxでの通し確認、実Snowflakeへの送信、Windows実機、
+TLS interception環境は未検証。fake Boxは決定的な合成応答であり、Box AIの分類精度の証拠にはしない。
+
+以下の実Box・Squidの成功記録は旧共通メタデータ方式のMVPで取得したもの。
+最新仕様の操作確認は[メタデータの確認項目](metadata-templates.md)に従う。
 
 [要件 section 8](requirements.md) の15項目に対して、どこで検証しているかを示す。
 `npm test` で実行できるものを「自動」、実Box/実proxyが必要なものを「実機」と区別する。
@@ -8,7 +22,7 @@
 ## 3つの検証レイヤ
 
 ```sh
-npm test                    # 115件。unitとpipelineのin-process test
+npm test                    # 現行のunit・UI・pipelineの自動テスト
 npm run verify -- --faults  # 22項目。fake Boxへ全件移行し、保存されたbyteと照合
 npm run verify -- --real    # 18項目。実Box enterpriseへ全件移行し、Box側と照合
 npm run verify:box          # 8項目。1 fileだけの疎通確認（API単位の確認用）

@@ -10,13 +10,18 @@ ChatGPTを設計・実装・自動テストの主担当とし、GitHub経由で�
 
 ## このプロダクトは何か
 
-macOSのlocal folderからBoxへfileを移し、移行元のpathと検証結果をBox metadataとして
-残す移行tool。Box AIが配置先を提案し、人が承認してから初めてBox内でmoveする。
+macOSのローカルフォルダーからBoxへファイルを移し、書類に合う業務メタデータを付けるツール。
+Box AIが配置先とテンプレートを選択して項目を抽出し、人の承認後に付与・Box内moveを行う。
+移行元の情報や検証結果はローカルDBとレポートに残し、新しい移行では共通の管理用メタデータを付けない。
 Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋めるPoC。
 
 詳細は `README.md`、判断の理由は `docs/decisions.md`。
 
 ## いまの状態
+
+- 現行の実装基準は`cff6760`（2026-09-23）。自動テスト410件、fake Box検証22項目、型チェック・lint・本番ビルド成功。現行schemaは10。
+- 通常の画面フローは「アップロード → AI分類 → 確認・承認 → 配置」。配置はBox内moveで、再アップロードではない。
+- 最新のテンプレート自動選択の精度・抽出結果・承認画面の実Box通し確認はMac側で行う。下記の過去の実Box成功記録とは区別する。
 
 - メタデータ設定は使用するテンプレートの複数選択式。分類時に文書本文と候補テンプレートの名前・項目をBox AIへ渡し、テンプレートIDを選ばせて自動抽出する。候補外・曖昧・該当なしは未選択。既存の書類別移行の承認画面にも有効な候補を反映する。
 - schema 10: メタデータの抽出状況を保存する。承認一覧にテンプレート名・抽出状況を表示し、項目は「項目を確認・編集」の中に折りたたむ。手動選択後もAI有効なら自動抽出する。抽出失敗は対応が必要なファイルとして表示し、詳細から再抽出・手入力できる。
@@ -30,14 +35,14 @@ Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋�
 - 操作・設定変更時は実行中のステップを待って反映する。長時間処理中のジョブ実行権を定期更新する。
 - schema 8: 新規ジョブは書類別のBoxメタデータテンプレートを使用する。設定画面の「メタデータ」で使用するテンプレートを選ぶ。
 - AIによるテンプレート選択・抽出→一覧で確認・承認→Boxへ付与。抽出値の確認・修正は必要な場合だけ詳細を開く。新規ジョブには旧Shuttle Lite Migrationを付けない。
-- 移行前の設定とCursorへのBox CLI依頼は [metadata-templates.md](metadata-templates.md)。既存ジョブは旧方式を維持する。
+- 移行前の設定とCursorへのBox CLI依頼は [metadata-templates.md](metadata-templates.md)。旧共通メタデータ方式で作成済みのジョブだけは旧方式を維持する。
 
 - 元のMVPは129テスト・fake Box検証18項目で引き継ぎ済み。以降の変更はdevelopment-plan.md参照。
 - 現在は「新しい移行」でMacの移行元とBoxの既存移行先を選ぶ。配置先はjobごとに保存する。
 - 設定画面に共通の配置先候補は置かない。実Boxでサンプルの分類先を自動作成しない。
-- schema 4へ更新する。過去の実Boxジョブで移行先未設定のものは開始・再開できない。
+- schema 4以降、過去の実Boxジョブで移行先未設定のものは開始・再開できない。
   Box上のファイルとローカル履歴は保持する。新しい移行で移行先を選ぶ。
-- 実Boxへの移行は成功済み。Squid（明示proxy）経由も検証済み
+- 旧メタデータ方式で実Boxへの移行とSquid（明示proxy）経由の通信を検証済み
 - 検証環境はmacOS。**Windows実機検証は発表後**（D-016）
 - 設定画面でAI分類・並列数・処理ログを保存できる（schema 5）。
 - Snowflake SQL API sinkを実装。JSONLと切り替え可能。実Snowflake検証は未実施。設定はdocs/settings.md参照。
@@ -62,7 +67,7 @@ Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋�
 npm ci
 npm run fixtures        # fresh cloneでは先に合成データを生成する
 npm test                 # 現行の全テスト
-npm run verify           # fake Boxで18項目の独立検証
+npm run verify -- --faults # fake Boxで22項目の独立検証（障害ケースを含む）
 npm run demo             # web(:3000) + worker を production buildで起動
 npm run demo:reset       # local stateを消す（Box側は消えない）
 ```
@@ -125,7 +130,7 @@ git apply -R patch.diff        # 当てたものを戻したいとき
 
 ## 残作業（発表まで）
 
-1. デモ通しのリハーサル（「新しい移行」で名前を入力・Macの移行元とBoxの移行先を選択 → 開始 → 承認 → report）
+1. 最新仕様の実Box通し確認（使用テンプレートを設定 → 新しい移行 → 自動選択・抽出 → 一括承認 → Boxの配置先と業務メタデータを確認）
 2. 発表資料（5W1H。progressや検証詳細は入れない）
 3. 発表後: Windows実機検証、Snowflake実機検証、TLS interception下の検証
 

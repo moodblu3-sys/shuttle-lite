@@ -5,9 +5,26 @@ Shuttle Liteは、Box Shuttleが標準対応しにくい制約環境を補完す
 
 > Shuttleが届きにくい場所へ、軽やかに。
 
-local fileをBoxへ移行し、書類種別に応じた業務メタデータを付与します。Box AIが許可済みの
-配置先から候補を提案し、人の承認後に最終配置します。処理状態はlocalに保持し、
-運用telemetryをSnowflakeへ記録します。
+ローカルフォルダーのファイルをBoxへ移行し、文書に合う業務メタデータを付与します。
+Box AIが配置先とメタデータテンプレートを提案し、人の承認後に最終配置します。
+処理状態はローカルのSQLiteに保持し、処理ログはローカルフォルダーまたはSnowflakeへ出力します。
+
+## 利用の流れ
+
+**アップロード → AI分類 → 確認・承認 → 配置**
+
+1. Macの`.env`でBox認証を設定し、アプリを起動します。認証方式はCCGまたはアクセストークンです。
+2. 「設定」で使用するBoxメタデータテンプレートを複数選択します。AI分類・並列数・ログ出力先もここで設定します。
+3. 「新しい移行」で移行名、Macの移行元フォルダー、Boxの移行先を指定します。
+4. ファイルをBoxの一時保管先へアップロードし、Box AIが配置先・テンプレートを選んで項目を抽出します。
+5. 承認一覧で提案を確認し、チェックボックスでまとめて承認します。抽出値は必要なときだけ「項目を確認・編集」を開きます。
+6. 承認したメタデータを付与して最終フォルダーへ移動し、内容と配置結果を検証します。ファイルIDは維持し、再アップロードしません。
+
+元ファイルは残します。同名ファイルは上書きせず、改名または除外で扱います。
+AI分類をオフにした場合も自動配置はせず、承認画面で配置先を指定します。
+
+事前設定と移行ごとの入力は分けています。詳細は[設定](docs/settings.md)と
+[メタデータの準備](docs/metadata-templates.md)を参照してください。
 
 外部接続は直接でも、**非透過型（明示的）proxy経由でも動作します**。proxyは前提
 条件ではありません。既定は直接接続で、proxyが必要な環境では設定で切り替えます。
@@ -23,9 +40,13 @@ Box AIが文書本文と候補の名前・項目を照合してテンプレー�
 事前準備は [書類別メタデータの設定](docs/metadata-templates.md) を参照してください。
 以下のMVP実測記録には、旧版の共通メタデータ方式の検証結果が含まれます。
 
-## 現在地
+## 検証状況
 
-**実Box enterpriseへの移行を、web UIからの操作で確認済みです。**
+2026-09-23、実装コミット`cff6760`で自動テスト410件、fake Box検証22項目、
+型チェック・lint・本番ビルドが成功しています。これは最新のAI選択精度を実Boxで検証したという意味ではありません。
+
+**旧メタデータ方式では、実Boxへの移行とSquid経由の通信を確認済みです。**
+以下は旧版の実測記録です。最新のテンプレート自動選択・抽出・承認画面は、Mac側での実Box確認が必要です。
 
 - fixture 32件 / 51.0 MB を実Boxへ移行。52MBのfileはchunked uploadで転送
 - UIで「AI提案どおり30件をまとめて承認」を押し、worker がBox内moveと最終検証まで実行
@@ -84,8 +105,8 @@ allowlist拒否)、`PROXY_TLS` を区別します。
 
 ## 全体構成
 
-1台のmachine上で、UIと転送処理を別processに分けています。Web側は状態を書き換えず、
-長時間かかる処理はすべてWorkerが担当します。
+1台のmachine上で、UIと転送処理を別processに分けています。Web側は設定・移行の作成と
+操作要求を保存します。ファイルの移行状態を進める処理はWorkerが担当します。
 
 ```mermaid
 flowchart TB
@@ -145,14 +166,19 @@ sequenceDiagram
   W->>B: upload (50MB以下はdirect、超過はchunked)
   B-->>W: Box file IDとSHA-1
   W->>B: size と SHA-1 を source と照合
-  W->>B: provenance metadataを書き込み
-  W->>B: AI Structured Extract
-  B-->>W: 配置先の提案 (catalogのkeyのみ)
+  W->>B: AI Structured Extract（配置先とテンプレートの候補を指定）
+  B-->>W: 配置先のkeyとテンプレートID
+  opt テンプレートを選択できた場合
+    W->>B: 選択したテンプレートの項目を抽出
+    B-->>W: 抽出値
+  end
+  W->>D: テンプレート・抽出値・抽出状況を保存
   W->>D: REVIEW_REQUIRED として停止
   H->>D: 承認 command を追加
   W->>B: file ID・version・SHA-1・destinationを再確認
+  W->>B: 承認した業務メタデータを付与
   W->>B: Box内でmove (再uploadなし、file IDは不変)
-  W->>B: 最終検証 (親folder / size / SHA-1 / 必須metadata)
+  W->>B: 最終検証 (親folder / size / SHA-1 / 承認したmetadata)
   W->>D: COMPLETED
 ```
 
@@ -165,10 +191,10 @@ stateDiagram-v2
   [*] --> Scan
   Scan --> Upload
   Upload --> Verify
-  Verify --> Metadata
-  Metadata --> Classify
+  Verify --> Classify
   Classify --> AwaitApproval
-  AwaitApproval --> Place: 人が承認
+  AwaitApproval --> Metadata: 人が承認
+  Metadata --> Place
   Place --> FinalVerify
   FinalVerify --> [*]
   AwaitApproval --> Skipped: 人がskip
@@ -182,7 +208,7 @@ stateDiagram-v2
 ```mermaid
 flowchart LR
   home["トップ<br/>新しい移行<br/>移行名・移行元・Box移行先を指定"]
-  progress["進捗<br/>次にやることbanner<br/>phase stepper / 自動更新"]
+  progress["進捗<br/>転送と配置の進み具合<br/>自動更新"]
   review["承認<br/>1行1file<br/>一括承認と詳細編集"]
   report["Report<br/>CSV / JSON<br/>Boxの_reportsへupload"]
 
@@ -194,11 +220,12 @@ flowchart LR
 
 | 画面 | 見えるもの | できること |
 |---|---|---|
-| トップ | 移行の一覧、進捗bar、次にやること | 移行名・移行元を入力して開始 |
+| トップ | 移行の一覧、進捗 | 移行名を入力し、MacとBoxのフォルダーを選んで開始 |
 | 進捗 | 完了 / 承認待ち / 失敗の件数、phaseごとの滞留、転送速度とETA、最近のevent | 一時停止、再開、失敗の再実行、report出力 |
-| 承認 | file名、AI提案、confidence、抽出値、SHA-1、Box file ID | 一括承認、個別承認、配置先の変更、metadata修正、skip |
+| 承認 | ファイル名、配置先、テンプレート、抽出状況 | 一括承認、個別承認、配置先・テンプレート変更、プレビュー、詳細で項目編集、除外 |
+| 設定 | 認証方式、使用するテンプレート、AI分類、並列数、ログ出力先 | テンプレートの複数選択と詳細設定の保存 |
 
-操作はすべてcommandとしてSQLiteへ記録され、workerが実行します。UIから直接state
+移行の開始・承認などの操作はcommandとしてSQLiteへ記録され、workerが実行します。UIから直接state
 を書き換える経路はありません。
 
 ## 失敗したときの扱い
@@ -228,12 +255,16 @@ flowchart TB
 
 ## 動かす
 
+Node.js 22以上とnpmを使用します。デモの動作環境はmacOSです。
+以下は初回にfake Boxで確認する手順です。実Boxで使う場合は`.env`の`BOX_MODE=real`と認証を設定し、
+既存のBox移行先フォルダーと使用するメタデータテンプレートを準備します。
+
 実Boxへの接続はCCGに加え、`.env` の `BOX_ACCESS_TOKEN` にアクセストークンを
 設定する方式にも対応しています。読み取り専用の `npm run check:box` で認証を確認できます。
 設定と差し替え手順は [.envのアクセストークンでBoxに接続する](docs/access-token-setup.md) を参照してください。
 
 ```sh
-npm install
+npm ci
 cp .env.example .env          # 既定は BOX_MODE=fake で credential 不要
 npm run fixtures              # synthetic な 31 件を生成（52MB の chunked 検証用を含む）
 npm run fixtures:pdf          # 業務文書らしいPDFを15件生成（demoとBox AI検証用）
@@ -256,11 +287,12 @@ AIは選んだフォルダーと、その配下の既存フォルダーの名前
 読み取れない階層がある場合は開始せず、範囲を選び直します。
 移行先が未設定の過去の実Boxジョブは開始・再開できません。履歴とファイルを残したまま、
 「新しい移行」で移行先を選びます。既存のBoxフォルダーやファイルは削除しません。
-全件がreview待ちになったら承認画面で「AI提案どおりN件をまとめて承認」を押すと、
-Box内moveと最終検証まで進みます。
+承認画面では、配置先が決まったファイルを行のチェックボックスや「全選択」で選び、
+「選択したN件を承認」を押します。全ファイルの分類終了を待つ必要はありません。
+受付後はworkerがメタデータ付与・Box内move・最終検証を行います。
 
 ```sh
-npm test                      # 118 件のunit / pipeline test
+npm test                      # 現行の自動テスト一式
 npm run verify -- --faults    # fake Boxへ全件移行し、保存されたbyteと照合する
 npm run verify -- --real      # 実Box enterpriseへ全件移行し、Box側と照合する
 npm run verify:box            # 実Boxとの疎通確認（1 fileだけ往復させる）
@@ -269,13 +301,15 @@ npm run typecheck
 npm run demo:reset            # local stateを初期化してfixtureを作り直す
 npm run check:proxy           # proxy経路の確認（Box auth / API / uploadへ到達できるか）
 npm run squid:start           # 検証用の非透過型proxyを立てる（squid:log / squid:stop）
-npm run bootstrap:box         # Box folder layoutとmetadata templateを作成
+npm run bootstrap:box         # 旧MVPの検証用Box環境を作成（通常の利用開始には不要）
 ```
 
-`npm run verify` は隔離した環境でfixture 32件を最後まで移行し、**pipelineが記録した
+`npm run verify` は旧共通メタデータ方式の合成fixtureを隔離環境で最後まで移行し、**pipelineが記録した
 値を使わずに**結果を検証します。fake modeでは保存されたbyteからSHA-1を再計算し、
 実Boxではserver側が算出したSHA-1と突き合わせます。429・crash復旧・metadata失敗の
 シナリオを含めてfake で22項目、実Boxで18項目を確認します。
+書類別メタデータの現行処理は`npm test`の`test/business-metadata.test.ts`などで検証します。
+最新の自動選択・抽出を実Boxで確認する手順は[メタデータの確認項目](docs/metadata-templates.md)を参照してください。
 
 実Boxでは実行ごとに `/Shuttle Lite/_verify/<実行時刻>/` を作り、その下に本番と同じ
 layoutを組みます。本番のdestinationsを汚さず、何度流しても同名衝突しません。
@@ -286,6 +320,9 @@ SHA-1、同名409、chunked session、AI extract、429とRetry-After、represent
 pendingを再現するので、crash recoveryや重複防止をcredentialなしで検証できます。
 
 ## Product boundary
+
+現在のUIはデスクトップ向けのローカルアプリです。フォルダー選択はアプリを起動したMacで行います。
+クラウド常駐、多人数での同時利用、企業SSO、スマートフォンからの操作は対象外です。
 
 MVPは一つのlocal folderと一つのBox enterpriseを対象にします。Box Shuttle内部とは
 連携せず、permission、ownership、full version history、多数のconnector、

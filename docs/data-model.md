@@ -1,6 +1,6 @@
 # データモデルと処理の流れ
 
-更新日: 2026-09-15
+更新日: 2026-09-23（schema 10）
 
 [architecture.md](architecture.md) は設計意図を書いた文書である。この文書は
 **実装されたコードから起こした**もので、SQLiteのtable構成と、workerが実際に
@@ -11,6 +11,9 @@
 - 実行loopの正本: `apps/worker/src/runtime.ts` と `apps/worker/src/pipeline.ts`
 
 ## ER図
+
+以下は転送・承認の中心となるテーブルと主要列の関係を示す。全列を網羅する図ではない。
+後から追加した設定・メタデータ・復旧用テーブルは次の一覧に示す。完全な定義は`migrations.ts`を参照する。
 
 ```mermaid
 erDiagram
@@ -150,10 +153,11 @@ erDiagram
   }
 ```
 
-`snowflake_outbox` だけ外部keyを持たない。これは意図的である。中身は送信用に
+`snowflake_outbox` は外部keyを持たない。中身は送信用に
 allowlistで整形済みのJSON payloadで、migration本体が消えても配信の記録として
 独立に残る必要がある。`event_id` は `migration_events.id` と同じ値を使うので、
-再送しても二重計上されない。
+送信先で重複を識別できる。配信は再送を含み、SnowflakeではEVENT_IDによるMERGE、
+ローカルJSONLではeventIdを使った重複識別を前提とする。
 
 ## 各tableの役割
 
@@ -166,13 +170,26 @@ allowlistで整形済みのJSON payloadで、migration本体が消えても配�
 | `upload_parts` | chunkごとの記録。途中停止時にBox側のlist partsと突き合わせる |
 | `extraction_results` | Box AIの応答。attemptごとに追記するので、何回目の抽出かが残る |
 | `routing_decisions` | AIの提案と**人の承認**。item 1件に1行（UNIQUE制約） |
-| `job_commands` | UIからの操作。UIはここへinsertするだけ |
+| `job_commands` | UIからの操作要求。claim tokenと期限を持ち、処理中断から回復する |
 | `migration_events` | 進捗と失敗の履歴。UI表示とreportの元 |
-| `snowflake_outbox` | Snowflakeへ送る整形済みpayloadの待ち行列 |
+| `snowflake_outbox` | ローカルJSONLまたはSnowflakeへ送る整形済みpayloadの待ち行列 |
+| `job_destinations` | 移行ごとに選んだBoxの既存配置先候補 |
+| `runtime_settings` | 共通のAI分類・並列数・ログ出力先と保存revision |
+| `metadata_settings` | アプリで使用するテンプレートの一覧と保存revision |
+| `job_metadata` | 移行で使うテンプレート定義。行なしは旧方式、空の一覧は新方式の未設定 |
+| `item_metadata` | ファイルごとのテンプレート・抽出値・revision・抽出状況 |
+| `business_metadata_writes` | この移行がBoxへ書き込んだテンプレートの記録。書き込み結果不明からの回復に使う |
+| `test_deleted_files` | テスト終了で削除したファイルの記録 |
+| `worker_heartbeats` | ワーカーの最終応答時刻 |
+
+分類応答の`raw_fields`には選択された`metadataTemplateId`も保持する。`classification_key`は
+ファイル同一性と分類条件を含むキャッシュキー。項目抽出の再試行で分類APIを重複実行しない。
+`item_metadata.extraction_status`は抽出成功・空・失敗・手動入力を区別する。
 
 ## 誰が何を書くか
 
-ここが分かると全体が読めるようになる。**書き込む主体が分かれている。**
+**書き込む主体が分かれている。** 次の図は移行処理の状態更新について示す。
+設定・移行の作成時にはWeb側も対応する設定テーブル・profile・jobを保存する。
 
 ```mermaid
 flowchart LR
@@ -193,11 +210,11 @@ flowchart LR
 
 UIから `migration_items.state` を書き換える経路は存在しない。承認ボタンを押すと
 `job_commands` に `APPROVE_ITEM` が1行入るだけで、実際にBox内moveするのはworkerで
-ある。だから承認画面を何度押しても、Box側で二重に動くことはない。
+ある。workerは現在のファイル状態と承認revisionを照合して古い操作を拒否する。
 
 ## Workerのloop
 
-`apps/worker/src/runtime.ts` の `run()` が回しているのはこれだけである。
+`apps/worker/src/runtime.ts` のジョブ処理の概略は次のとおり。実行中はleaseと稼働時刻も更新する。
 
 ```mermaid
 flowchart TB
@@ -214,7 +231,7 @@ flowchart TB
   rec -->|"済"| scanq
   reconcile --> scanq{"state = SCANNING?"}
   scanq -->|"はい"| scan["scanSource() して RUNNING へ"]
-  scanq -->|"いいえ"| drain["3つのqueueを並行にdrain"]
+  scanq -->|"いいえ"| drain["空いた処理枠へ逐次投入"]
   drain --> fin{"1件も進まなかったか"}
   fin -->|"はい"| maybe["maybeFinishJob()"]
   fin -->|"いいえ"| sleep
@@ -227,7 +244,10 @@ flowchart TB
 ## 3つのqueue
 
 ここが「uploadとAI処理は別queue」の実体である。`pipeline.ts` がstateを3つの
-scopeに分けていて、`runtime.ts` が `Promise.all` で**同時に**drainする。
+scopeに分けていて、`runtime.ts` が各scopeの空いた枠へ逐次投入する。
+分類や配置が遅くても、転送枠が空けば次のファイルを進める。ファイル並列数は1〜5、
+分類と配置は各2。分割転送の1〜4枠は全ファイルで共有する。
+操作・設定変更時は投入を止め、実行中のステップの終了を待って反映する。
 
 ```mermaid
 flowchart LR
@@ -269,9 +289,10 @@ if文ではなく、queueの定義そのもので保証されている。
 | `COMPLETED` | （終端） | — |
 
 同じ関数が2つのstateに紐づいているのは、途中で落ちた場合にそのstepの手前から
-やり直せるようにするためである。例えばmetadataの書き込みだけ失敗したときは
-`PROVENANCE_PENDING` に留まるので、`applyProvenance` だけが再実行され、fileの
-再uploadは起きない。
+やり直せるようにするためである。新方式の`applyProvenance`はBoxへ書き込まず、
+互換性のため残した状態を通過する。業務メタデータの付与は承認後の`placeItem`で行う。
+その書き込みに失敗しても、アップロード工程へ戻さず配置工程から回復する。
+旧方式だけは`applyProvenance`で共通メタデータを付与する。
 
 ## 失敗したときの寄り道
 
@@ -311,11 +332,9 @@ sequenceDiagram
 
   H->>W: 承認ボタン
   W->>D: job_commands へ PENDING でinsert
-  W-->>H: 200（実行はまだ）
+  W-->>H: 202（受付。実行はまだ）
   K->>D: PENDING を CLAIMED にして取得
-  K->>D: routing_decisions に承認内容を保存
-  K->>D: migration_items を APPROVED へ
-  K->>D: job_commands を DONE へ
+  K->>D: claimを検証し、承認内容・APPROVED・DONEを同一transactionで保存
   Note over K: 以降は PLACEMENT queue が拾う
 ```
 
