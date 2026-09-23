@@ -5,7 +5,7 @@ import type { BusinessTemplate, TemplateMapping } from '@shuttle-lite/core';
 
 export function MetadataSettings() {
   const [templates, setTemplates] = useState<BusinessTemplate[]>([]);
-  const [selected, setSelected] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<string[]>([]);
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -20,12 +20,15 @@ export function MetadataSettings() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
         setLoaded(true);
-        setTemplates(data.templates);
-        setSelected(
-          Object.fromEntries(
-            (data.mappings as TemplateMapping[]).map((m) => [m.documentType, id(m.template)]),
-          ),
-        );
+        const saved = data.mappings as TemplateMapping[];
+        const available = data.templates as BusinessTemplate[];
+        setTemplates([
+          ...available,
+          ...saved
+            .map((m) => m.template)
+            .filter((t) => !available.some((entry) => id(entry) === id(t))),
+        ]);
+        setSelected(saved.map((m) => id(m.template)));
         setRevision(data.revision);
       })
       .catch((cause: Error) => {
@@ -41,17 +44,15 @@ export function MetadataSettings() {
     setError('');
     setStatus('');
     try {
-      const mappings = Object.entries(selected)
-        .filter(([, value]) => value)
-        .map(([documentType, value]) => {
-          const template = templates.find((t) => id(t) === value);
-          if (!template) throw new Error('テンプレートを選び直してください。');
-          return { documentType, scope: template.scope, templateKey: template.templateKey };
-        });
+      const enabled = selected.map((value) => {
+        const template = templates.find((t) => id(t) === value);
+        if (!template) throw new Error('テンプレートを選び直してください。');
+        return { scope: template.scope, templateKey: template.templateKey };
+      });
       const response = await fetch('/api/metadata-settings', {
         method: 'PUT',
         headers: { 'content-type': 'application/json', 'x-shuttle-settings': '1' },
-        body: JSON.stringify({ revision, mappings }),
+        body: JSON.stringify({ revision, templates: enabled }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
@@ -66,29 +67,30 @@ export function MetadataSettings() {
   return (
     <section className="card">
       <h2>メタデータ</h2>
-      <fieldset disabled={!loaded || loading || busy}>
-        {(['契約書', '請求書'] as const).map((kind) => (
-          <label className="settings-row" key={kind}>
-            <span>{kind}</span>
-            <select
-              value={selected[kind] ?? ''}
+      <fieldset disabled={!loaded || loading || busy} style={{ border: 0, padding: 0, margin: 0 }}>
+        <legend>使用するテンプレート</legend>
+        {templates.map((template) => (
+          <label
+            key={id(template)}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '14px 0' }}
+          >
+            <input
+              type="checkbox"
+              style={{ width: 'auto' }}
+              checked={selected.includes(id(template))}
               onChange={(event) => {
-                setSelected({ ...selected, [kind]: event.target.value });
+                setSelected(
+                  event.target.checked
+                    ? [...selected, id(template)]
+                    : selected.filter((value) => value !== id(template)),
+                );
                 setStatus('');
               }}
-            >
-              <option value="">未選択</option>
-              {selected[kind] && !templates.some((t) => id(t) === selected[kind]) ? (
-                <option value={selected[kind]}>取得できないテンプレート</option>
-              ) : null}
-              {templates.map((t) => (
-                <option key={id(t)} value={id(t)}>
-                  {t.displayName}
-                </option>
-              ))}
-            </select>
+            />
+            <span>{template.displayName}</span>
           </label>
         ))}
+        {loaded && templates.length === 0 ? <p>利用できるテンプレートがありません。</p> : null}
         <button type="button" onClick={() => void save()}>
           {busy ? '保存中…' : '保存'}
         </button>

@@ -293,4 +293,58 @@ describe('document-specific business metadata', () => {
     });
     expect(h.store.getWrittenTemplates(item.id)).toEqual([]);
   });
+
+  it('selects a clear matching template from enabled choices without a document mapping', async () => {
+    h.store.saveMetadataSettings([{ template: contract }, { template: invoice }], 0);
+    h.writeSource('A社_業務委託契約書.txt', '業務委託契約書\n契約先：A社\n締結日：2026-04-01');
+    const { items } = await stage();
+    expect(h.store.getBusinessMetadata(items[0]!.id)).toMatchObject({
+      templateId: templateId(contract),
+      values: { counterparty: 'A社', signedDate: '2026-04-01T00:00:00Z' },
+    });
+  });
+
+  it('lets an existing job choose a newly enabled template, extract and apply its values', async () => {
+    h.writeSource('A社_請求書.txt', '請求書\n請求元：A社\n金額：110000\n通貨：JPY');
+    const job = h.store.createJob({ profileId: h.createProfile().id, operatorLabel: '担当者' });
+    h.store.saveJobMetadata(job.id, []);
+    h.store.enqueueCommand(job.id, 'START_JOB');
+    await runUntilIdle(h);
+    const item = h.store.listItems(job.id)[0]!;
+    expect(h.store.getBusinessMetadata(item.id).templateId).toBeNull();
+    h.store.saveMetadataSettings([{ template: invoice }], 0);
+    select(item, templateId(invoice), true);
+    await processCommands(h.ctx);
+    expect(h.store.getBusinessMetadata(item.id)).toMatchObject({
+      templateId: templateId(invoice),
+      values: { vendor: 'A社', amount: 110000 },
+    });
+    // Removing a setting must not silently change already selected/approved schemas.
+    h.store.saveMetadataSettings([], 1);
+    approveItem(h, item, 'FINANCE_INVOICES');
+    await runUntilIdle(h);
+    expect(h.store.getItem(item.id)?.state).toBe('COMPLETED');
+    expect(await h.gateway.getMetadata(item.boxFileId!, invoice)).toMatchObject({
+      vendor: 'A社',
+      amount: 110000,
+    });
+  });
+
+  it('rejects a template disabled while extraction is running without saving its values', async () => {
+    h.writeSource('memo.txt', '請求元：A社');
+    const { items } = await stage(false);
+    const item = items[0]!;
+    h.store.saveMetadataSettings([{ template: invoice }], 0);
+    const command = select(item, templateId(invoice));
+    const get = h.gateway.getMetadataTemplate.bind(h.gateway);
+    vi.spyOn(h.gateway, 'getMetadataTemplate').mockImplementationOnce(async (template) => {
+      h.store.saveMetadataSettings([], 1);
+      return get(template);
+    });
+    await processCommands(h.ctx);
+    expect(h.store.listCommands(item.jobId).find((entry) => entry.id === command.id)?.state).toBe(
+      'REJECTED',
+    );
+    expect(h.store.getBusinessMetadata(item.id).templateId).toBeNull();
+  });
 });

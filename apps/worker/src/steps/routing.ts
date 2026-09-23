@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { prepareDocumentMetadata } from '../business-metadata';
-import { type MigrationItem, ShuttleError } from '@shuttle-lite/core';
+import { type MigrationItem, ShuttleError, metadataDocumentTypes } from '@shuttle-lite/core';
 import { normalizeExtraction, routingOutcome } from '@shuttle-lite/routing';
 import { destinationKeys, type JobContext } from '../context';
 
@@ -48,6 +48,7 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
 
   const started = Date.now();
   const allowed = [...new Set([...destinationKeys(ctx), ctx.catalog.needsReviewKey])];
+  const templates = ctx.store.getAvailableJobMetadata(item.jobId);
   const cacheKey = createHash('sha256')
     .update(
       JSON.stringify([
@@ -57,7 +58,7 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
         item.sourceSha1,
         allowed,
         ctx.catalog.entries,
-        ctx.store.getJobMetadata(item.jobId),
+        templates,
       ]),
     )
     .digest('hex');
@@ -66,7 +67,7 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
     const response = await ctx.gateway.extractStructured({
       fileId: item.boxFileId,
       ...(ctx.store.getJobMetadata(item.jobId)
-        ? { documentTypes: ['契約書', '請求書', 'その他'] }
+        ? { documentTypes: metadataDocumentTypes(templates) }
         : {}),
       destinationKeys: allowed,
       destinations: ctx.catalog.entries,

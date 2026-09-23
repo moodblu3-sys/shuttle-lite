@@ -67,4 +67,34 @@ describe('metadata template settings', () => {
     input.headers.set('origin', 'https://other.invalid');
     expect((await PUT(input)).status).toBe(403);
   });
+
+  it('saves three enabled templates and makes them available to an existing empty job', async () => {
+    const template = {
+      ...demoBusinessTemplates[0]!,
+      templateKey: 'meeting',
+      displayName: '議事録管理',
+    };
+    await h.gateway.createMetadataTemplate(template);
+    const job = h.store.createJob({ profileId: h.createProfile().id, operatorLabel: '担当者' });
+    h.store.saveJobMetadata(job.id, []);
+    const templates = [...demoBusinessTemplates, template].map(({ scope, templateKey }) => ({
+      scope,
+      templateKey,
+    }));
+    const input = new Request('http://localhost/api/metadata-settings', {
+      method: 'PUT',
+      headers: {
+        origin: 'http://localhost',
+        'x-shuttle-settings': '1',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ revision: 0, templates }),
+    });
+    expect((await PUT(input)).status).toBe(200);
+    expect(h.store.getMetadataSettings().mappings).toHaveLength(3);
+    expect(h.store.getAvailableJobMetadata(job.id)).toHaveLength(3);
+    expect(h.store.getJobMetadata(job.id)).toEqual([]);
+    expect((await PUT(request(1, []))).status).toBe(200);
+    expect(h.store.getAvailableJobMetadata(job.id)).toEqual([]);
+  });
 });

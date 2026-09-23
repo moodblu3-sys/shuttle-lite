@@ -13,7 +13,7 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
   const search = new URL(request.url).searchParams;
   return NextResponse.json({
     ...buildReviewPage(jobId, Number(search.get('page') ?? 1), search.get('q') ?? ''),
-    metadataTemplates: getStore().getJobMetadata(jobId) ?? [],
+    metadataTemplates: getStore().getAvailableJobMetadata(jobId),
     destinations: getCatalog(jobId).entries.map((entry) => ({
       key: entry.key,
       label: entry.label,

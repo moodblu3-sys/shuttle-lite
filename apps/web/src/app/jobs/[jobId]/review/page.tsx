@@ -34,7 +34,7 @@ export default async function ReviewPage({
     <>
       <ReviewList
         key={`${jobId}:${pagination.page}:${pagination.query}`}
-        metadataTemplates={getStore().getJobMetadata(jobId) ?? []}
+        metadataTemplates={getStore().getAvailableJobMetadata(jobId)}
         jobId={jobId}
         items={items}
         pagination={pagination}

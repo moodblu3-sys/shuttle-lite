@@ -639,6 +639,16 @@ export function ReviewList({
                         }
                       >
                         <option value="">未選択</option>
+                        {active.businessMetadata.template &&
+                        !metadataTemplates.some(
+                          ({ template }) =>
+                            `${template.scope}/${template.templateKey}` ===
+                            active.businessMetadata!.templateId,
+                        ) ? (
+                          <option value={active.businessMetadata.templateId!} disabled>
+                            {active.businessMetadata.template.displayName}（選択済み）
+                          </option>
+                        ) : null}
                         {metadataTemplates.map(({ template }) => (
                           <option
                             key={`${template.scope}/${template.templateKey}`}
@@ -659,7 +669,14 @@ export function ReviewList({
                         <button
                           type="button"
                           className="ghost"
-                          disabled={!active.businessMetadata.canExtract}
+                          disabled={
+                            !active.businessMetadata.canExtract ||
+                            !metadataTemplates.some(
+                              ({ template }) =>
+                                `${template.scope}/${template.templateKey}` ===
+                                active.businessMetadata!.templateId,
+                            )
+                          }
                           onClick={() =>
                             void selectTemplate(active, active.businessMetadata!.templateId, true)
                           }

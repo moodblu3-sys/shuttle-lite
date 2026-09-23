@@ -15,7 +15,8 @@ export interface BusinessTemplate {
 }
 
 export interface TemplateMapping {
-  readonly documentType: '契約書' | '請求書';
+  /** Retained for settings written before multi-template selection. */
+  readonly documentType?: '契約書' | '請求書';
   readonly template: BusinessTemplate;
 }
 
@@ -121,17 +122,46 @@ export function normalizeBusinessValues(
   return values;
 }
 
-/** Auto-selection is limited to known document labels, never a guessed default. */
+function documentKind(value: string | null): string | null {
+  let name = value?.normalize('NFKC').trim().toLocaleLowerCase('ja').replace(/\s+/g, '') ?? '';
+  // Strip administrative suffixes, not customer/project names or field contents.
+  name = name.replace(
+    /(?:メタデータ|テンプレート|metadata|management|template|管理|情報|台帳)+$/g,
+    '',
+  );
+  if (
+    /^(?:契約書?|業務委託契約書?|秘密保持契約書?|売買契約書?|基本契約書?|contracts?|nda|msa)$/.test(
+      name,
+    )
+  )
+    return '契約書';
+  if (/^(?:請求書|invoices?)$/.test(name)) return '請求書';
+  if (/^(?:その他|不明|unknown|other)$/.test(name)) return null;
+  return name || null;
+}
+
+/** Clear document/template name matches only; ambiguous matches remain manual. */
 export function mappingForDocument(
   mappings: readonly TemplateMapping[],
   documentType: string | null,
 ): TemplateMapping | undefined {
-  const kind = documentType?.trim();
-  const normalized =
-    kind && /^(契約書|業務委託契約書|秘密保持契約書|Contract|NDA|MSA)$/i.test(kind)
-      ? '契約書'
-      : kind && /^(請求書|invoice)$/i.test(kind)
-        ? '請求書'
-        : null;
-  return mappings.find((mapping) => mapping.documentType === normalized);
+  const kind = documentKind(documentType);
+  if (!kind) return;
+  const matches = mappings.filter(
+    (mapping) => documentKind(mapping.documentType ?? mapping.template.displayName) === kind,
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+export function metadataDocumentTypes(mappings: readonly TemplateMapping[]): string[] {
+  return [
+    ...new Set([
+      '契約書',
+      '請求書',
+      ...mappings
+        .map((mapping) => documentKind(mapping.documentType ?? mapping.template.displayName))
+        .filter((kind): kind is string => !!kind),
+      'その他',
+    ]),
+  ];
 }

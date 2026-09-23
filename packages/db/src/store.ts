@@ -5,6 +5,8 @@ import type {
   BusinessTemplate,
 } from '@shuttle-lite/core';
 import {
+  sameTemplate,
+  templateId,
   canTransition,
   type CommandType,
   type ConflictPolicy,
@@ -251,6 +253,33 @@ export class ShuttleStore {
     const row = this.db.prepare('SELECT mappings FROM job_metadata WHERE job_id = ?').get(jobId) as
       { mappings: string } | undefined;
     return row ? JSON.parse(row.mappings) : null;
+  }
+
+  /** Current choices are live; schemas already used by a job remain frozen. */
+  getAvailableJobMetadata(jobId: string): TemplateMapping[] {
+    const saved = this.getJobMetadata(jobId);
+    if (saved === null) return [];
+    const settings = this.getMetadataSettings();
+    return settings.revision > 0 ? settings.mappings : saved;
+  }
+
+  rememberJobTemplate(jobId: string, mapping: TemplateMapping): void {
+    const saved = this.getJobMetadata(jobId);
+    if (!saved) throw new ShuttleError('APPROVAL_INVALID', 'この移行は旧メタデータ方式です。');
+    const existing = saved.find(
+      (entry) => templateId(entry.template) === templateId(mapping.template),
+    );
+    if (existing) {
+      if (!sameTemplate(existing.template, mapping.template))
+        throw new ShuttleError(
+          'METADATA_SCHEMA',
+          'テンプレートの項目が変更されています。新しい移行で使用してください。',
+        );
+      return;
+    }
+    this.db
+      .prepare('UPDATE job_metadata SET mappings = ? WHERE job_id = ?')
+      .run(JSON.stringify([...saved, mapping]), jobId);
   }
 
   getBusinessMetadata(itemId: string): BusinessMetadataDraft {

@@ -137,6 +137,61 @@ describe('persistent review drafts', () => {
       '下書きを保存できません',
     );
   });
+  it('offers enabled templates for an existing unselected file and sends the selected ID', async () => {
+    const templates = ['契約書管理', '請求書管理', '議事録管理'].map((displayName, index) => ({
+      template: { scope: 'enterprise_123', templateKey: `type${index}`, displayName, fields: [] },
+    }));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        command: {
+          id: 'select',
+          state: 'PENDING',
+          rejectionReason: null,
+          createdAt: '2026-09-23T00:00:00Z',
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await act(async () =>
+      root.render(
+        createElement(ReviewList, {
+          jobId: item.jobId,
+          items: [
+            {
+              ...item,
+              businessMetadata: {
+                revision: 0,
+                templateId: null,
+                values: {},
+                template: null,
+                canExtract: true,
+              },
+            },
+          ],
+          metadataTemplates: templates,
+          destinations: [{ key: 'A', label: '契約書', boxPath: '/契約書' }],
+          boxLinkBase: null,
+          defaultOperatorLabel: '担当者',
+          needsReviewKey: 'REVIEW',
+        }),
+      ),
+    );
+    const select = container.querySelectorAll('select')[1]!;
+    expect([...select.options].map((option) => option.text)).toEqual([
+      '未選択',
+      '契約書管理',
+      '請求書管理',
+      '議事録管理',
+    ]);
+    await act(async () => {
+      select.value = 'enterprise_123/type2';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)).toMatchObject({
+      type: 'SELECT_METADATA_TEMPLATE',
+      payload: { templateId: 'enterprise_123/type2', revision: 0 },
+    });
+  });
   it('navigates across pages and submits a full-job search', async () => {
     await render(item, { page: 1, pageSize: 100, total: 205, allTotal: 205, query: '' });
     await act(async () =>

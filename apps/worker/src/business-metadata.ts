@@ -9,6 +9,7 @@ import {
   type BusinessValues,
   type JobCommandRecord,
   type MigrationItem,
+  type TemplateMapping,
 } from '@shuttle-lite/core';
 import type { JobContext, WorkerContext } from './context';
 import { applyRuntimeSettings } from '@shuttle-lite/config';
@@ -30,8 +31,12 @@ export async function prepareDocumentMetadata(
   item: MigrationItem,
   documentType: string | null,
 ): Promise<void> {
-  const mappings = ctx.store.getJobMetadata(item.jobId);
-  if (!mappings || ctx.store.getBusinessMetadata(item.id).revision > 0) return;
+  if (
+    ctx.store.getJobMetadata(item.jobId) === null ||
+    ctx.store.getBusinessMetadata(item.id).revision > 0
+  )
+    return;
+  const mappings = ctx.store.getAvailableJobMetadata(item.jobId);
   const mapping = mappingForDocument(mappings, documentType);
   if (!mapping) return;
   await checkTemplate(ctx, mapping.template);
@@ -40,7 +45,22 @@ export async function prepareDocumentMetadata(
     await ctx.gateway.extractTemplate(item.boxFileId!, mapping.template),
     false,
   );
-  ctx.store.saveBusinessMetadata(item.id, templateId(mapping.template), values, 0);
+  ctx.store.transaction(() => {
+    assertStillAvailable(ctx, item.jobId, mapping);
+    ctx.store.rememberJobTemplate(item.jobId, mapping);
+    ctx.store.saveBusinessMetadata(item.id, templateId(mapping.template), values, 0);
+  });
+}
+
+function assertStillAvailable(ctx: WorkerContext, jobId: string, mapping: TemplateMapping): void {
+  const current = ctx.store
+    .getAvailableJobMetadata(jobId)
+    .find((entry) => templateId(entry.template) === templateId(mapping.template));
+  if (!current || !sameTemplate(current.template, mapping.template))
+    throw new ShuttleError(
+      'APPROVAL_STALE',
+      '使用するテンプレートの設定が変更されました。選び直してください。',
+    );
 }
 
 /** AI reads run outside SQLite transactions; the claim fences the resulting local write. */
@@ -72,8 +92,9 @@ export async function selectMetadataTemplate(
       );
   };
   validate();
-  const mappings = ctx.store.getJobMetadata(job!.id);
-  if (!mappings) throw new ShuttleError('APPROVAL_INVALID', 'この移行は旧メタデータ方式です。');
+  if (ctx.store.getJobMetadata(job!.id) === null)
+    throw new ShuttleError('APPROVAL_INVALID', 'この移行は旧メタデータ方式です。');
+  const mappings = ctx.store.getAvailableJobMetadata(job!.id);
   const mapping = mappings.find((m) => templateId(m.template) === requested);
   if (requested !== null && !mapping)
     throw new ShuttleError('APPROVAL_INVALID', '登録されていないテンプレートです。');
@@ -97,6 +118,10 @@ export async function selectMetadataTemplate(
   }
   return () => {
     validate();
+    if (mapping) {
+      assertStillAvailable(ctx, job!.id, mapping);
+      ctx.store.rememberJobTemplate(job!.id, mapping);
+    }
     ctx.store.saveBusinessMetadata(
       item!.id,
       mapping ? templateId(mapping.template) : null,
