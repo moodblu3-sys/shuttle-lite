@@ -6,6 +6,7 @@ import {
   type AiExtractionRequest,
   type AiExtractionResponse,
   type BoxFile,
+  type BoxFilePreview,
   type BoxFolder,
   type BoxGateway,
   type BoxIdentity,
@@ -411,6 +412,39 @@ export class HttpBoxGateway implements BoxGateway {
     });
     if (response.status === 404) return null;
     return toBoxFile(JSON.parse(response.bodyText) as ApiFile);
+  }
+
+  async getFilePreview(fileId: string, signal?: AbortSignal): Promise<BoxFilePreview | null> {
+    const response = await this.#client.request({
+      method: 'GET',
+      url: `${this.#box.apiBaseUrl}/files/${encodeURIComponent(fileId)}?fields=id,sha1,file_version,expiring_embed_link`,
+      allowStatuses: [404],
+      timeoutMs: 15_000,
+      signal,
+    });
+    if (response.status === 404) return null;
+    const file = JSON.parse(response.bodyText) as {
+      id?: unknown;
+      sha1?: unknown;
+      file_version?: { id?: unknown } | null;
+      expiring_embed_link?: { url?: unknown } | null;
+    } | null;
+    const versionId = file?.file_version?.id;
+    const url = file?.expiring_embed_link?.url;
+    if (
+      typeof file?.id !== 'string' ||
+      !file.id ||
+      typeof file.sha1 !== 'string' ||
+      !file.sha1 ||
+      typeof versionId !== 'string' ||
+      !versionId ||
+      typeof url !== 'string' ||
+      !url
+    ) {
+      throw new ShuttleError('BOX_BAD_REQUEST', 'Boxからプレビューを取得できませんでした');
+    }
+    // Do not forward the embed token or the rest of the Box response.
+    return { fileId: file.id, versionId, sha1: file.sha1, url };
   }
 
   async deleteTestFile(fileId: string, etag: string): Promise<void> {

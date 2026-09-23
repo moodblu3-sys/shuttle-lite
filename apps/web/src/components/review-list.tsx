@@ -2,6 +2,7 @@
 
 import type { TemplateMapping } from '@shuttle-lite/core';
 import { BusinessMetadataFields } from './business-metadata-fields';
+import { FilePreviewButton } from './file-preview-dialog';
 import { useRouter } from 'next/navigation';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { formatBytes } from '@shuttle-lite/core/progress';
@@ -443,9 +444,22 @@ export function ReviewList({
                 {formatBytes(active.sourceSize)} · {active.sourceRelativePath}
               </p>
               {boxLink ? (
-                <a className={styles.openOriginal} href={boxLink} target="_blank" rel="noreferrer">
-                  <Icon kind="external" /> Boxで原本を開く
-                </a>
+                <div className={styles.previewActions}>
+                  <FilePreviewButton
+                    key={`${active.itemId}:${active.boxFileId}:${active.boxVersionId}:${active.boxSha1}:${active.state}:${active.reviewCommand?.state ?? ''}`}
+                    item={active}
+                    boxLink={boxLink}
+                    disabled={locked || !active.boxVersionId || !active.boxSha1}
+                  />
+                  <a
+                    className={styles.openOriginal}
+                    href={boxLink}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Icon kind="external" /> Boxで原本を開く
+                  </a>
+                </div>
               ) : null}
               {active.reviewCommand?.state === 'REJECTED' ? (
                 <p className="error" role="alert">

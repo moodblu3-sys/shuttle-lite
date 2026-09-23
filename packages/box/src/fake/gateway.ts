@@ -16,6 +16,7 @@ import type {
   AiExtractionRequest,
   AiExtractionResponse,
   BoxFile,
+  BoxFilePreview,
   BoxFolder,
   BoxGateway,
   BoxIdentity,
@@ -439,6 +440,10 @@ export class FakeBoxGateway implements BoxGateway {
     this.#checkInjectedFailure('getFile');
     const file = this.#state.read().files[fileId];
     return file ? toBoxFile(file) : null;
+  }
+
+  async getFilePreview(_fileId: string, _signal?: AbortSignal): Promise<BoxFilePreview | null> {
+    throw new ShuttleError('STATE_INVALID', 'デモモードではプレビューを利用できません');
   }
 
   async deleteTestFile(fileId: string, etag: string): Promise<void> {

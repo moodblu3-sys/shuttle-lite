@@ -27,6 +27,14 @@ export interface BoxFile {
   readonly modifiedAt: string;
 }
 
+/** Short-lived preview capability. Never persist or log the URL. */
+export interface BoxFilePreview {
+  readonly fileId: string;
+  readonly versionId: string;
+  readonly sha1: string;
+  readonly url: string;
+}
+
 export interface BoxItemSummary {
   readonly type: 'file' | 'folder';
   readonly id: string;
@@ -196,6 +204,7 @@ export interface BoxGateway {
   abortUploadSession(sessionId: string): Promise<void>;
 
   getFile(fileId: string): Promise<BoxFile | null>;
+  getFilePreview(fileId: string, signal?: AbortSignal): Promise<BoxFilePreview | null>;
   /** Normal Box delete; trash behavior depends on enterprise settings. Requires concurrency guard. */
   deleteTestFile(fileId: string, etag: string): Promise<void>;
   moveFile(request: { fileId: string; targetFolderId: string; newName?: string }): Promise<BoxFile>;
