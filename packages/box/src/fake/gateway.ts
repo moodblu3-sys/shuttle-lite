@@ -1,3 +1,5 @@
+import { demoBusinessTemplates } from './business-templates';
+import { templateId, type BusinessTemplate } from '@shuttle-lite/core';
 import { createHash } from 'node:crypto';
 import {
   createReadStream,
@@ -492,35 +494,50 @@ export class FakeBoxGateway implements BoxGateway {
     });
   }
 
-  async setMetadata(fileId: string, values: MetadataValues): Promise<void> {
+  async setMetadata(
+    fileId: string,
+    values: MetadataValues,
+    template?: BusinessTemplate,
+  ): Promise<void> {
     this.#checkInjectedFailure('setMetadata');
     this.#state.mutate((state) => {
       const file = state.files[fileId];
       if (!file) {
         throw new ShuttleError('BOX_NOT_FOUND', `fileが存在しません: ${fileId}`, { status: 404 });
       }
-      if (file.metadata) {
+      if (template ? file.businessMetadata?.[templateId(template)] : file.metadata) {
         throw new ShuttleError('METADATA_CONFLICT', 'metadata instanceが既に存在します', {
           status: 409,
         });
       }
-      file.metadata = { ...values };
+      if (template) (file.businessMetadata ??= {})[templateId(template)] = { ...values };
+      else file.metadata = { ...values };
     });
   }
 
-  async updateMetadata(fileId: string, values: MetadataValues): Promise<void> {
+  async updateMetadata(
+    fileId: string,
+    values: MetadataValues,
+    template?: BusinessTemplate,
+  ): Promise<void> {
     this.#state.mutate((state) => {
       const file = state.files[fileId];
       if (!file) {
         throw new ShuttleError('BOX_NOT_FOUND', `fileが存在しません: ${fileId}`, { status: 404 });
       }
-      file.metadata = { ...(file.metadata ?? {}), ...values };
+      if (template) (file.businessMetadata ??= {})[templateId(template)] = { ...values };
+      else file.metadata = { ...(file.metadata ?? {}), ...values };
     });
   }
 
-  async getMetadata(fileId: string): Promise<Record<string, unknown> | null> {
+  async getMetadata(
+    fileId: string,
+    template?: BusinessTemplate,
+  ): Promise<Record<string, unknown> | null> {
     const file = this.#state.read().files[fileId];
-    return file?.metadata ?? null;
+    return template
+      ? (file?.businessMetadata?.[templateId(template)] ?? null)
+      : (file?.metadata ?? null);
   }
 
   async extractStructured(request: AiExtractionRequest): Promise<AiExtractionResponse> {
@@ -590,13 +607,49 @@ export class FakeBoxGateway implements BoxGateway {
     };
   }
 
-  async getMetadataTemplate(): Promise<MetadataTemplateSpec | null> {
-    return this.#state.read().template;
+  async getMetadataTemplate(
+    template?: Pick<BusinessTemplate, 'scope' | 'templateKey'>,
+  ): Promise<MetadataTemplateSpec | null> {
+    const state = this.#state.read();
+    return template ? (state.templates?.[templateId(template)] ?? null) : state.template;
+  }
+
+  async removeBusinessMetadata(fileId: string, template: BusinessTemplate): Promise<void> {
+    this.#state.mutate((state) => {
+      const instances = state.files[fileId]?.businessMetadata;
+      if (instances) delete instances[templateId(template)];
+    });
+  }
+
+  async listMetadataTemplates(): Promise<MetadataTemplateSpec[]> {
+    this.#state.mutate((state) => {
+      for (const template of demoBusinessTemplates)
+        (state.templates ??= {})[templateId(template)] ??= template;
+    });
+    return Object.values(this.#state.read().templates ?? {});
+  }
+
+  async extractTemplate(
+    fileId: string,
+    template: BusinessTemplate,
+  ): Promise<Record<string, unknown>> {
+    const content = readFileSync(this.#state.objectPath(fileId), 'utf8');
+    const values: Record<string, unknown> = {};
+    for (const field of template.fields) {
+      const line = content
+        .split('\n')
+        .find(
+          (line) => line.startsWith(field.displayName + '：') || line.startsWith(field.key + ':'),
+        );
+      if (line) values[field.key] = line.slice(line.search(/[:：]/) + 1).trim();
+    }
+    return values;
   }
 
   async createMetadataTemplate(spec: MetadataTemplateSpec): Promise<void> {
     this.#state.mutate((state) => {
       state.template = spec;
+      (state.templates ??= {})[templateId(spec)] = spec;
     });
   }
 

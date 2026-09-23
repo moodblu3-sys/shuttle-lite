@@ -1,3 +1,4 @@
+import { MetadataSettings } from '../../components/metadata-settings';
 import { platform } from 'node:os';
 import { settingsFromConfig } from '@shuttle-lite/config';
 import { SettingsForm } from '../../components/settings-form';
@@ -28,6 +29,7 @@ export default function SettingsPage() {
           </dd>
         </dl>
       </section>
+      <MetadataSettings />
       <section className="card">
         <h2>詳細設定</h2>
         <SettingsForm

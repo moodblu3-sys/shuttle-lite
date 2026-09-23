@@ -16,6 +16,7 @@ export function isReviewPending(item: ReviewItemView, receipt?: ReviewCommandVie
 }
 
 export interface ApprovalDraft {
+  readonly businessValues?: Record<string, string | number>;
   readonly destinationKey: string;
   readonly finalName: string;
   readonly documentType: string;
@@ -30,6 +31,7 @@ export function draftFor(item: ReviewItemView): ApprovalDraft {
   return {
     // No suggestion means no preselected destination. Defaulting to the first
     // catalog entry would invite an accidental wrong placement.
+    ...(item.businessMetadata ? { businessValues: item.businessMetadata.values } : {}),
     destinationKey: item.hasRoutingDecision ? (item.suggestedDestinationKey as string) : '',
     finalName: item.finalName ?? item.sourceFileName,
     documentType: item.extraction?.documentType ?? '',
@@ -46,6 +48,15 @@ export function commandFor(item: ReviewItemView, draft: ApprovalDraft, operatorL
   return {
     type: 'APPROVE_ITEM' as const,
     payload: {
+      ...(item.businessMetadata
+        ? {
+            business: {
+              revision: item.businessMetadata.revision,
+              templateId: item.businessMetadata.templateId,
+              values: draft.businessValues ?? {},
+            },
+          }
+        : {}),
       itemId: item.itemId,
       destinationKey: draft.destinationKey,
       operatorLabel,
@@ -55,14 +66,16 @@ export function commandFor(item: ReviewItemView, draft: ApprovalDraft, operatorL
       // sourceのfile名どおりに置くなら指示は送らない。
       finalName:
         draft.finalName.trim() === item.sourceFileName ? null : (text(draft.finalName) ?? null),
-      metadata: {
-        documentType: text(draft.documentType),
-        businessDomain: text(draft.businessDomain),
-        businessIdentifier: text(draft.businessIdentifier),
-        effectiveDate: text(draft.effectiveDate),
-        suggestedTags: text(draft.suggestedTags),
-        routingReason: text(draft.routingReason),
-      },
+      metadata: item.businessMetadata
+        ? {}
+        : {
+            documentType: text(draft.documentType),
+            businessDomain: text(draft.businessDomain),
+            businessIdentifier: text(draft.businessIdentifier),
+            effectiveDate: text(draft.effectiveDate),
+            suggestedTags: text(draft.suggestedTags),
+            routingReason: text(draft.routingReason),
+          },
     },
   };
 }

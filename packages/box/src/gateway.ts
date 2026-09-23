@@ -1,3 +1,4 @@
+import type { BusinessTemplate } from '@shuttle-lite/core';
 import type { Readable } from 'node:stream';
 
 export interface BoxIdentity {
@@ -129,6 +130,7 @@ export const AI_EXTRACTION_FIELDS = [
 ] as const;
 
 export interface AiExtractionRequest {
+  readonly documentTypes?: readonly string[];
   readonly fileId: string;
   /** Allowed destination keys. The model may not invent a folder ID. */
   readonly destinationKeys: readonly string[];
@@ -198,13 +200,22 @@ export interface BoxGateway {
   deleteTestFile(fileId: string, etag: string): Promise<void>;
   moveFile(request: { fileId: string; targetFolderId: string; newName?: string }): Promise<BoxFile>;
 
-  setMetadata(fileId: string, values: MetadataValues): Promise<void>;
-  updateMetadata(fileId: string, values: MetadataValues): Promise<void>;
-  getMetadata(fileId: string): Promise<Record<string, unknown> | null>;
+  setMetadata(fileId: string, values: MetadataValues, template?: BusinessTemplate): Promise<void>;
+  updateMetadata(
+    fileId: string,
+    values: MetadataValues,
+    template?: BusinessTemplate,
+  ): Promise<void>;
+  getMetadata(fileId: string, template?: BusinessTemplate): Promise<Record<string, unknown> | null>;
 
   extractStructured(request: AiExtractionRequest): Promise<AiExtractionResponse>;
 
-  getMetadataTemplate(): Promise<MetadataTemplateSpec | null>;
+  getMetadataTemplate(
+    template?: Pick<BusinessTemplate, 'scope' | 'templateKey'>,
+  ): Promise<MetadataTemplateSpec | null>;
+  removeBusinessMetadata(fileId: string, template: BusinessTemplate): Promise<void>;
+  listMetadataTemplates(): Promise<MetadataTemplateSpec[]>;
+  extractTemplate(fileId: string, template: BusinessTemplate): Promise<Record<string, unknown>>;
   createMetadataTemplate(spec: MetadataTemplateSpec): Promise<void>;
 
   close(): Promise<void>;

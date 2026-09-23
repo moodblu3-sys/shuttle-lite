@@ -10,3 +10,4 @@ export * from './retry';
 export * from './semaphore';
 export * from './state';
 export * from './types';
+export * from './business-metadata';

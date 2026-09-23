@@ -1,3 +1,4 @@
+import type { BusinessMetadataDraft, BusinessTemplate } from '@shuttle-lite/core';
 export interface ReviewExtractionView {
   readonly provider: string;
   readonly documentType: string | null;
@@ -17,6 +18,10 @@ export interface ReviewCommandView {
 }
 
 export interface ReviewItemView {
+  readonly businessMetadata?: BusinessMetadataDraft & {
+    template: BusinessTemplate | null;
+    canExtract: boolean;
+  };
   readonly itemId: string;
   readonly jobId: string;
   readonly state: string;

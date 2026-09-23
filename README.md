@@ -5,7 +5,7 @@ Shuttle Liteは、Box Shuttleが標準対応しにくい制約環境を補完す
 
 > Shuttleが届きにくい場所へ、軽やかに。
 
-local fileをBoxへ移行し、provenance metadataを付与します。Box AIが許可済みの
+local fileをBoxへ移行し、書類種別に応じた業務メタデータを付与します。Box AIが許可済みの
 配置先から候補を提案し、人の承認後に最終配置します。処理状態はlocalに保持し、
 運用telemetryをSnowflakeへ記録します。
 
@@ -13,6 +13,14 @@ local fileをBoxへ移行し、provenance metadataを付与します。Box AIが
 条件ではありません。既定は直接接続で、proxyが必要な環境では設定で切り替えます。
 proxy経由が義務付けられた環境向けには、直接接続へfallbackしない`required` mode
 を用意しています。
+
+## 書類別メタデータ
+
+設定画面で、契約書・請求書に使う既存のBoxテンプレートを選択します。新規の移行では
+Box AIが文書種別に合わせてテンプレートの項目を抽出し、人が確認・修正・承認してから
+Boxへ付与します。内部の移行IDやSHA-1はローカルDBとレポートに保持します。
+事前準備は [書類別メタデータの設定](docs/metadata-templates.md) を参照してください。
+以下のMVP実測記録には、旧版の共通メタデータ方式の検証結果が含まれます。
 
 ## 現在地
 

@@ -1,3 +1,9 @@
+import type {
+  TemplateMapping,
+  BusinessMetadataDraft,
+  BusinessValues,
+  BusinessTemplate,
+} from '@shuttle-lite/core';
 import {
   canTransition,
   type CommandType,
@@ -180,6 +186,94 @@ export class ShuttleStore {
 
   transaction<T>(fn: () => T): T {
     return this.db.transaction(fn)();
+  }
+
+  getWrittenTemplates(itemId: string): BusinessTemplate[] {
+    return (
+      this.db
+        .prepare(
+          'SELECT template_json FROM business_metadata_writes WHERE item_id = ? AND file_id = ?',
+        )
+        .all(itemId, this.getItem(itemId)?.boxFileId ?? '') as { template_json: string }[]
+    ).map((row) => JSON.parse(row.template_json));
+  }
+
+  recordTemplateWrite(itemId: string, template: BusinessTemplate): void {
+    this.db
+      .prepare('INSERT OR IGNORE INTO business_metadata_writes VALUES (?, ?, ?, ?)')
+      .run(
+        itemId,
+        this.getItem(itemId)?.boxFileId ?? '',
+        `${template.scope}/${template.templateKey}`,
+        JSON.stringify(template),
+      );
+  }
+
+  forgetTemplateWrite(itemId: string, templateId: string): void {
+    this.db
+      .prepare(
+        'DELETE FROM business_metadata_writes WHERE item_id = ? AND file_id = ? AND template_id = ?',
+      )
+      .run(itemId, this.getItem(itemId)?.boxFileId ?? '', templateId);
+  }
+
+  getMetadataSettings(): { revision: number; mappings: TemplateMapping[] } {
+    const row = this.db
+      .prepare('SELECT revision, mappings FROM metadata_settings WHERE id = 1')
+      .get() as { revision: number; mappings: string } | undefined;
+    return row
+      ? { revision: row.revision, mappings: JSON.parse(row.mappings) }
+      : { revision: 0, mappings: [] };
+  }
+
+  saveMetadataSettings(mappings: readonly TemplateMapping[], revision: number): boolean {
+    return this.transaction(() => {
+      if (this.getMetadataSettings().revision !== revision) return false;
+      this.db
+        .prepare(
+          'INSERT INTO metadata_settings VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET revision = excluded.revision, mappings = excluded.mappings',
+        )
+        .run(revision + 1, JSON.stringify(mappings));
+      return true;
+    });
+  }
+
+  saveJobMetadata(jobId: string, mappings: readonly TemplateMapping[]): void {
+    this.db.prepare('INSERT INTO job_metadata VALUES (?, ?)').run(jobId, JSON.stringify(mappings));
+  }
+
+  getJobMetadata(jobId: string): TemplateMapping[] | null {
+    const row = this.db.prepare('SELECT mappings FROM job_metadata WHERE job_id = ?').get(jobId) as
+      { mappings: string } | undefined;
+    return row ? JSON.parse(row.mappings) : null;
+  }
+
+  getBusinessMetadata(itemId: string): BusinessMetadataDraft {
+    const row = this.db
+      .prepare('SELECT revision, template_id, values_json FROM item_metadata WHERE item_id = ?')
+      .get(itemId) as
+      { revision: number; template_id: string | null; values_json: string } | undefined;
+    return row
+      ? { revision: row.revision, templateId: row.template_id, values: JSON.parse(row.values_json) }
+      : { revision: 0, templateId: null, values: {} };
+  }
+
+  saveBusinessMetadata(
+    itemId: string,
+    templateId: string | null,
+    values: BusinessValues,
+    expectedRevision: number,
+  ): void {
+    if (this.getBusinessMetadata(itemId).revision !== expectedRevision)
+      throw new ShuttleError(
+        'APPROVAL_STALE',
+        'メタデータが更新されました。再読み込みしてください。',
+      );
+    this.db
+      .prepare(
+        'INSERT INTO item_metadata VALUES (?, ?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET revision = excluded.revision, template_id = excluded.template_id, values_json = excluded.values_json',
+      )
+      .run(itemId, expectedRevision + 1, templateId, JSON.stringify(values));
   }
 
   getRuntimeSettings(): { revision: number; settings: unknown } {
@@ -1160,7 +1254,7 @@ export class ShuttleStore {
     const row = this.db
       .prepare(
         `SELECT * FROM job_commands
-       WHERE job_id = ? AND type IN ('APPROVE_ITEM', 'SKIP_ITEM')
+       WHERE job_id = ? AND type IN ('APPROVE_ITEM', 'SKIP_ITEM', 'SELECT_METADATA_TEMPLATE')
          AND json_extract(payload, '$.itemId') = ?
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
       )

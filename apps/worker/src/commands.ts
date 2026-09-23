@@ -1,3 +1,4 @@
+import { selectMetadataTemplate, validateBusinessApproval } from './business-metadata';
 import {
   type ItemState,
   type JobCommandRecord,
@@ -30,7 +31,14 @@ export async function processCommands(ctx: WorkerContext, limit = 20): Promise<n
   try {
     for (const command of commands) {
       try {
-        if (command.type === 'GENERATE_REPORT') {
+        if (command.type === 'SELECT_METADATA_TEMPLATE') {
+          if (!ctx.store.withCommandClaim(command, () => {})) continue;
+          const save = await selectMetadataTemplate(ctx, command);
+          ctx.store.withCommandClaim(command, () => {
+            save();
+            ctx.store.completeCommand(command.id);
+          });
+        } else if (command.type === 'GENERATE_REPORT') {
           const assertOwned = () => {
             if (ctx.store.getJob(command.jobId)?.cleanupState !== 'NONE') {
               throw new ShuttleError(
@@ -257,10 +265,12 @@ function approveItem(ctx: WorkerContext, command: JobCommandRecord, telemetry: b
     routing?.suggestedDestinationKey !== undefined &&
     routing.suggestedDestinationKey !== request.destinationKey;
 
+  const business = validateBusinessApproval(ctx, item, command.payload.business);
+
   ctx.store.recordApproval({
     itemId: item.id,
     approvedDestinationKey: request.destinationKey,
-    approvedMetadata: request.metadata as Record<string, unknown>,
+    approvedMetadata: business ? { business } : (request.metadata as Record<string, unknown>),
     approvedBoxFileId: request.observedBoxFileId,
     approvedBoxVersionId: request.observedVersionId ?? item.boxFileVersionId,
     approvedSha1: request.observedSha1,

@@ -185,6 +185,9 @@ export function approveItem(
   finalName: string | null = null,
 ): void {
   harness.store.enqueueCommand(item.jobId, 'APPROVE_ITEM', {
+    ...(harness.store.getJobMetadata(item.jobId)
+      ? { business: harness.store.getBusinessMetadata(item.id) }
+      : {}),
     itemId: item.id,
     destinationKey,
     operatorLabel,

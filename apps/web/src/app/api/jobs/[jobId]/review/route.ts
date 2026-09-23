@@ -12,6 +12,7 @@ export async function GET(_request: Request, context: { params: Promise<{ jobId:
   }
   return NextResponse.json({
     items: buildReviewViews(jobId),
+    metadataTemplates: getStore().getJobMetadata(jobId) ?? [],
     destinations: getCatalog(jobId).entries.map((entry) => ({
       key: entry.key,
       label: entry.label,

@@ -78,9 +78,13 @@ describe('sqlite store', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
       .all() as Array<{ name: string }>;
     expect(tables.map((t) => t.name)).toEqual([
+      'business_metadata_writes',
       'extraction_results',
+      'item_metadata',
       'job_commands',
       'job_destinations',
+      'job_metadata',
+      'metadata_settings',
       'migration_events',
       'migration_items',
       'migration_jobs',
@@ -132,7 +136,7 @@ describe('sqlite store', () => {
       const before = legacy.listCommands(job.id);
       migrate(db);
       migrate(db);
-      expect(schemaVersion(db)).toBe(7);
+      expect(schemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
       expect(legacy.getRuntimeSettings()).toEqual({
         revision: 1,
         settings: { fileConcurrency: 2, logSink: 'jsonl', logFolder: '/tmp/demo-logs' },

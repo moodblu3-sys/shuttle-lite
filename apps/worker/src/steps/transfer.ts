@@ -408,6 +408,16 @@ export async function applyProvenance(ctx: JobContext, item: MigrationItem): Pro
   if (!item.boxFileId || !item.sourceSha1) {
     throw new ShuttleError('STATE_INVALID', 'metadata適用に必要な情報が不足しています');
   }
+  if (ctx.store.getJobMetadata(item.jobId) !== null) {
+    ctx.store.transitionItem({
+      itemId: item.id,
+      to: 'PROVENANCE_APPLIED',
+      telemetry: ctx.telemetry,
+      patch: { provenanceAppliedAt: new Date().toISOString() },
+      event: { status: 'SUCCEEDED', phase: 'METADATA', boxFileId: item.boxFileId },
+    });
+    return;
+  }
   const values = buildProvenanceMetadata({
     migrationJobId: item.jobId,
     migrationItemId: item.id,

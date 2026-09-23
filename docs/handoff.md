@@ -6,7 +6,7 @@ ChatGPTを設計・実装・自動テストの主担当とし、GitHub経由で�
 設計レビューで合意した次の開発範囲と受け渡し方針は
 [development-plan.md](development-plan.md) を参照する。新しい設計は未実装の項目を含む。
 
-更新日 2026-09-22
+更新日 2026-09-23
 
 ## このプロダクトは何か
 
@@ -17,6 +17,10 @@ Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋�
 詳細は `README.md`、判断の理由は `docs/decisions.md`。
 
 ## いまの状態
+
+- schema 8: 新規ジョブは書類別のBoxメタデータテンプレートを使用する。設定画面の「メタデータ」で契約書・請求書を設定する。
+- AI抽出→テンプレートの項目を確認・修正→承認→Boxへ付与。新規ジョブには旧Shuttle Lite Migrationを付けない。
+- 移行前の設定とCursorへのBox CLI依頼は [metadata-templates.md](metadata-templates.md)。既存ジョブは旧方式を維持する。
 
 - 元のMVPは129テスト・fake Box検証18項目で引き継ぎ済み。以降の変更はdevelopment-plan.md参照。
 - 現在は「新しい移行」でMacの移行元とBoxの既存移行先を選ぶ。配置先はjobごとに保存する。

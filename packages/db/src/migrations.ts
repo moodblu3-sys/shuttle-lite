@@ -261,6 +261,24 @@ export const MIGRATIONS: readonly Migration[] = [
     ) STRICT;
   `,
   },
+  {
+    version: 8,
+    name: 'document metadata templates',
+    sql: `CREATE TABLE metadata_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL, mappings TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE job_metadata (
+      job_id TEXT PRIMARY KEY REFERENCES migration_jobs(id), mappings TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE business_metadata_writes (
+      item_id TEXT NOT NULL REFERENCES migration_items(id), file_id TEXT NOT NULL, template_id TEXT NOT NULL,
+      template_json TEXT NOT NULL, PRIMARY KEY (item_id, file_id, template_id)
+    ) STRICT;
+    CREATE TABLE item_metadata (
+      item_id TEXT PRIMARY KEY REFERENCES migration_items(id), revision INTEGER NOT NULL,
+      template_id TEXT, values_json TEXT NOT NULL
+    ) STRICT;`,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

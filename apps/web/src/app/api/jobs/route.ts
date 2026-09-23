@@ -67,6 +67,7 @@ export async function POST(request: Request) {
         operatorLabel,
         testMode: body.testMode === true,
       });
+      store.saveJobMetadata(created.id, store.getMetadataSettings().mappings);
       if (destinations) store.saveJobDestinations(created.id, destinations);
       if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB');
       return created;
@@ -140,6 +141,7 @@ export async function POST(request: Request) {
       operatorLabel,
       testMode: body.testMode === true,
     });
+    store.saveJobMetadata(created.id, store.getMetadataSettings().mappings);
     store.saveJobDestinations(created.id, destinations);
     if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB');
     return created;

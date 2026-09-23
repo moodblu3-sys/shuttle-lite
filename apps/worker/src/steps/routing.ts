@@ -1,3 +1,4 @@
+import { prepareDocumentMetadata } from '../business-metadata';
 import { type MigrationItem, ShuttleError } from '@shuttle-lite/core';
 import { normalizeExtraction, routingOutcome } from '@shuttle-lite/routing';
 import { destinationKeys, type JobContext } from '../context';
@@ -48,6 +49,9 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
   const allowed = [...new Set([...destinationKeys(ctx), ctx.catalog.needsReviewKey])];
   const response = await ctx.gateway.extractStructured({
     fileId: item.boxFileId,
+    ...(ctx.store.getJobMetadata(item.jobId)
+      ? { documentTypes: ['契約書', '請求書', 'その他'] }
+      : {}),
     destinationKeys: allowed,
     destinations: ctx.catalog.entries,
     fileName: item.sourceFileName,
@@ -69,6 +73,8 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
     confidence: extraction.confidence,
     references: extraction.references,
   });
+
+  await prepareDocumentMetadata(ctx, item, extraction.documentType);
 
   const outcome =
     extraction.suggestedDestinationKey === ctx.catalog.needsReviewKey

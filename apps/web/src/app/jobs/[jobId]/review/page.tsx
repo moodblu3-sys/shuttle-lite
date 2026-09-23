@@ -22,6 +22,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ jobId: 
     <>
       <ReviewList
         key={jobId}
+        metadataTemplates={getStore().getJobMetadata(jobId) ?? []}
         jobId={jobId}
         items={buildReviewViews(jobId)}
         destinations={getCatalog(jobId).entries.map((entry) => ({

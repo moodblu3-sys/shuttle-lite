@@ -19,6 +19,7 @@ export interface FakeFile {
   modifiedAt: string;
   contentModifiedAt: string | null;
   metadata: Record<string, unknown> | null;
+  businessMetadata?: Record<string, Record<string, unknown>>;
 }
 
 export interface FakeSessionPart {
@@ -49,6 +50,7 @@ export interface FakeState {
   aiCalls: Record<string, number>;
   uploadAttempts: number;
   template: MetadataTemplateSpec | null;
+  templates?: Record<string, MetadataTemplateSpec>;
 }
 
 export const FAKE_ROOT_ID = '0';

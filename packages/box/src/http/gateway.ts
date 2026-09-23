@@ -1,3 +1,4 @@
+import type { BusinessTemplate } from '@shuttle-lite/core';
 import { hexToBase64Sha1, sha1Base64, type Logger, ShuttleError } from '@shuttle-lite/core';
 import type { BoxConfig, ProxyProfile } from '@shuttle-lite/config';
 import {
@@ -438,39 +439,60 @@ export class HttpBoxGateway implements BoxGateway {
     return toBoxFile(file);
   }
 
-  #metadataUrl(fileId: string): string {
-    return `${this.#box.apiBaseUrl}/files/${fileId}/metadata/${this.#box.metadataScope}/${this.#box.metadataTemplateKey}`;
+  #metadataUrl(fileId: string, template?: BusinessTemplate): string {
+    return `${this.#box.apiBaseUrl}/files/${fileId}/metadata/${encodeURIComponent(template?.scope ?? this.#box.metadataScope)}/${encodeURIComponent(template?.templateKey ?? this.#box.metadataTemplateKey)}`;
   }
 
-  async setMetadata(fileId: string, values: MetadataValues): Promise<void> {
+  async setMetadata(
+    fileId: string,
+    values: MetadataValues,
+    template?: BusinessTemplate,
+  ): Promise<void> {
     await this.#client.request({
       method: 'POST',
-      url: this.#metadataUrl(fileId),
+      url: this.#metadataUrl(fileId, template),
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(values),
     });
   }
 
-  async updateMetadata(fileId: string, values: MetadataValues): Promise<void> {
-    const existing = await this.getMetadata(fileId);
-    const operations = Object.entries(values).map(([key, value]) => ({
+  async updateMetadata(
+    fileId: string,
+    values: MetadataValues,
+    template?: BusinessTemplate,
+  ): Promise<void> {
+    const existing = await this.getMetadata(fileId, template);
+    const operations: Array<{
+      op: string;
+      path: string;
+      value?: string | number | boolean | null;
+    }> = Object.entries(values).map(([key, value]) => ({
       op: existing && key in existing ? 'replace' : 'add',
       path: `/${key}`,
       value,
     }));
+    if (template && existing) {
+      for (const field of template.fields) {
+        if (field.key in existing && !Object.hasOwn(values, field.key))
+          operations.push({ op: 'remove', path: `/${field.key}` });
+      }
+    }
     if (operations.length === 0) return;
     await this.#client.request({
       method: 'PUT',
-      url: this.#metadataUrl(fileId),
+      url: this.#metadataUrl(fileId, template),
       headers: { 'content-type': 'application/json-patch+json' },
       body: JSON.stringify(operations),
     });
   }
 
-  async getMetadata(fileId: string): Promise<Record<string, unknown> | null> {
+  async getMetadata(
+    fileId: string,
+    template?: BusinessTemplate,
+  ): Promise<Record<string, unknown> | null> {
     const response = await this.#client.request({
       method: 'GET',
-      url: this.#metadataUrl(fileId),
+      url: this.#metadataUrl(fileId, template),
       allowStatuses: [404],
     });
     if (response.status === 404) return null;
@@ -483,6 +505,9 @@ export class HttpBoxGateway implements BoxGateway {
       type: field.type,
       displayName: field.displayName,
       description: field.description,
+      ...(field.key === 'documentType' && request.documentTypes
+        ? { type: 'enum', options: request.documentTypes.map((key) => ({ key })) }
+        : {}),
       ...(field.key === 'suggestedDestinationKey'
         ? {
             options: [...new Set([...request.destinationKeys, 'NEEDS_REVIEW'])].map((key) => ({
@@ -555,10 +580,12 @@ export class HttpBoxGateway implements BoxGateway {
     };
   }
 
-  async getMetadataTemplate(): Promise<MetadataTemplateSpec | null> {
+  async getMetadataTemplate(
+    template?: Pick<BusinessTemplate, 'scope' | 'templateKey'>,
+  ): Promise<MetadataTemplateSpec | null> {
     const response = await this.#client.request({
       method: 'GET',
-      url: `${this.#box.apiBaseUrl}/metadata_templates/${this.#box.metadataScope}/${this.#box.metadataTemplateKey}/schema`,
+      url: `${this.#box.apiBaseUrl}/metadata_templates/${encodeURIComponent(template?.scope ?? this.#box.metadataScope)}/${encodeURIComponent(template?.templateKey ?? this.#box.metadataTemplateKey)}/schema`,
       allowStatuses: [404],
     });
     if (response.status === 404) return null;
@@ -584,6 +611,70 @@ export class HttpBoxGateway implements BoxGateway {
         options: field.options?.map((option) => option.key),
       })),
     };
+  }
+
+  async removeBusinessMetadata(fileId: string, template: BusinessTemplate): Promise<void> {
+    await this.#client.request({
+      method: 'DELETE',
+      url: this.#metadataUrl(fileId, template),
+      allowStatuses: [404],
+    });
+  }
+
+  async listMetadataTemplates(): Promise<MetadataTemplateSpec[]> {
+    const result: MetadataTemplateSpec[] = [];
+    const seen = new Set<string>();
+    let marker = '';
+    do {
+      const response = await this.#client.request({
+        method: 'GET',
+        url: `${this.#box.apiBaseUrl}/metadata_templates/enterprise?limit=100${marker ? '&marker=' + encodeURIComponent(marker) : ''}`,
+      });
+      const body = JSON.parse(response.bodyText) as {
+        entries: Array<{ scope: string; templateKey: string; hidden?: boolean }>;
+        next_marker?: string | null;
+      };
+      for (const entry of body.entries) {
+        if (entry.hidden) continue;
+        const template = await this.getMetadataTemplate(entry);
+        if (template) result.push(template);
+      }
+      marker = body.next_marker ?? '';
+      if (marker && seen.has(marker))
+        throw new ShuttleError('BOX_SERVER', 'テンプレート一覧を取得できませんでした。');
+      seen.add(marker);
+    } while (marker);
+    return result;
+  }
+
+  async extractTemplate(
+    fileId: string,
+    template: BusinessTemplate,
+  ): Promise<Record<string, unknown>> {
+    const response = await this.#client.request({
+      method: 'POST',
+      url: `${this.#box.apiBaseUrl}/ai/extract_structured`,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ id: fileId, type: 'file' }],
+        metadata_template: {
+          type: 'metadata_template',
+          scope: template.scope,
+          template_key: template.templateKey,
+        },
+      }),
+      allowStatuses: [202, 400],
+    });
+    if (response.status === 202)
+      throw new ShuttleError('AI_NOT_READY', 'メタデータ抽出の準備中です。', {
+        retryAfterMs: 5000,
+      });
+    if (response.status === 400)
+      throw new ShuttleError('AI_UNSUPPORTED', 'このファイルのメタデータを抽出できませんでした。');
+    const body = JSON.parse(response.bodyText) as { answer?: unknown };
+    if (!body.answer || typeof body.answer !== 'object' || Array.isArray(body.answer))
+      throw new ShuttleError('AI_INVALID_OUTPUT', '抽出結果を確認できませんでした。');
+    return body.answer as Record<string, unknown>;
   }
 
   async createMetadataTemplate(spec: MetadataTemplateSpec): Promise<void> {

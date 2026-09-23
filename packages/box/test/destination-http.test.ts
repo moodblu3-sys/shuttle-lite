@@ -1,3 +1,4 @@
+import { demoBusinessTemplates } from '../src/fake/business-templates';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockAgent } from 'undici';
 import { buildConfig, parseEnv } from '@shuttle-lite/config';
@@ -27,6 +28,67 @@ describe('Box destination HTTP contract', () => {
     await gateway.close();
     await agent.close();
     vi.restoreAllMocks();
+  });
+
+  it('lists all template pages and extracts using the selected Box template', async () => {
+    const template = demoBusinessTemplates[1]!;
+    const pool = agent.get('https://box.invalid');
+    pool.intercept({ path: '/2.0/metadata_templates/enterprise?limit=100' }).reply(200, {
+      entries: [{ scope: template.scope, templateKey: template.templateKey }],
+      next_marker: 'second',
+    });
+    pool
+      .intercept({
+        path: `/2.0/metadata_templates/${template.scope}/${template.templateKey}/schema`,
+      })
+      .reply(200, template);
+    pool
+      .intercept({ path: '/2.0/metadata_templates/enterprise?limit=100&marker=second' })
+      .reply(200, { entries: [], next_marker: null });
+    expect(await gateway.listMetadataTemplates()).toEqual([template]);
+    pool
+      .intercept({
+        path: '/2.0/ai/extract_structured',
+        method: 'POST',
+        body: JSON.stringify({
+          items: [{ id: '123', type: 'file' }],
+          metadata_template: {
+            type: 'metadata_template',
+            scope: template.scope,
+            template_key: template.templateKey,
+          },
+        }),
+      })
+      .reply(200, { answer: { amount: 12500 } });
+    expect(await gateway.extractTemplate('123', template)).toEqual({ amount: 12500 });
+    agent.assertNoPendingInterceptors();
+  });
+
+  it('writes the selected template and removes cleared values without writing internal fields', async () => {
+    const template = demoBusinessTemplates[1]!;
+    const path = `/2.0/files/123/metadata/${template.scope}/${template.templateKey}`;
+    const pool = agent.get('https://box.invalid');
+    pool
+      .intercept({ path, method: 'POST', body: JSON.stringify({ vendor: '青葉', amount: 12500 }) })
+      .reply(201, {});
+    await gateway.setMetadata('123', { vendor: '青葉', amount: 12500 }, template);
+    pool
+      .intercept({ path, method: 'GET' })
+      .reply(200, { vendor: '青葉', amount: 12500, $id: 'instance' });
+    pool
+      .intercept({
+        path,
+        method: 'PUT',
+        body: JSON.stringify([
+          { op: 'replace', path: '/vendor', value: '修正後' },
+          { op: 'remove', path: '/amount' },
+        ]),
+      })
+      .reply(200, { vendor: '修正後' });
+    await gateway.updateMetadata('123', { vendor: '修正後' }, template);
+    pool.intercept({ path, method: 'DELETE' }).reply(204);
+    await gateway.removeBusinessMetadata('123', template);
+    agent.assertNoPendingInterceptors();
   });
 
   it('deletes the exact file with an etag guard and never requests permanent trash purge', async () => {

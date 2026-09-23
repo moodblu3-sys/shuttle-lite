@@ -1,7 +1,7 @@
-import { ERROR_CATEGORY_META, type ErrorCategory } from '@shuttle-lite/core';
+import { templateId, ERROR_CATEGORY_META, type ErrorCategory } from '@shuttle-lite/core';
 import { hasRoutingDecision } from '@shuttle-lite/routing';
 import type { ReviewItemView } from './review-types';
-import { getCatalog, getStore } from './runtime';
+import { getCatalog, getStore, getConfig } from './runtime';
 
 /**
  * Shared by the review page and the review API so the screen and any
@@ -9,14 +9,31 @@ import { getCatalog, getStore } from './runtime';
  */
 export function buildReviewViews(jobId: string, limit = 200): ReviewItemView[] {
   const store = getStore();
+  const job = store.getJob(jobId);
+  const canExtract = Boolean(
+    getConfig().ai.enabled && job && store.getProfile(job.profileId)?.aiRoutingEnabled,
+  );
   const { needsReviewKey } = getCatalog(jobId);
   return store
     .listItems(jobId, { states: ['REVIEW_REQUIRED', 'NEEDS_REVIEW'], limit })
     .map((item) => {
       const routing = store.getRouting(item.id);
       const extraction = store.latestExtraction(item.id);
+      const mappings = store.getJobMetadata(jobId);
+      const business = mappings ? store.getBusinessMetadata(item.id) : null;
       const command = store.latestReviewCommand(jobId, item.id);
       return {
+        ...(business
+          ? {
+              businessMetadata: {
+                ...business,
+                canExtract,
+                template:
+                  mappings?.find((m) => templateId(m.template) === business.templateId)?.template ??
+                  null,
+              },
+            }
+          : {}),
         itemId: item.id,
         jobId,
         state: item.state,

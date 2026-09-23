@@ -1,5 +1,7 @@
 'use client';
 
+import type { TemplateMapping } from '@shuttle-lite/core';
+import { BusinessMetadataFields } from './business-metadata-fields';
 import { useRouter } from 'next/navigation';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { formatBytes } from '@shuttle-lite/core/progress';
@@ -26,6 +28,7 @@ export function ReviewList({
   needsReviewKey,
   defaultOperatorLabel,
   boxLinkBase,
+  metadataTemplates = [],
 }: {
   jobId: string;
   items: readonly ReviewItemView[];
@@ -33,6 +36,7 @@ export function ReviewList({
   needsReviewKey: string;
   defaultOperatorLabel: string;
   boxLinkBase: string | null;
+  metadataTemplates?: readonly TemplateMapping[];
 }) {
   const router = useRouter();
   const [operatorLabel, setOperatorLabel] = useState(defaultOperatorLabel);
@@ -157,6 +161,43 @@ export function ReviewList({
       setBusy(false);
     }
   }
+  async function selectTemplate(item: ReviewItemView, templateId: string | null, extract = false) {
+    if (sending.current || !item.businessMetadata) return;
+    sending.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/commands`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          type: 'SELECT_METADATA_TEMPLATE',
+          payload: {
+            itemId: item.itemId,
+            templateId,
+            extract,
+            revision: item.businessMetadata.revision,
+            observedBoxFileId: item.boxFileId,
+            observedSha1: item.boxSha1,
+          },
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setSubmitted((previous) => ({ ...previous, [item.itemId]: data.command }));
+      setSelected((previous) => {
+        const next = new Map(previous);
+        next.delete(item.itemId);
+        return next;
+      });
+      router.refresh();
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
+  }
   function renderRow(item: ReviewItemView, bulk: boolean) {
     const queued = isReviewPending(item, submitted[item.itemId]);
     const changed = currentDraft(item).destinationKey !== draftFor(item).destinationKey;
@@ -251,7 +292,7 @@ export function ReviewList({
     ['文書種別', active?.extraction?.documentType],
     ['業務区分', active?.extraction?.businessDomain],
     ['識別情報', active?.extraction?.businessIdentifier],
-  ].filter(([, value]) => value);
+  ].filter(([, value]) => value && !active?.businessMetadata);
   const destinationPath = destinations.find(
     (entry) => entry.key === draft?.destinationKey,
   )?.boxPath;
@@ -491,28 +532,72 @@ export function ReviewList({
                     ) : null}
                   </section>
                 ) : null}
-                <details className={styles.more}>
-                  <summary>メタデータを確認・編集</summary>
-                  {(
-                    [
-                      ['documentType', '文書種別'],
-                      ['businessDomain', '業務区分'],
-                      ['businessIdentifier', '識別情報'],
-                      ['effectiveDate', '発効日'],
-                      ['suggestedTags', 'タグ（カンマ区切り）'],
-                      ['routingReason', '分類理由'],
-                    ] as const
-                  ).map(([field, label]) => (
-                    <label key={field}>
-                      {label}
-                      <input
-                        type={field === 'effectiveDate' ? 'date' : 'text'}
-                        value={draft[field]}
-                        onChange={(event) => updateDraft(active, { [field]: event.target.value })}
-                      />
+                {active.businessMetadata ? (
+                  <section>
+                    <h3>メタデータ</h3>
+                    <label>
+                      テンプレート
+                      <select
+                        value={active.businessMetadata.templateId ?? ''}
+                        onChange={(event) =>
+                          void selectTemplate(active, event.target.value || null)
+                        }
+                      >
+                        <option value="">未選択</option>
+                        {metadataTemplates.map(({ template }) => (
+                          <option
+                            key={`${template.scope}/${template.templateKey}`}
+                            value={`${template.scope}/${template.templateKey}`}
+                          >
+                            {template.displayName}
+                          </option>
+                        ))}
+                      </select>
                     </label>
-                  ))}
-                </details>
+                    {active.businessMetadata.template ? (
+                      <>
+                        <BusinessMetadataFields
+                          template={active.businessMetadata.template}
+                          values={draft.businessValues ?? {}}
+                          onChange={(businessValues) => updateDraft(active, { businessValues })}
+                        />
+                        <button
+                          type="button"
+                          className="ghost"
+                          disabled={!active.businessMetadata.canExtract}
+                          onClick={() =>
+                            void selectTemplate(active, active.businessMetadata!.templateId, true)
+                          }
+                        >
+                          AIで抽出
+                        </button>
+                      </>
+                    ) : null}
+                  </section>
+                ) : (
+                  <details className={styles.more}>
+                    <summary>メタデータを確認・編集</summary>
+                    {(
+                      [
+                        ['documentType', '文書種別'],
+                        ['businessDomain', '業務区分'],
+                        ['businessIdentifier', '識別情報'],
+                        ['effectiveDate', '発効日'],
+                        ['suggestedTags', 'タグ（カンマ区切り）'],
+                        ['routingReason', '分類理由'],
+                      ] as const
+                    ).map(([field, label]) => (
+                      <label key={field}>
+                        {label}
+                        <input
+                          type={field === 'effectiveDate' ? 'date' : 'text'}
+                          value={draft[field]}
+                          onChange={(event) => updateDraft(active, { [field]: event.target.value })}
+                        />
+                      </label>
+                    ))}
+                  </details>
+                )}
                 <details className={styles.more}>
                   <summary>検証情報とその他の操作</summary>
                   <dl className={styles.extracted}>
