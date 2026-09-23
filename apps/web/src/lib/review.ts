@@ -60,7 +60,7 @@ export function buildReviewViews(
         : null,
       // 前の試行が失敗して戻ってきたitem。同じ承認をもう一度送っても同じ
       // 失敗になるため、一括承認の対象から外して個別対応させる。
-      needsAttention: item.lastErrorCategory !== null,
+      needsAttention: item.lastErrorCategory !== null || business?.extractionStatus === 'FAILED',
       finalName: item.finalName,
       suggestedDestinationKey: routing?.suggestedDestinationKey ?? null,
       hasRoutingDecision: hasRoutingDecision(

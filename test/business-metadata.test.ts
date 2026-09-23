@@ -304,6 +304,117 @@ describe('document-specific business metadata', () => {
     });
   });
 
+  it('uses the AI-selected ID even when the template name does not match the document label', async () => {
+    const custom = { ...contract, templateKey: 'businessRecords', displayName: '取引台帳' };
+    await h.gateway.createMetadataTemplate(custom);
+    h.store.saveMetadataSettings([{ template: custom }, { template: invoice }], 0);
+    h.writeSource('書類.txt', '業務委託契約書\n契約先：A社');
+    const classify = vi
+      .spyOn(h.gateway, 'extractStructured')
+      .mockResolvedValue({
+        provider: 'test',
+        confidence: null,
+        references: [],
+        fields: {
+          documentType: '契約書',
+          metadataTemplateId: templateId(custom),
+          suggestedDestinationKey: 'LEGAL_CONTRACTS',
+        },
+      });
+    const { items } = await stage();
+    expect(classify.mock.calls[0]![0].metadataTemplates).toEqual([custom, invoice]);
+    expect(h.store.getBusinessMetadata(items[0]!.id)).toMatchObject({
+      templateId: templateId(custom),
+      extractionStatus: 'EXTRACTED',
+      values: { counterparty: 'A社' },
+    });
+  });
+
+  it.each(['NONE', 'enterprise/disabled', null, undefined, { id: 'contract' }])(
+    'does not guess a template for an invalid or undecided AI answer %j',
+    async (answer) => {
+      h.writeSource('契約書.txt', '契約書\n契約先：A社');
+      vi.spyOn(h.gateway, 'extractStructured').mockResolvedValue({
+        provider: 'test',
+        confidence: null,
+        references: [],
+        fields: {
+          documentType: '契約書',
+          metadataTemplateId: answer,
+          suggestedDestinationKey: 'LEGAL_CONTRACTS',
+        },
+      });
+      const extract = vi.spyOn(h.gateway, 'extractTemplate');
+      const { items } = await stage();
+      expect(h.store.getBusinessMetadata(items[0]!.id).templateId).toBeNull();
+      expect(extract).not.toHaveBeenCalled();
+    },
+  );
+
+  it('automatically extracts after a manual template choice without an extract flag', async () => {
+    h.writeSource('メモ.txt', 'メモ\n請求元：A社');
+    const { items } = await stage();
+    const item = items[0]!;
+    h.store.enqueueCommand(item.jobId, 'SELECT_METADATA_TEMPLATE', {
+      itemId: item.id,
+      templateId: templateId(invoice),
+      revision: h.store.getBusinessMetadata(item.id).revision,
+      observedBoxFileId: item.boxFileId,
+      observedSha1: item.boxSha1,
+    });
+    await processCommands(h.ctx);
+    expect(h.store.getBusinessMetadata(item.id)).toMatchObject({
+      templateId: templateId(invoice),
+      extractionStatus: 'EXTRACTED',
+      values: { vendor: 'A社' },
+    });
+  });
+
+  it('keeps a failed extraction visible and can retry without reclassifying or uploading', async () => {
+    h.writeSource('契約書.txt', '契約書\n契約先：A社');
+    const classify = vi.spyOn(h.gateway, 'extractStructured');
+    vi.spyOn(h.gateway, 'extractTemplate').mockRejectedValueOnce(
+      new ShuttleError('AI_UNSUPPORTED', 'unsupported'),
+    );
+    const { items } = await stage();
+    const item = items[0]!;
+    expect(item.state).toBe('REVIEW_REQUIRED');
+    expect(h.store.getBusinessMetadata(item.id)).toMatchObject({
+      templateId: templateId(contract),
+      extractionStatus: 'FAILED',
+    });
+    select(item, templateId(contract), true);
+    await processCommands(h.ctx);
+    expect(h.store.getBusinessMetadata(item.id)).toMatchObject({
+      extractionStatus: 'EXTRACTED',
+      values: { counterparty: 'A社' },
+    });
+    expect(classify).toHaveBeenCalledTimes(1);
+    expect(h.store.getItem(item.id)?.boxFileId).toBe(item.boxFileId);
+  });
+
+  it('distinguishes an empty extraction from failure and preserves prior values on failed re-extraction', async () => {
+    h.writeSource('契約書.txt', '契約書\n契約先：A社');
+    const { items } = await stage();
+    const item = items[0]!;
+    const extract = vi
+      .spyOn(h.gateway, 'extractTemplate')
+      .mockRejectedValueOnce(new Error('network'));
+    select(item, templateId(contract), true);
+    await processCommands(h.ctx);
+    expect(h.store.getBusinessMetadata(item.id)).toMatchObject({
+      extractionStatus: 'FAILED',
+      values: { counterparty: 'A社' },
+    });
+    extract.mockResolvedValueOnce({});
+    select(item, templateId(invoice), true);
+    await processCommands(h.ctx);
+    expect(h.store.getBusinessMetadata(item.id)).toMatchObject({
+      extractionStatus: 'EMPTY',
+      values: {},
+    });
+  });
+
   it('lets an existing job choose a newly enabled template, extract and apply its values', async () => {
     h.writeSource('A社_請求書.txt', '請求書\n請求元：A社\n金額：110000\n通貨：JPY');
     const job = h.store.createJob({ profileId: h.createProfile().id, operatorLabel: '担当者' });

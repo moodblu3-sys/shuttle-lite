@@ -26,6 +26,7 @@ export interface BusinessMetadataDraft {
   readonly revision: number;
   readonly templateId: string | null;
   readonly values: BusinessValues;
+  readonly extractionStatus?: 'UNSELECTED' | 'EXTRACTED' | 'EMPTY' | 'FAILED' | 'MANUAL';
 }
 
 export function templateId(template: Pick<BusinessTemplate, 'scope' | 'templateKey'>): string {

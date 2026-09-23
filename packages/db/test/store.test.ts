@@ -72,6 +72,45 @@ describe('sqlite store', () => {
     store = createStore();
   });
 
+  it('upgrades metadata drafts from v9 without losing selected templates or human values', () => {
+    const db = openDatabase({ path: ':memory:' });
+    try {
+      for (const migration of MIGRATIONS.filter((entry) => entry.version <= 9))
+        db.exec(migration.sql);
+      db.pragma('user_version = 9');
+      const legacy = new ShuttleStore(db);
+      const { itemId } = seed(legacy);
+      db.prepare('INSERT INTO item_metadata VALUES (?, ?, ?, ?)').run(
+        itemId,
+        3,
+        'enterprise/contract',
+        JSON.stringify({ counterparty: 'A社', amount: 0 }),
+      );
+      migrate(db);
+      migrate(db);
+      expect(legacy.getBusinessMetadata(itemId)).toEqual({
+        revision: 3,
+        templateId: 'enterprise/contract',
+        values: { counterparty: 'A社', amount: 0 },
+        extractionStatus: 'MANUAL',
+      });
+      legacy.saveBusinessMetadata(
+        itemId,
+        'enterprise/contract',
+        { counterparty: 'B社' },
+        3,
+        'EXTRACTED',
+      );
+      expect(legacy.getBusinessMetadata(itemId)).toMatchObject({
+        revision: 4,
+        extractionStatus: 'EXTRACTED',
+        values: { counterparty: 'B社' },
+      });
+    } finally {
+      db.close();
+    }
+  });
+
   it('applies the schema once and records the version', () => {
     expect(schemaVersion(store.db)).toBe(LATEST_SCHEMA_VERSION);
     const tables = store.db

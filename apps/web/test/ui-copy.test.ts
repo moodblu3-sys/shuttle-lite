@@ -176,7 +176,7 @@ describe('concise review and empty states', () => {
     ])
       expect(html).not.toContain(copy);
     expect(html).toContain('未選択');
-    expect(html).toMatch(/<span>4<\/span>アップロード/);
+    expect(html).toMatch(/<span>4<\/span>配置/);
 
     // Previously saved manual-routing hints must disappear without recreating the job.
     const manual = renderToStaticMarkup(

@@ -287,6 +287,11 @@ export const MIGRATIONS: readonly Migration[] = [
       worker_id TEXT PRIMARY KEY, last_seen TEXT NOT NULL
     ) STRICT;`,
   },
+  {
+    version: 10,
+    name: 'business metadata extraction status',
+    sql: `ALTER TABLE item_metadata ADD COLUMN extraction_status TEXT NOT NULL DEFAULT 'MANUAL';`,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

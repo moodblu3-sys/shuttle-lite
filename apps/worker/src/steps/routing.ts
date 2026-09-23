@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { prepareDocumentMetadata } from '../business-metadata';
-import { type MigrationItem, ShuttleError, metadataDocumentTypes } from '@shuttle-lite/core';
+import { type MigrationItem, ShuttleError } from '@shuttle-lite/core';
 import { normalizeExtraction, routingOutcome } from '@shuttle-lite/routing';
 import { destinationKeys, type JobContext } from '../context';
 
@@ -52,6 +52,7 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
   const cacheKey = createHash('sha256')
     .update(
       JSON.stringify([
+        'content-template-selection-v1',
         item.boxFileId,
         item.boxFileVersionId,
         item.boxSha1,
@@ -66,9 +67,7 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
   if (!record) {
     const response = await ctx.gateway.extractStructured({
       fileId: item.boxFileId,
-      ...(ctx.store.getJobMetadata(item.jobId)
-        ? { documentTypes: metadataDocumentTypes(templates) }
-        : {}),
+      metadataTemplates: templates.map(({ template }) => template),
       destinationKeys: allowed,
       destinations: ctx.catalog.entries,
       fileName: item.sourceFileName,
@@ -106,7 +105,7 @@ export async function runRouting(ctx: JobContext, item: MigrationItem): Promise<
     allowed,
   );
 
-  await prepareDocumentMetadata(ctx, item, extraction.documentType);
+  await prepareDocumentMetadata(ctx, item, extraction.rawFields.metadataTemplateId, templates);
 
   const outcome =
     extraction.suggestedDestinationKey === ctx.catalog.needsReviewKey

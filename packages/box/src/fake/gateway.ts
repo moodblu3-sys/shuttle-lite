@@ -1,5 +1,5 @@
 import { demoBusinessTemplates } from './business-templates';
-import { templateId, type BusinessTemplate } from '@shuttle-lite/core';
+import { mappingForDocument, templateId, type BusinessTemplate } from '@shuttle-lite/core';
 import { createHash } from 'node:crypto';
 import {
   createReadStream,
@@ -569,6 +569,12 @@ export class FakeBoxGateway implements BoxGateway {
     await this.#throttle();
     const text = readTextHead(this.#state.objectPath(file.id));
     const classification = classifyText(text, file.name, request.destinationKeys);
+    // Deterministic fixture behavior; real Box compares document content and candidate fields.
+    const mapping = mappingForDocument(
+      (request.metadataTemplates ?? []).map((template) => ({ template })),
+      classification.documentType,
+    );
+    const metadataTemplateId = mapping ? templateId(mapping.template) : 'NONE';
     if (request.destinations?.some((entry) => entry.key.startsWith('DEST_'))) {
       const haystack = `${request.fileName} ${text}`.toLocaleLowerCase();
       const scored = request.destinations
@@ -589,6 +595,7 @@ export class FakeBoxGateway implements BoxGateway {
         references: [],
         fields: {
           ...classification,
+          metadataTemplateId,
           suggestedDestinationKey: match,
           reason: match
             ? 'テスト環境：文書中の語句とフォルダー名が一致しました。'
@@ -599,6 +606,7 @@ export class FakeBoxGateway implements BoxGateway {
     return {
       provider: 'fake-heuristic',
       fields: {
+        metadataTemplateId,
         documentType: classification.documentType,
         businessDomain: classification.businessDomain,
         businessIdentifier: classification.businessIdentifier,

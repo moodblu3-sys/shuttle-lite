@@ -28,6 +28,20 @@ import {
 import { DocumentIcon, WorkspaceIcon as Icon } from './workspace-icon';
 import styles from './review-workspace.module.css';
 
+function metadataStatus(item: ReviewItemView, pending: boolean): string {
+  if (pending) return '処理中';
+  switch (item.businessMetadata?.extractionStatus) {
+    case 'EXTRACTED':
+      return '抽出済み';
+    case 'EMPTY':
+      return '該当項目なし';
+    case 'FAILED':
+      return '抽出失敗';
+    default:
+      return '手動入力';
+  }
+}
+
 export function ReviewList({
   jobId,
   items,
@@ -200,7 +214,7 @@ export function ReviewList({
       setBusy(false);
     }
   }
-  async function selectTemplate(item: ReviewItemView, templateId: string | null, extract = false) {
+  async function selectTemplate(item: ReviewItemView, templateId: string | null) {
     if (sending.current || !item.businessMetadata) return;
     sending.current = true;
     setBusy(true);
@@ -214,7 +228,6 @@ export function ReviewList({
           payload: {
             itemId: item.itemId,
             templateId,
-            extract,
             revision: item.businessMetadata.revision,
             observedBoxFileId: item.boxFileId,
             observedSha1: item.boxSha1,
@@ -269,6 +282,14 @@ export function ReviewList({
           <DocumentIcon name={item.sourceFileName} />
           <span className={styles.fileText}>
             <strong>{item.sourceFileName}</strong>
+            {item.businessMetadata ? (
+              <span>
+                {item.businessMetadata.template?.displayName ?? 'テンプレート未選択'}
+                {item.businessMetadata.template || queued
+                  ? ` · ${metadataStatus(item, queued)}`
+                  : ''}
+              </span>
+            ) : null}
             {subtitle ? <span>{subtitle}</span> : null}
           </span>
           <span className={`${styles.status} ${!bulk ? styles.warning : ''}`}>
@@ -358,7 +379,7 @@ export function ReviewList({
             <span>3</span>確認・承認
           </li>
           <li>
-            <span>4</span>アップロード
+            <span>4</span>配置
           </li>
         </ol>
         <div className={styles.toolbar}>
@@ -581,7 +602,7 @@ export function ReviewList({
                   </details>
                   {destinationPath ? <p className={styles.path}>{destinationPath}</p> : null}
                 </section>
-                {active.needsAttention ? (
+                {active.needsAttention && (active.lastError || active.operatorAction) ? (
                   <section className={styles.problem}>
                     <h3>要対応</h3>
                     <p>{active.lastError}</p>
@@ -659,30 +680,40 @@ export function ReviewList({
                         ))}
                       </select>
                     </label>
+                    {locked && !active.businessMetadata.template ? (
+                      <p role="status">処理中</p>
+                    ) : null}
                     {active.businessMetadata.template ? (
                       <>
-                        <BusinessMetadataFields
-                          template={active.businessMetadata.template}
-                          values={draft.businessValues ?? {}}
-                          onChange={(businessValues) => updateDraft(active, { businessValues })}
-                        />
-                        <button
-                          type="button"
-                          className="ghost"
-                          disabled={
-                            !active.businessMetadata.canExtract ||
-                            !metadataTemplates.some(
-                              ({ template }) =>
-                                `${template.scope}/${template.templateKey}` ===
-                                active.businessMetadata!.templateId,
-                            )
-                          }
-                          onClick={() =>
-                            void selectTemplate(active, active.businessMetadata!.templateId, true)
-                          }
+                        <p role="status">{metadataStatus(active, locked)}</p>
+                        <details
+                          className={styles.more}
+                          key={`${active.itemId}:${active.businessMetadata.templateId}`}
                         >
-                          AIで抽出
-                        </button>
+                          <summary>項目を確認・編集</summary>
+                          <BusinessMetadataFields
+                            template={active.businessMetadata.template}
+                            values={draft.businessValues ?? {}}
+                            onChange={(businessValues) => updateDraft(active, { businessValues })}
+                          />
+                          <button
+                            type="button"
+                            className="ghost"
+                            disabled={
+                              !active.businessMetadata.canExtract ||
+                              !metadataTemplates.some(
+                                ({ template }) =>
+                                  `${template.scope}/${template.templateKey}` ===
+                                  active.businessMetadata!.templateId,
+                              )
+                            }
+                            onClick={() =>
+                              void selectTemplate(active, active.businessMetadata!.templateId)
+                            }
+                          >
+                            再抽出
+                          </button>
+                        </details>
                       </>
                     ) : null}
                   </section>

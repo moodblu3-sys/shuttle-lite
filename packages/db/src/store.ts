@@ -284,11 +284,24 @@ export class ShuttleStore {
 
   getBusinessMetadata(itemId: string): BusinessMetadataDraft {
     const row = this.db
-      .prepare('SELECT revision, template_id, values_json FROM item_metadata WHERE item_id = ?')
+      .prepare(
+        'SELECT revision, template_id, values_json, extraction_status FROM item_metadata WHERE item_id = ?',
+      )
       .get(itemId) as
-      { revision: number; template_id: string | null; values_json: string } | undefined;
+      | {
+          revision: number;
+          template_id: string | null;
+          values_json: string;
+          extraction_status: BusinessMetadataDraft['extractionStatus'];
+        }
+      | undefined;
     return row
-      ? { revision: row.revision, templateId: row.template_id, values: JSON.parse(row.values_json) }
+      ? {
+          revision: row.revision,
+          templateId: row.template_id,
+          values: JSON.parse(row.values_json),
+          extractionStatus: row.template_id ? row.extraction_status : 'UNSELECTED',
+        }
       : { revision: 0, templateId: null, values: {} };
   }
 
@@ -297,6 +310,7 @@ export class ShuttleStore {
     templateId: string | null,
     values: BusinessValues,
     expectedRevision: number,
+    extractionStatus: BusinessMetadataDraft['extractionStatus'] = 'MANUAL',
   ): void {
     if (this.getBusinessMetadata(itemId).revision !== expectedRevision)
       throw new ShuttleError(
@@ -305,9 +319,9 @@ export class ShuttleStore {
       );
     this.db
       .prepare(
-        'INSERT INTO item_metadata VALUES (?, ?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET revision = excluded.revision, template_id = excluded.template_id, values_json = excluded.values_json',
+        'INSERT INTO item_metadata (item_id, revision, template_id, values_json, extraction_status) VALUES (?, ?, ?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET revision = excluded.revision, template_id = excluded.template_id, values_json = excluded.values_json, extraction_status = excluded.extraction_status',
       )
-      .run(itemId, expectedRevision + 1, templateId, JSON.stringify(values));
+      .run(itemId, expectedRevision + 1, templateId, JSON.stringify(values), extractionStatus);
   }
 
   getRuntimeSettings(): { revision: number; settings: unknown } {

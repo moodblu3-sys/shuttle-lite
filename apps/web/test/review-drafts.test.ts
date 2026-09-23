@@ -191,6 +191,68 @@ describe('persistent review drafts', () => {
       type: 'SELECT_METADATA_TEMPLATE',
       payload: { templateId: 'enterprise_123/type2', revision: 0 },
     });
+    expect(JSON.parse(fetchMock.mock.calls[0]![1]!.body as string).payload.extract).toBeUndefined();
+    expect(container.textContent).toContain('処理中');
+    expect(container.querySelector<HTMLFieldSetElement>('fieldset')!.disabled).toBe(true);
+  });
+  it('keeps extracted fields collapsed and bulk-approves their values without opening details', async () => {
+    const template = {
+      scope: 'enterprise_123',
+      templateKey: 'contract',
+      displayName: '契約書管理',
+      fields: [{ key: 'counterparty', displayName: '契約先', type: 'string' as const }],
+    };
+    const row: ReviewItemView = {
+      ...item,
+      businessMetadata: {
+        revision: 1,
+        templateId: 'enterprise_123/contract',
+        values: { counterparty: 'A社' },
+        template,
+        canExtract: true,
+        extractionStatus: 'EXTRACTED',
+      },
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({
+          command: {
+            id: 'approve',
+            state: 'PENDING',
+            createdAt: '2026-09-23T00:00:00Z',
+            rejectionReason: null,
+          },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await render(row);
+    const details = [...container.querySelectorAll('details')].find(
+      (entry) => entry.querySelector('summary')?.textContent === '項目を確認・編集',
+    )!;
+    expect(details.open).toBe(false);
+    expect(details.querySelector<HTMLInputElement>('input')!.value).toBe('A社');
+    expect(container.textContent).toContain('契約書管理 · 抽出済み');
+    expect(container.textContent).not.toContain('AIで抽出');
+    await act(async () =>
+      container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click(),
+    );
+    await act(async () =>
+      [...container.querySelectorAll('button')]
+        .find((b) => b.textContent === '選択した1件を承認')!
+        .click(),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)).toMatchObject({
+      type: 'APPROVE_ITEM',
+      payload: {
+        business: {
+          templateId: 'enterprise_123/contract',
+          revision: 1,
+          values: { counterparty: 'A社' },
+        },
+      },
+    });
+    expect(details.open).toBe(false);
   });
   it('navigates across pages and submits a full-job search', async () => {
     await render(item, { page: 1, pageSize: 100, total: 205, allTotal: 205, query: '' });

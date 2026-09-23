@@ -138,6 +138,7 @@ export const AI_EXTRACTION_FIELDS = [
 ] as const;
 
 export interface AiExtractionRequest {
+  readonly metadataTemplates?: readonly BusinessTemplate[];
   readonly documentTypes?: readonly string[];
   readonly fileId: string;
   /** Allowed destination keys. The model may not invent a folder ID. */

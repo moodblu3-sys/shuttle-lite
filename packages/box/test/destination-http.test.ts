@@ -151,6 +151,36 @@ describe('Box destination HTTP contract', () => {
     agent.assertNoPendingInterceptors();
   });
 
+  it('sends template names and fields as constrained AI choices alongside destinations', async () => {
+    let sent:
+      | { fields: { key: string; type: string; prompt?: string; options?: { key: string }[] }[] }
+      | undefined;
+    agent
+      .get('https://box.invalid')
+      .intercept({ path: '/2.0/ai/extract_structured', method: 'POST' })
+      .reply(200, (request) => {
+        sent = JSON.parse(String(request.body));
+        return { answer: { metadataTemplateId: 'enterprise/shuttleLiteContract' } };
+      });
+    await gateway.extractStructured({
+      fileId: '55',
+      fileName: '書類.pdf',
+      destinationKeys: ['DEST_A'],
+      metadataTemplates: demoBusinessTemplates,
+    });
+    const field = sent!.fields.find((entry) => entry.key === 'metadataTemplateId')!;
+    expect(field.type).toBe('enum');
+    expect(field.options).toEqual([
+      ...demoBusinessTemplates.map((t) => ({ key: `${t.scope}/${t.templateKey}` })),
+      { key: 'NONE' },
+    ]);
+    expect(field.prompt).toContain('契約書管理');
+    expect(field.prompt).toContain('counterparty');
+    expect(field.prompt).toContain('契約先');
+    expect(field.prompt).toContain('区別できない');
+    agent.assertNoPendingInterceptors();
+  });
+
   it('sends selected names and paths with allowed keys and an explicit no-match option', async () => {
     let sent:
       { fields: { key: string; options?: { key: string }[]; prompt?: string }[] } | undefined;

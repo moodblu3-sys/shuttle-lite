@@ -1,6 +1,5 @@
 import {
   assertBusinessTemplate,
-  mappingForDocument,
   normalizeBusinessValues,
   sameTemplate,
   ShuttleError,
@@ -10,6 +9,7 @@ import {
   type JobCommandRecord,
   type MigrationItem,
   type TemplateMapping,
+  type BusinessMetadataDraft,
 } from '@shuttle-lite/core';
 import type { JobContext, WorkerContext } from './context';
 import { applyRuntimeSettings } from '@shuttle-lite/config';
@@ -29,26 +29,38 @@ export async function checkTemplate(ctx: WorkerContext, template: BusinessTempla
 export async function prepareDocumentMetadata(
   ctx: JobContext,
   item: MigrationItem,
-  documentType: string | null,
+  selectedTemplateId: unknown,
+  mappings: readonly TemplateMapping[],
 ): Promise<void> {
   if (
     ctx.store.getJobMetadata(item.jobId) === null ||
     ctx.store.getBusinessMetadata(item.id).revision > 0
   )
     return;
-  const mappings = ctx.store.getAvailableJobMetadata(item.jobId);
-  const mapping = mappingForDocument(mappings, documentType);
+  // Treat the model's answer as untrusted: only an exact enabled ID is usable.
+  const mapping = mappings.find((entry) => templateId(entry.template) === selectedTemplateId);
   if (!mapping) return;
+  assertStillAvailable(ctx, item.jobId, mapping);
   await checkTemplate(ctx, mapping.template);
-  const values = normalizeBusinessValues(
-    mapping.template,
-    await ctx.gateway.extractTemplate(item.boxFileId!, mapping.template),
-    false,
-  );
+  let values: BusinessValues = {};
+  let status: BusinessMetadataDraft['extractionStatus'];
+  try {
+    values = normalizeBusinessValues(
+      mapping.template,
+      await ctx.gateway.extractTemplate(item.boxFileId!, mapping.template),
+      false,
+    );
+    status = Object.keys(values).length ? 'EXTRACTED' : 'EMPTY';
+  } catch (error) {
+    // Transient failures retain the worker's retry behavior.
+    if (!['AI_UNSUPPORTED', 'AI_INVALID_OUTPUT'].includes((error as ShuttleError).category))
+      throw error;
+    status = 'FAILED';
+  }
   ctx.store.transaction(() => {
     assertStillAvailable(ctx, item.jobId, mapping);
     ctx.store.rememberJobTemplate(item.jobId, mapping);
-    ctx.store.saveBusinessMetadata(item.id, templateId(mapping.template), values, 0);
+    ctx.store.saveBusinessMetadata(item.id, templateId(mapping.template), values, 0, status);
   });
 }
 
@@ -99,21 +111,28 @@ export async function selectMetadataTemplate(
   if (requested !== null && !mapping)
     throw new ShuttleError('APPROVAL_INVALID', '登録されていないテンプレートです。');
   let values: BusinessValues = {};
+  let status: BusinessMetadataDraft['extractionStatus'] = 'MANUAL';
   if (mapping) {
     await checkTemplate(ctx, mapping.template);
-    // On AI failure the same template can still be chosen for manual entry.
-    if (command.payload.extract === true) {
-      const profile = ctx.store.getProfile(job!.profileId);
-      if (
-        !applyRuntimeSettings(ctx.config, ctx.store.getRuntimeSettings().settings).ai.enabled ||
-        !profile?.aiRoutingEnabled
-      )
-        throw new ShuttleError('APPROVAL_INVALID', 'AI分類が無効です。');
-      values = normalizeBusinessValues(
-        mapping.template,
-        await ctx.gateway.extractTemplate(item!.boxFileId!, mapping.template),
-        false,
-      );
+    const profile = ctx.store.getProfile(job!.profileId);
+    const aiEnabled =
+      applyRuntimeSettings(ctx.config, ctx.store.getRuntimeSettings().settings).ai.enabled &&
+      profile?.aiRoutingEnabled;
+    if (command.payload.extract === true && !aiEnabled)
+      throw new ShuttleError('APPROVAL_INVALID', 'AI分類が無効です。');
+    if (aiEnabled && command.payload.extract !== false) {
+      try {
+        values = normalizeBusinessValues(
+          mapping.template,
+          await ctx.gateway.extractTemplate(item!.boxFileId!, mapping.template),
+          false,
+        );
+        status = Object.keys(values).length ? 'EXTRACTED' : 'EMPTY';
+      } catch {
+        status = 'FAILED';
+        const previous = ctx.store.getBusinessMetadata(item!.id);
+        if (previous.templateId === requested) values = previous.values;
+      }
     }
   }
   return () => {
@@ -127,6 +146,7 @@ export async function selectMetadataTemplate(
       mapping ? templateId(mapping.template) : null,
       values,
       revision as number,
+      status,
     );
   };
 }
