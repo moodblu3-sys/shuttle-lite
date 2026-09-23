@@ -71,6 +71,11 @@ describe('persistent review drafts', () => {
         }),
       ),
     );
+    if (!container.querySelector('aside')) {
+      await act(async () =>
+        container.querySelector<HTMLButtonElement>(`#review-file-${row.itemId}`)!.click(),
+      );
+    }
   }
   async function choose(value: string) {
     await act(async () => {
@@ -176,6 +181,7 @@ describe('persistent review drafts', () => {
         }),
       ),
     );
+    await act(async () => container.querySelector<HTMLButtonElement>('#review-file-one')!.click());
     const select = container.querySelectorAll('select')[1]!;
     expect([...select.options].map((option) => option.text)).toEqual([
       '未選択',
@@ -213,18 +219,16 @@ describe('persistent review drafts', () => {
         extractionStatus: 'EXTRACTED',
       },
     };
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({
-          command: {
-            id: 'approve',
-            state: 'PENDING',
-            createdAt: '2026-09-23T00:00:00Z',
-            rejectionReason: null,
-          },
-        }),
-      );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        command: {
+          id: 'approve',
+          state: 'PENDING',
+          createdAt: '2026-09-23T00:00:00Z',
+          rejectionReason: null,
+        },
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
     await render(row);
     const details = [...container.querySelectorAll('details')].find(
@@ -232,7 +236,9 @@ describe('persistent review drafts', () => {
     )!;
     expect(details.open).toBe(false);
     expect(details.querySelector<HTMLInputElement>('input')!.value).toBe('A社');
-    expect(container.textContent).toContain('契約書管理 · 抽出済み');
+    expect(container.querySelector('#review-file-one')?.textContent).toContain(
+      '契約書管理抽出済み',
+    );
     expect(container.textContent).not.toContain('AIで抽出');
     await act(async () =>
       container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click(),

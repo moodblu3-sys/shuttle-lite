@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { ReviewList } from '../../../../components/review-list';
+import { ReviewWorkspace } from '../../../../components/review-workspace';
 import { buildReviewPage } from '../../../../lib/review';
 import { getCatalog, getConfig, getStore } from '../../../../lib/runtime';
 
@@ -10,7 +10,11 @@ export default async function ReviewPage({
   searchParams,
 }: {
   params: Promise<{ jobId: string }>;
-  searchParams: Promise<{ page?: string | string[]; q?: string | string[] }>;
+  searchParams: Promise<{
+    page?: string | string[];
+    q?: string | string[];
+    filter?: string | string[];
+  }>;
 }) {
   const { jobId } = await params;
   const job = getStore().getJob(jobId);
@@ -29,11 +33,12 @@ export default async function ReviewPage({
     jobId,
     Number(Array.isArray(search.page) ? search.page[0] : (search.page ?? 1)),
     (Array.isArray(search.q) ? search.q[0] : search.q) ?? '',
+    (Array.isArray(search.filter) ? search.filter[0] : search.filter) ?? 'all',
   );
   return (
     <>
-      <ReviewList
-        key={`${jobId}:${pagination.page}:${pagination.query}`}
+      <ReviewWorkspace
+        key={`${jobId}:${pagination.page}:${pagination.query}:${pagination.filter}`}
         metadataTemplates={getStore().getAvailableJobMetadata(jobId)}
         jobId={jobId}
         items={items}

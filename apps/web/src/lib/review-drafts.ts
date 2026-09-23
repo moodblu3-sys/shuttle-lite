@@ -13,6 +13,34 @@ const maxAge = 7 * 24 * 60 * 60 * 1000;
 const keyFor = (item: ReviewItemView) =>
   `${prefix}${encodeURIComponent(item.jobId)}:${encodeURIComponent(item.itemId)}`;
 
+/** Only changed destinations are needed for a read-only, full-job filter query. */
+export function destinationDrafts(storage: Storage, jobId: string): SavedReviewDraft[] {
+  const drafts: SavedReviewDraft[] = [];
+  const jobPrefix = `${prefix}${encodeURIComponent(jobId)}:`;
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (!key?.startsWith(jobPrefix)) continue;
+    try {
+      const saved = JSON.parse(storage.getItem(key)!) as SavedReviewDraft;
+      const item = JSON.parse(saved.revision) as ReviewItemView;
+      if (
+        item.jobId === jobId &&
+        validReviewDraft(item, saved) &&
+        typeof saved.draft?.destinationKey === 'string' &&
+        saved.draft.destinationKey !== draftFor(item).destinationKey
+      ) {
+        drafts.push({
+          ...saved,
+          draft: { ...draftFor(item), destinationKey: saved.draft.destinationKey },
+        });
+      }
+    } catch {
+      // Ignore malformed or unrelated browser data.
+    }
+  }
+  return drafts;
+}
+
 export function validReviewDraft(item: ReviewItemView, saved?: SavedReviewDraft): boolean {
   return (
     !!saved &&

@@ -42,6 +42,14 @@ function metadataStatus(item: ReviewItemView, pending: boolean): string {
   }
 }
 
+const FILTERS = [
+  ['all', 'すべて'],
+  ['ready', '承認待ち'],
+  ['unselected', '未選択'],
+  ['attention', '要対応'],
+] as const;
+type ReviewFilter = (typeof FILTERS)[number][0];
+
 export function ReviewList({
   jobId,
   items,
@@ -51,6 +59,9 @@ export function ReviewList({
   boxLinkBase,
   metadataTemplates = [],
   pagination,
+  onNavigate,
+  onRefresh,
+  navigationPending = false,
 }: {
   jobId: string;
   items: readonly ReviewItemView[];
@@ -59,15 +70,30 @@ export function ReviewList({
   defaultOperatorLabel: string;
   boxLinkBase: string | null;
   metadataTemplates?: readonly TemplateMapping[];
-  pagination?: { page: number; pageSize: number; total: number; allTotal: number; query: string };
+  pagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    allTotal: number;
+    query: string;
+    filter?: string;
+    counts?: Record<ReviewFilter, number>;
+    destinationOverrides?: Record<string, string>;
+  };
+  onNavigate?: (page: number, query: string, filter: string) => void;
+  onRefresh?: () => void;
+  navigationPending?: boolean;
 }) {
   const router = useRouter();
   const [operatorLabel, setOperatorLabel] = useState(defaultOperatorLabel);
   const [edits, setEdits] = useState<Record<string, SavedReviewDraft>>({});
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
-  const [activeId, setActiveId] = useState<string | null>(items[0]?.itemId ?? null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [localFilter, setLocalFilter] = useState<ReviewFilter>('all');
+  const filter = (pagination?.filter ?? localFilter) as ReviewFilter;
   const [query, setQuery] = useState(pagination?.query ?? '');
-  const [busy, setBusy] = useState(false);
+  const [submitting, setBusy] = useState(false);
+  const busy = submitting || navigationPending;
   const sending = useRef(false);
   const [submitted, setSubmitted] = useState<Record<string, ReviewCommandView>>({});
   const [notice, setNotice] = useState<string | null>(null);
@@ -79,8 +105,35 @@ export function ReviewList({
     needsReviewKey,
     currentDraft,
   );
-  const pending = items.filter((item) => !isReviewPending(item, submitted[item.itemId]));
+  const visibleItems = items.filter(
+    (item) =>
+      (pagination || matchesReviewSearch(item, query)) &&
+      (filter === 'all' || categoryFor(item, currentDraft(item), true) === filter),
+  );
+  const pending = visibleItems.filter((item) => !isReviewPending(item, submitted[item.itemId]));
   const ready = bulkReviewItems(pending, selected, currentDraft, destinations, needsReviewKey);
+  const filterCounts = { all: 0, ready: 0, unselected: 0, attention: 0, ...pagination?.counts };
+  for (const item of items) {
+    if (!pagination && !matchesReviewSearch(item, query)) continue;
+    const category = categoryFor(item, currentDraft(item), true);
+    if (pagination?.counts) {
+      // Reflect local destination edits and command receipts without losing global totals.
+      const originalDraft = draftFor(item);
+      const original = categoryFor(
+        item,
+        {
+          ...originalDraft,
+          destinationKey:
+            pagination.destinationOverrides?.[item.itemId] ?? originalDraft.destinationKey,
+        },
+        false,
+      );
+      if (original !== 'processing') filterCounts[original]--;
+    } else {
+      filterCounts.all++;
+    }
+    if (category !== 'processing') filterCounts[category]++;
+  }
   const duplicateNames = new Set(
     items
       .filter((item, index) =>
@@ -97,12 +150,23 @@ export function ReviewList({
     // Never reuse edits against a new worker snapshot (version, error or AI result).
     return validReviewDraft(item, edit) ? edit!.draft : draftFor(item);
   }
+  function categoryFor(item: ReviewItemView, draft: ApprovalDraft, includeReceipt: boolean) {
+    if (isReviewPending(item, includeReceipt ? submitted[item.itemId] : undefined))
+      return 'processing';
+    if (item.needsAttention) return 'attention';
+    return canApprove(draft, destinations, needsReviewKey) ? 'ready' : 'unselected';
+  }
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (!document.hidden && !sending.current) router.refresh();
+      if (!document.hidden && !sending.current && !navigationPending) refresh();
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [router]);
+  }, [router, onRefresh, navigationPending]);
+
+  function refresh() {
+    if (onRefresh) onRefresh();
+    else router.refresh();
+  }
 
   useEffect(() => {
     try {
@@ -123,8 +187,26 @@ export function ReviewList({
     }
   }, [items]);
 
-  function pageUrl(page: number, search = query) {
-    return `/jobs/${jobId}/review?${new URLSearchParams({ page: String(page), q: search })}`;
+  function pageUrl(page: number, search = query, nextFilter = filter) {
+    const params = new URLSearchParams({ page: String(page), q: search });
+    if (nextFilter !== 'all') params.set('filter', nextFilter);
+    return `/jobs/${jobId}/review?${params}`;
+  }
+  function navigate(page: number, search = query, nextFilter = filter) {
+    setSelected(new Map());
+    if (onNavigate) onNavigate(page, search, nextFilter);
+    else router.push(pageUrl(page, search, nextFilter));
+  }
+  function changeFilter(nextFilter: ReviewFilter) {
+    setSelected(new Map());
+    setActiveId(null);
+    if (pagination) navigate(1, pagination.query, nextFilter);
+    else setLocalFilter(nextFilter);
+  }
+  function closeInspector() {
+    const row = document.getElementById(`review-file-${activeId}`);
+    setActiveId(null);
+    row?.focus();
   }
 
   function isSelected(item: ReviewItemView) {
@@ -208,7 +290,7 @@ export function ReviewList({
         setNotice(`${accepted.length}件の${skip ? '除外' : '承認'}を受け付けました。`);
       if (failures.length > 0) setError(failures.join(' / '));
       // 202 means queued; server command state unlocks rejected or returned items.
-      router.refresh();
+      refresh();
     } finally {
       sending.current = false;
       setBusy(false);
@@ -242,7 +324,7 @@ export function ReviewList({
         next.delete(item.itemId);
         return next;
       });
-      router.refresh();
+      refresh();
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -273,6 +355,7 @@ export function ReviewList({
           <span className={styles.checkboxSpacer} />
         )}
         <button
+          id={`review-file-${item.itemId}`}
           type="button"
           className={styles.fileButton}
           aria-pressed={activeId === item.itemId}
@@ -282,15 +365,15 @@ export function ReviewList({
           <DocumentIcon name={item.sourceFileName} />
           <span className={styles.fileText}>
             <strong>{item.sourceFileName}</strong>
-            {item.businessMetadata ? (
-              <span>
-                {item.businessMetadata.template?.displayName ?? 'テンプレート未選択'}
-                {item.businessMetadata.template || queued
-                  ? ` · ${metadataStatus(item, queued)}`
-                  : ''}
-              </span>
-            ) : null}
             {subtitle ? <span>{subtitle}</span> : null}
+          </span>
+          <span className={styles.templateCell}>
+            <span title={item.businessMetadata?.template?.displayName}>
+              {item.businessMetadata
+                ? (item.businessMetadata.template?.displayName ?? '未選択')
+                : '—'}
+            </span>
+            {item.businessMetadata?.template ? <small>{metadataStatus(item, queued)}</small> : null}
           </span>
           <span className={`${styles.status} ${!bulk ? styles.warning : ''}`}>
             {queued
@@ -313,7 +396,7 @@ export function ReviewList({
     group: readonly ReviewItemView[],
     bulk: boolean,
   ) {
-    const visible = pagination ? group : group.filter((item) => matchesReviewSearch(item, query));
+    const visible = group.filter((item) => visibleItems.includes(item));
     if (visible.length === 0) return null;
     const available = visible.filter((item) => !isReviewPending(item, submitted[item.itemId]));
     return (
@@ -360,7 +443,7 @@ export function ReviewList({
     active && boxLinkBase && active.boxFileId ? `${boxLinkBase}${active.boxFileId}` : null;
   const locked = busy || !!(active && isReviewPending(active, submitted[active.itemId]));
   return (
-    <div className={styles.workspace}>
+    <div className={`${styles.workspace} ${!active ? styles.withoutInspector : ''}`}>
       <section className={styles.main} aria-label="分類結果">
         <header className={styles.heading}>
           <p className={styles.breadcrumb}>
@@ -383,36 +466,24 @@ export function ReviewList({
           </li>
         </ol>
         <div className={styles.toolbar}>
-          <div>
-            全 <strong>{pagination?.allTotal ?? items.length}</strong> 件
-            {!pagination || pagination.allTotal <= pagination.pageSize ? (
-              <>
-                <span className={styles.count}>
-                  承認待ち{' '}
-                  <strong>
-                    {groups.reduce(
-                      (sum, group) =>
-                        sum +
-                        group.items.filter((item) => !isReviewPending(item, submitted[item.itemId]))
-                          .length,
-                      0,
-                    )}
-                  </strong>
-                </span>
-                <span className={`${styles.count} ${styles.warning}`}>
-                  未選択 {undecided.length}
-                </span>
-                {attention.length ? (
-                  <span className={styles.warning}>要対応 {attention.length}</span>
-                ) : null}
-              </>
-            ) : null}
+          <div className={styles.filters} role="group" aria-label="ファイルの状態">
+            {FILTERS.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={filter === value}
+                disabled={busy}
+                onClick={() => changeFilter(value)}
+              >
+                {label} <span>{filterCounts[value]}</span>
+              </button>
+            ))}
           </div>
           <form
             className={styles.search}
             onSubmit={(event) => {
               event.preventDefault();
-              if (pagination) router.push(pageUrl(1));
+              if (pagination) navigate(1);
             }}
           >
             <Icon kind="search" />
@@ -421,7 +492,10 @@ export function ReviewList({
               aria-label="ファイルを検索"
               placeholder="ファイルを検索"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setSelected(new Map());
+              }}
             />
             {pagination ? (
               <button type="submit" className={styles.textButton}>
@@ -437,19 +511,28 @@ export function ReviewList({
           </p>
         ) : null}
         <div className={styles.list}>
+          {visibleItems.length > 0 ? (
+            <div className={styles.columnHead} aria-hidden="true">
+              <span>ファイル名</span>
+              <span>テンプレート</span>
+              <span>状態</span>
+            </div>
+          ) : null}
           {renderSection('attention', '対応が必要', attention, false)}
           {groups.map(({ destination, items: group }) =>
             renderSection(destination.key, destination.label, group, true),
           )}
           {renderSection('undecided', '未選択', undecided, false)}
-          {items.length === 0 ? (
+          {visibleItems.length === 0 ? (
             <div className={styles.empty}>
               <Icon kind="check" />
-              <h2>{pagination?.query ? '該当するファイルなし' : '承認待ちなし'}</h2>
+              <h2>
+                {(pagination?.query ?? query) || filter !== 'all'
+                  ? '該当するファイルなし'
+                  : '承認待ちなし'}
+              </h2>
               <a href={`/jobs/${jobId}`}>進捗画面へ戻る →</a>
             </div>
-          ) : !pagination && !items.some((item) => matchesReviewSearch(item, query)) ? (
-            <p className={styles.empty}>該当するファイルなし</p>
           ) : null}
         </div>
         <footer className={styles.approvalBar}>
@@ -459,7 +542,7 @@ export function ReviewList({
                 type="button"
                 className={styles.textButton}
                 disabled={busy || pagination.page <= 1}
-                onClick={() => router.push(pageUrl(pagination.page - 1, pagination.query))}
+                onClick={() => navigate(pagination.page - 1, pagination.query)}
               >
                 前へ
               </button>
@@ -472,7 +555,7 @@ export function ReviewList({
                 type="button"
                 className={styles.textButton}
                 disabled={busy || pagination.page * pagination.pageSize >= pagination.total}
-                onClick={() => router.push(pageUrl(pagination.page + 1, pagination.query))}
+                onClick={() => navigate(pagination.page + 1, pagination.query)}
               >
                 次へ
               </button>
@@ -521,269 +604,277 @@ export function ReviewList({
           </details>
         </footer>
       </section>
-      <aside id="review-inspector" className={styles.inspector} aria-label="ファイルの詳細">
-        <div className={styles.inspectorHeader}>
-          <h2>ファイルの詳細</h2>
-          {active ? (
-            <button
-              type="button"
-              className={styles.textButton}
-              aria-label="詳細を閉じる"
-              onClick={() => setActiveId(null)}
-            >
-              <Icon kind="close" />
-            </button>
-          ) : null}
-        </div>
-        {active && draft ? (
-          <>
-            <div className={styles.inspectorBody}>
-              <div className={styles.documentTitle}>
-                <DocumentIcon name={active.sourceFileName} />
-                <h3>{active.sourceFileName}</h3>
-              </div>
-              <p className={styles.hint}>
-                {formatBytes(active.sourceSize)} · {active.sourceRelativePath}
-              </p>
-              {boxLink ? (
-                <div className={styles.previewActions}>
-                  <FilePreviewButton
-                    key={`${active.itemId}:${active.boxFileId}:${active.boxVersionId}:${active.boxSha1}:${active.state}:${active.reviewCommand?.state ?? ''}`}
-                    item={active}
-                    boxLink={boxLink}
-                    disabled={locked || !active.boxVersionId || !active.boxSha1}
-                  />
-                  <a
-                    className={styles.openOriginal}
-                    href={boxLink}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <Icon kind="external" /> Boxで原本を開く
-                  </a>
+      {active ? (
+        <aside id="review-inspector" className={styles.inspector} aria-label="ファイルの詳細">
+          <div className={styles.inspectorHeader}>
+            <h2>ファイルの詳細</h2>
+            {active ? (
+              <button
+                type="button"
+                className={styles.textButton}
+                aria-label="詳細を閉じる"
+                onClick={closeInspector}
+              >
+                <Icon kind="close" />
+              </button>
+            ) : null}
+          </div>
+          {active && draft ? (
+            <>
+              <div className={styles.inspectorBody}>
+                <div className={styles.documentTitle}>
+                  <DocumentIcon name={active.sourceFileName} />
+                  <h3>{active.sourceFileName}</h3>
                 </div>
-              ) : null}
-              {active.reviewCommand?.state === 'REJECTED' ? (
-                <p className="error" role="alert">
-                  操作を反映できませんでした。
-                  {active.reviewCommand.rejectionReason}
+                <p className={styles.hint}>
+                  {formatBytes(active.sourceSize)} · {active.sourceRelativePath}
                 </p>
-              ) : null}
-              <fieldset disabled={locked} className={styles.fields}>
-                <section>
-                  <h3>配置先</h3>
-                  <details className={styles.destinationPicker}>
-                    <summary>
-                      <Icon kind="folder" />
-                      <span>
-                        {destinations.find((entry) => entry.key === draft.destinationKey)?.label ??
-                          '配置先を選択'}
-                      </span>
-                      <span className={styles.changeDestination}>変更</span>
-                    </summary>
-                    <label>
-                      承認する配置先
-                      <select
-                        value={draft.destinationKey}
-                        onChange={(event) =>
-                          updateDraft(active, { destinationKey: event.target.value })
-                        }
-                      >
-                        <option value="">配置先を選択…</option>
-                        {destinations
-                          .filter((entry) => entry.key !== needsReviewKey)
-                          .map((entry) => (
-                            <option key={entry.key} value={entry.key}>
-                              {entry.label}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                  </details>
-                  {destinationPath ? <p className={styles.path}>{destinationPath}</p> : null}
-                </section>
-                {active.needsAttention && (active.lastError || active.operatorAction) ? (
-                  <section className={styles.problem}>
-                    <h3>要対応</h3>
-                    <p>{active.lastError}</p>
-                    <p>{active.operatorAction}</p>
-                    {active.lastErrorCategory === 'MOVE_CONFLICT' ? (
-                      <>
-                        <label>
-                          配置するファイル名
-                          <input
-                            type="text"
-                            value={draft.finalName}
-                            onChange={(event) =>
-                              updateDraft(active, { finalName: event.target.value })
-                            }
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() =>
-                            updateDraft(active, { finalName: withNameSuffix(draft.finalName) })
+                {boxLink ? (
+                  <div className={styles.previewActions}>
+                    <FilePreviewButton
+                      key={`${active.itemId}:${active.boxFileId}:${active.boxVersionId}:${active.boxSha1}:${active.state}:${active.reviewCommand?.state ?? ''}`}
+                      item={active}
+                      boxLink={boxLink}
+                      disabled={locked || !active.boxVersionId || !active.boxSha1}
+                    />
+                    <a
+                      className={styles.openOriginal}
+                      href={boxLink}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Icon kind="external" /> Boxで原本を開く
+                    </a>
+                  </div>
+                ) : null}
+                {active.reviewCommand?.state === 'REJECTED' ? (
+                  <p className="error" role="alert">
+                    操作を反映できませんでした。
+                    {active.reviewCommand.rejectionReason}
+                  </p>
+                ) : null}
+                <fieldset disabled={locked} className={styles.fields}>
+                  <section>
+                    <h3>配置先</h3>
+                    <details className={styles.destinationPicker}>
+                      <summary>
+                        <Icon kind="folder" />
+                        <span>
+                          {destinations.find((entry) => entry.key === draft.destinationKey)
+                            ?.label ?? '配置先を選択'}
+                        </span>
+                        <span className={styles.changeDestination}>変更</span>
+                      </summary>
+                      <label>
+                        承認する配置先
+                        <select
+                          value={draft.destinationKey}
+                          onChange={(event) =>
+                            updateDraft(active, { destinationKey: event.target.value })
                           }
                         >
-                          連番を付ける
-                        </button>
-                      </>
-                    ) : null}
+                          <option value="">配置先を選択…</option>
+                          {destinations
+                            .filter((entry) => entry.key !== needsReviewKey)
+                            .map((entry) => (
+                              <option key={entry.key} value={entry.key}>
+                                {entry.label}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                    </details>
+                    {destinationPath ? <p className={styles.path}>{destinationPath}</p> : null}
                   </section>
-                ) : null}
-                {classificationReason || classificationFields.length > 0 ? (
-                  <section>
-                    <h3>{classificationReason ? '分類理由' : '分類結果'}</h3>
-                    {classificationReason ? <p>{classificationReason}</p> : null}
-                    {classificationFields.length > 0 ? (
-                      <dl className={styles.extracted}>
-                        {classificationFields.map(([label, value]) => (
-                          <Fragment key={label}>
-                            <dt>{label}</dt>
-                            <dd>{value}</dd>
-                          </Fragment>
-                        ))}
-                      </dl>
-                    ) : null}
-                  </section>
-                ) : null}
-                {active.businessMetadata ? (
-                  <section>
-                    <h3>メタデータ</h3>
-                    <label>
-                      テンプレート
-                      <select
-                        value={active.businessMetadata.templateId ?? ''}
-                        onChange={(event) =>
-                          void selectTemplate(active, event.target.value || null)
-                        }
-                      >
-                        <option value="">未選択</option>
-                        {active.businessMetadata.template &&
-                        !metadataTemplates.some(
-                          ({ template }) =>
-                            `${template.scope}/${template.templateKey}` ===
-                            active.businessMetadata!.templateId,
-                        ) ? (
-                          <option value={active.businessMetadata.templateId!} disabled>
-                            {active.businessMetadata.template.displayName}（選択済み）
-                          </option>
-                        ) : null}
-                        {metadataTemplates.map(({ template }) => (
-                          <option
-                            key={`${template.scope}/${template.templateKey}`}
-                            value={`${template.scope}/${template.templateKey}`}
-                          >
-                            {template.displayName}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {locked && !active.businessMetadata.template ? (
-                      <p role="status">処理中</p>
-                    ) : null}
-                    {active.businessMetadata.template ? (
-                      <>
-                        <p role="status">{metadataStatus(active, locked)}</p>
-                        <details
-                          className={styles.more}
-                          key={`${active.itemId}:${active.businessMetadata.templateId}`}
-                        >
-                          <summary>項目を確認・編集</summary>
-                          <BusinessMetadataFields
-                            template={active.businessMetadata.template}
-                            values={draft.businessValues ?? {}}
-                            onChange={(businessValues) => updateDraft(active, { businessValues })}
-                          />
+                  {active.needsAttention && (active.lastError || active.operatorAction) ? (
+                    <section className={styles.problem}>
+                      <h3>要対応</h3>
+                      <p>{active.lastError}</p>
+                      <p>{active.operatorAction}</p>
+                      {active.lastErrorCategory === 'MOVE_CONFLICT' ? (
+                        <>
+                          <label>
+                            配置するファイル名
+                            <input
+                              type="text"
+                              value={draft.finalName}
+                              onChange={(event) =>
+                                updateDraft(active, { finalName: event.target.value })
+                              }
+                            />
+                          </label>
                           <button
                             type="button"
                             className="ghost"
-                            disabled={
-                              !active.businessMetadata.canExtract ||
-                              !metadataTemplates.some(
-                                ({ template }) =>
-                                  `${template.scope}/${template.templateKey}` ===
-                                  active.businessMetadata!.templateId,
-                              )
-                            }
                             onClick={() =>
-                              void selectTemplate(active, active.businessMetadata!.templateId)
+                              updateDraft(active, { finalName: withNameSuffix(draft.finalName) })
                             }
                           >
-                            再抽出
+                            連番を付ける
                           </button>
-                        </details>
-                      </>
-                    ) : null}
-                  </section>
-                ) : (
-                  <details className={styles.more}>
-                    <summary>メタデータを確認・編集</summary>
-                    {(
-                      [
-                        ['documentType', '文書種別'],
-                        ['businessDomain', '業務区分'],
-                        ['businessIdentifier', '識別情報'],
-                        ['effectiveDate', '発効日'],
-                        ['suggestedTags', 'タグ（カンマ区切り）'],
-                        ['routingReason', '分類理由'],
-                      ] as const
-                    ).map(([field, label]) => (
-                      <label key={field}>
-                        {label}
-                        <input
-                          type={field === 'effectiveDate' ? 'date' : 'text'}
-                          value={draft[field]}
-                          onChange={(event) => updateDraft(active, { [field]: event.target.value })}
-                        />
+                        </>
+                      ) : null}
+                    </section>
+                  ) : null}
+                  {classificationReason || classificationFields.length > 0 ? (
+                    <section>
+                      <h3>{classificationReason ? '分類理由' : '分類結果'}</h3>
+                      {classificationReason ? <p>{classificationReason}</p> : null}
+                      {classificationFields.length > 0 ? (
+                        <dl className={styles.extracted}>
+                          {classificationFields.map(([label, value]) => (
+                            <Fragment key={label}>
+                              <dt>{label}</dt>
+                              <dd>{value}</dd>
+                            </Fragment>
+                          ))}
+                        </dl>
+                      ) : null}
+                    </section>
+                  ) : null}
+                  {active.businessMetadata ? (
+                    <section>
+                      <h3>メタデータ</h3>
+                      <label>
+                        テンプレート
+                        <select
+                          value={active.businessMetadata.templateId ?? ''}
+                          onChange={(event) =>
+                            void selectTemplate(active, event.target.value || null)
+                          }
+                        >
+                          <option value="">未選択</option>
+                          {active.businessMetadata.template &&
+                          !metadataTemplates.some(
+                            ({ template }) =>
+                              `${template.scope}/${template.templateKey}` ===
+                              active.businessMetadata!.templateId,
+                          ) ? (
+                            <option value={active.businessMetadata.templateId!} disabled>
+                              {active.businessMetadata.template.displayName}（選択済み）
+                            </option>
+                          ) : null}
+                          {metadataTemplates.map(({ template }) => (
+                            <option
+                              key={`${template.scope}/${template.templateKey}`}
+                              value={`${template.scope}/${template.templateKey}`}
+                            >
+                              {template.displayName}
+                            </option>
+                          ))}
+                        </select>
                       </label>
-                    ))}
+                      {locked && !active.businessMetadata.template ? (
+                        <p role="status">処理中</p>
+                      ) : null}
+                      {active.businessMetadata.template ? (
+                        <>
+                          <p role="status">{metadataStatus(active, locked)}</p>
+                          <details
+                            className={styles.more}
+                            key={`${active.itemId}:${active.businessMetadata.templateId}`}
+                          >
+                            <summary>項目を確認・編集</summary>
+                            <BusinessMetadataFields
+                              template={active.businessMetadata.template}
+                              values={draft.businessValues ?? {}}
+                              onChange={(businessValues) => updateDraft(active, { businessValues })}
+                            />
+                            <button
+                              type="button"
+                              className="ghost"
+                              disabled={
+                                !active.businessMetadata.canExtract ||
+                                !metadataTemplates.some(
+                                  ({ template }) =>
+                                    `${template.scope}/${template.templateKey}` ===
+                                    active.businessMetadata!.templateId,
+                                )
+                              }
+                              onClick={() =>
+                                void selectTemplate(active, active.businessMetadata!.templateId)
+                              }
+                            >
+                              再抽出
+                            </button>
+                          </details>
+                        </>
+                      ) : null}
+                    </section>
+                  ) : (
+                    <details className={styles.more}>
+                      <summary>メタデータを確認・編集</summary>
+                      {(
+                        [
+                          ['documentType', '文書種別'],
+                          ['businessDomain', '業務区分'],
+                          ['businessIdentifier', '識別情報'],
+                          ['effectiveDate', '発効日'],
+                          ['suggestedTags', 'タグ（カンマ区切り）'],
+                          ['routingReason', '分類理由'],
+                        ] as const
+                      ).map(([field, label]) => (
+                        <label key={field}>
+                          {label}
+                          <input
+                            type={field === 'effectiveDate' ? 'date' : 'text'}
+                            value={draft[field]}
+                            onChange={(event) =>
+                              updateDraft(active, { [field]: event.target.value })
+                            }
+                          />
+                        </label>
+                      ))}
+                    </details>
+                  )}
+                  <details className={styles.more}>
+                    <summary>検証情報とその他の操作</summary>
+                    <dl className={styles.extracted}>
+                      <dt>内容の一致</dt>
+                      <dd>
+                        {active.sourceSha1 && active.sourceSha1 === active.boxSha1
+                          ? 'SHA-1 一致'
+                          : '未確認・不一致'}
+                      </dd>
+                      <dt>BoxファイルID</dt>
+                      <dd>{active.boxFileId ?? '未取得'}</dd>
+                      <dt>バージョン</dt>
+                      <dd>{active.boxVersionId ?? '未取得'}</dd>
+                      <dt>提案元</dt>
+                      <dd>{active.suggestionSource ?? '未取得'}</dd>
+                    </dl>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => void send([active], true)}
+                    >
+                      このファイルを移行対象から除外
+                    </button>
                   </details>
-                )}
-                <details className={styles.more}>
-                  <summary>検証情報とその他の操作</summary>
-                  <dl className={styles.extracted}>
-                    <dt>内容の一致</dt>
-                    <dd>
-                      {active.sourceSha1 && active.sourceSha1 === active.boxSha1
-                        ? 'SHA-1 一致'
-                        : '未確認・不一致'}
-                    </dd>
-                    <dt>BoxファイルID</dt>
-                    <dd>{active.boxFileId ?? '未取得'}</dd>
-                    <dt>バージョン</dt>
-                    <dd>{active.boxVersionId ?? '未取得'}</dd>
-                    <dt>提案元</dt>
-                    <dd>{active.suggestionSource ?? '未取得'}</dd>
-                  </dl>
-                  <button type="button" className="ghost" onClick={() => void send([active], true)}>
-                    このファイルを移行対象から除外
-                  </button>
-                </details>
-              </fieldset>
-            </div>
-            <div className={styles.individual}>
-              <button
-                type="button"
-                className="secondary"
-                disabled={
-                  locked ||
-                  !canApprove(draft, destinations, needsReviewKey) ||
-                  !operatorLabel.trim()
-                }
-                onClick={() => void send([active])}
-              >
-                {isReviewPending(active, submitted[active.itemId])
-                  ? '処理待ち'
-                  : 'このファイルを承認'}
-              </button>
-            </div>
-          </>
-        ) : (
-          <p className={styles.inspectorEmpty}>ファイル未選択</p>
-        )}
-      </aside>
+                </fieldset>
+              </div>
+              <div className={styles.individual}>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={
+                    locked ||
+                    !canApprove(draft, destinations, needsReviewKey) ||
+                    !operatorLabel.trim()
+                  }
+                  onClick={() => void send([active])}
+                >
+                  {isReviewPending(active, submitted[active.itemId])
+                    ? '処理待ち'
+                    : 'このファイルを承認'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className={styles.inspectorEmpty}>ファイル未選択</p>
+          )}
+        </aside>
+      ) : null}
     </div>
   );
 }

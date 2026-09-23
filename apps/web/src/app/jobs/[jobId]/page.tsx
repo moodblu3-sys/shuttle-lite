@@ -19,7 +19,16 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
         <a href="/">移行一覧</a> / 進捗
       </p>
 
-      <ProgressView jobId={jobId} initial={snapshot} profile={profile}>
+      <ProgressView
+        jobId={jobId}
+        initial={snapshot}
+        profile={profile}
+        destinationUrl={
+          getConfig().box.mode === 'real' && destinations?.mode === 'real'
+            ? `https://app.box.com/folder/${encodeURIComponent(destinations.rootFolderId)}`
+            : null
+        }
+      >
         {destinations ? (
           <p className="small muted">
             移行先：{destinations.rootFolderName}（フォルダー {destinations.entries.length}件）

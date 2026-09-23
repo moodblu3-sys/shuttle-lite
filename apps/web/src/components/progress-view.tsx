@@ -15,15 +15,19 @@ export function ProgressView({
   initial,
   profile,
   children,
+  destinationUrl,
 }: {
   jobId: string;
   initial: JobSnapshot;
   profile: MigrationProfile | null;
   children?: ReactNode;
+  destinationUrl?: string | null;
 }) {
   const [snapshot, setSnapshot] = useState<JobSnapshot>(initial);
   const [live, setLive] = useState<'connecting' | 'live' | 'lost'>('connecting');
   const [showDetail, setShowDetail] = useState(false);
+  const finished = snapshot.job.state === 'COMPLETED' && snapshot.job.cleanupState === 'NONE';
+  const ProgressPanel = finished ? 'details' : 'section';
 
   useEffect(() => {
     const source = new EventSource(`/api/jobs/${jobId}/events`);
@@ -51,11 +55,15 @@ export function ProgressView({
         <p className="error" role="alert">
           転送処理の応答がありません
         </p>
-      ) : (
+      ) : !finished ? (
         <NextActionBanner jobId={jobId} snapshot={snapshot} />
-      )}
+      ) : null}
+      {finished ? (
+        <CompletionSummary jobId={jobId} snapshot={snapshot} destinationUrl={destinationUrl} />
+      ) : null}
 
-      <div className="card">
+      <ProgressPanel className="card">
+        {finished ? <summary>転送の詳細</summary> : null}
         <div className="card-head">
           <h2>
             {snapshot.job.cleanupState === 'NONE' ? (
@@ -129,9 +137,10 @@ export function ProgressView({
             }
           />
         </div>
-      </div>
+      </ProgressPanel>
 
-      <div className="card">
+      <ProgressPanel className="card">
+        {finished ? <summary>処理の内訳</summary> : null}
         <div className="card-head">
           <h2>処理の内訳</h2>
           <span className="small muted">
@@ -140,9 +149,9 @@ export function ProgressView({
           </span>
         </div>
         <Stepper snapshot={snapshot} />
-      </div>
+      </ProgressPanel>
 
-      <JobControls jobId={jobId} snapshot={snapshot} />
+      <JobControls jobId={jobId} snapshot={snapshot} showReports={!finished} />
 
       <details className="card" onToggle={(event) => setShowDetail(event.currentTarget.open)}>
         <summary>
@@ -154,6 +163,83 @@ export function ProgressView({
         </div>
       </details>
     </>
+  );
+}
+
+function CompletionSummary({
+  jobId,
+  snapshot,
+  destinationUrl,
+}: {
+  jobId: string;
+  snapshot: JobSnapshot;
+  destinationUrl?: string | null;
+}) {
+  const allSucceeded = snapshot.totalItems > 0 && snapshot.completedItems === snapshot.totalItems;
+  const elapsed =
+    snapshot.job.startedAt && snapshot.job.finishedAt
+      ? Math.max(
+          0,
+          Math.round(
+            (Date.parse(snapshot.job.finishedAt) - Date.parse(snapshot.job.startedAt)) / 1000,
+          ),
+        )
+      : null;
+  return (
+    <section className="card completion-summary" aria-label="移行結果">
+      <div className="completion-heading">
+        <span
+          className={`completion-symbol ${allSucceeded ? 'completion-success' : ''}`}
+          aria-hidden="true"
+        >
+          {allSucceeded ? '✓' : '—'}
+        </span>
+        <div>
+          <h2>
+            {allSucceeded
+              ? '移行完了'
+              : snapshot.totalItems === 0
+                ? '対象ファイルなし'
+                : '移行結果'}
+          </h2>
+          <p className="small muted">
+            全 {snapshot.totalItems} 件{elapsed !== null ? ` ・ ${formatDuration(elapsed)}` : ''}
+          </p>
+        </div>
+      </div>
+      <div className="grid cols-3 completion-metrics">
+        <Metric label="成功" value={String(snapshot.completedItems)} />
+        <Metric
+          label="失敗"
+          value={String(snapshot.failedItems)}
+          tone={snapshot.failedItems ? 'bad' : undefined}
+        />
+        <Metric label="除外" value={String(snapshot.skippedItems)} />
+      </div>
+      <div className="actions completion-actions">
+        {destinationUrl ? (
+          <a
+            className="linkbtn completion-primary"
+            href={destinationUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Boxで確認
+          </a>
+        ) : null}
+        <a className="linkbtn" href={`/api/jobs/${jobId}/report?format=csv`}>
+          レポートをダウンロード
+        </a>
+        <a className="completion-json" href={`/api/jobs/${jobId}/report?format=json`}>
+          JSON
+        </a>
+      </div>
+      {snapshot.outbox.failed > 0 || snapshot.outbox.pending > 0 ? (
+        <p className={snapshot.outbox.failed > 0 ? 'error' : 'small muted'} role="status">
+          ログ記録：待ち {snapshot.outbox.pending} 件 / 失敗 {snapshot.outbox.failed} 件
+        </p>
+      ) : null}
+    </section>
   );
 }
 

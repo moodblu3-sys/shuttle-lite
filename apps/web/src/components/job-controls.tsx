@@ -64,7 +64,15 @@ function buttonsFor(snapshot: JobSnapshot): {
   return { primary, secondary };
 }
 
-export function JobControls({ jobId, snapshot }: { jobId: string; snapshot: JobSnapshot }) {
+export function JobControls({
+  jobId,
+  snapshot,
+  showReports = true,
+}: {
+  jobId: string;
+  snapshot: JobSnapshot;
+  showReports?: boolean;
+}) {
   const router = useRouter();
   const [pending, setPending] = useState<CommandType | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -139,12 +147,16 @@ export function JobControls({ jobId, snapshot }: { jobId: string; snapshot: JobS
             {pending === button.type ? '送信中…' : button.label}
           </button>
         ))}
-        <a className="linkbtn" href={`/api/jobs/${jobId}/report?format=csv`}>
-          CSV
-        </a>
-        <a className="linkbtn" href={`/api/jobs/${jobId}/report?format=json`}>
-          JSON
-        </a>
+        {showReports ? (
+          <>
+            <a className="linkbtn" href={`/api/jobs/${jobId}/report?format=csv`}>
+              CSV
+            </a>
+            <a className="linkbtn" href={`/api/jobs/${jobId}/report?format=json`}>
+              JSON
+            </a>
+          </>
+        ) : null}
       </div>
 
       {showAll ? (

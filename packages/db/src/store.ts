@@ -858,8 +858,21 @@ export class ShuttleStore {
       .all(jobId) as Array<{ state: ItemState; resumeState: ItemState | null; count: number }>;
   }
 
-  reviewPage(jobId: string, requestedPage = 1, query = '') {
+  reviewPage(
+    jobId: string,
+    requestedPage = 1,
+    query = '',
+    options: {
+      filter?: string;
+      destinationKeys?: readonly string[];
+      destinationOverrides?: Record<string, string>;
+    } = {},
+  ) {
     const pageSize = 100;
+    const filter = ['ready', 'unselected', 'attention'].includes(options.filter ?? '')
+      ? options.filter!
+      : 'all';
+    const keys = options.destinationKeys ?? [];
     const normalized = query.trim().slice(0, 200).normalize('NFKC').toLocaleLowerCase('ja');
     const where = `job_id = ? AND state IN ('REVIEW_REQUIRED', 'NEEDS_REVIEW')
       AND (instr(search_text(source_relative_path), ?) > 0
@@ -868,28 +881,66 @@ export class ShuttleStore {
         THEN (SELECT reason FROM extraction_results WHERE item_id = migration_items.id ORDER BY attempt DESC, created_at DESC LIMIT 1)
         ELSE '' END), ?) > 0)`;
     const values = [jobId, normalized, normalized, normalized];
+    // Categorize before pagination so filters and counts cover the whole job.
+    const category = `CASE
+      WHEN (SELECT state FROM job_commands WHERE job_id = migration_items.job_id
+        AND type IN ('APPROVE_ITEM', 'SKIP_ITEM', 'SELECT_METADATA_TEMPLATE')
+        AND json_extract(payload, '$.itemId') = migration_items.id
+        ORDER BY created_at DESC, rowid DESC LIMIT 1) IN ('PENDING', 'CLAIMED') THEN 'processing'
+      WHEN last_error_category IS NOT NULL OR
+        (SELECT extraction_status FROM item_metadata WHERE item_id = migration_items.id) = 'FAILED'
+        THEN 'attention'
+      WHEN COALESCE((SELECT value FROM json_each(?) WHERE key = migration_items.id),
+        (SELECT suggested_destination_key FROM routing_decisions WHERE item_id = migration_items.id))
+        IN (SELECT value FROM json_each(?)) THEN 'ready'
+      ELSE 'unselected' END`;
+    const source = `WITH review AS (SELECT *, ${category} AS review_category
+      FROM migration_items WHERE ${where})`;
+    const parameters = [
+      JSON.stringify(options.destinationOverrides ?? {}),
+      JSON.stringify(keys),
+      ...values,
+    ];
+    const filterWhere = filter === 'all' ? '1 = 1' : 'review_category = ?';
+    const filteredParameters = filter === 'all' ? parameters : [...parameters, filter];
     return this.transaction(() => {
-      const { total } = this.db
-        .prepare(`SELECT COUNT(*) AS total FROM migration_items WHERE ${where}`)
-        .get(...values) as { total: number };
+      const counts = { all: 0, ready: 0, unselected: 0, attention: 0 };
+      const buckets = this.db
+        .prepare(
+          `${source} SELECT review_category AS category, COUNT(*) AS count
+          FROM review GROUP BY review_category`,
+        )
+        .all(...parameters) as Array<{ category: string; count: number }>;
+      for (const bucket of buckets) {
+        counts.all += bucket.count;
+        if (
+          bucket.category === 'ready' ||
+          bucket.category === 'unselected' ||
+          bucket.category === 'attention'
+        )
+          counts[bucket.category] = bucket.count;
+      }
+      const total = counts[filter as keyof typeof counts];
       const page = Math.min(
         Math.max(1, Math.ceil(total / pageSize)),
         Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
       );
       const rows = this.db
         .prepare(
-          `SELECT * FROM migration_items WHERE ${where}
+          `${source} SELECT * FROM review WHERE ${filterWhere}
         ORDER BY source_relative_path, id LIMIT ? OFFSET ?`,
         )
-        .all(...values, pageSize, (page - 1) * pageSize) as ItemRow[];
-      const counts = this.countItemsByState(jobId);
+        .all(...filteredParameters, pageSize, (page - 1) * pageSize) as ItemRow[];
+      const states = this.countItemsByState(jobId);
       return {
         items: rows.map(mapItem),
         total,
         page,
         pageSize,
         query: query.trim().slice(0, 200),
-        allTotal: (counts.REVIEW_REQUIRED ?? 0) + (counts.NEEDS_REVIEW ?? 0),
+        allTotal: (states.REVIEW_REQUIRED ?? 0) + (states.NEEDS_REVIEW ?? 0),
+        filter,
+        counts,
       };
     });
   }

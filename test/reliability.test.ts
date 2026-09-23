@@ -3,7 +3,9 @@ import { buildPhaseCounters } from '@shuttle-lite/core';
 import { buildJobSnapshot } from '@shuttle-lite/telemetry';
 import { createHarness, type Harness } from './harness';
 import { getCatalog, getConfig, getStore } from '../apps/web/src/lib/runtime';
-import { GET } from '../apps/web/src/app/api/jobs/[jobId]/review/route';
+import { GET, POST } from '../apps/web/src/app/api/jobs/[jobId]/review/route';
+import { buildReviewPage } from '../apps/web/src/lib/review';
+import { draftFor, reviewRevision } from '../apps/web/src/lib/review-model';
 
 vi.mock('../apps/web/src/lib/runtime', () => ({
   getStore: vi.fn(),
@@ -101,6 +103,100 @@ describe('large jobs and worker availability', () => {
       )
       .run(job.id);
     expect((await call('page=3')).page).toBe(2);
+  });
+  it('filters the whole review job with consistent counts, pending commands and extraction failures', async () => {
+    const job = seed(205, 'REVIEW_REQUIRED');
+    h.store.saveJobMetadata(job.id, []);
+    const destination = h.catalog.entries.find(
+      (entry) => entry.key !== h.catalog.needsReviewKey,
+    )!.key;
+    for (let i = 0; i < 205; i++) {
+      h.store.upsertSuggestion({
+        itemId: `${job.id}-${i}`,
+        suggestedDestinationKey: destination,
+        suggestionSource: 'AI',
+        suggestionReason: null,
+      });
+    }
+    h.store.updateItem(`${job.id}-201`, { lastErrorCategory: 'BOX_PERMISSION' });
+    h.store.saveBusinessMetadata(`${job.id}-202`, 'enterprise/template', {}, 0, 'FAILED');
+    h.store.upsertSuggestion({
+      itemId: `${job.id}-203`,
+      suggestedDestinationKey: h.catalog.needsReviewKey,
+      suggestionSource: 'AI',
+      suggestionReason: null,
+    });
+    const command = h.store.enqueueCommand(job.id, 'APPROVE_ITEM', { itemId: `${job.id}-204` });
+    const call = async (params: string) => {
+      const response = await GET(new Request(`http://localhost/review?${params}`), {
+        params: Promise.resolve({ jobId: job.id }),
+      });
+      return response.json() as Promise<ReturnType<typeof buildReviewPage>>;
+    };
+    const ready = await call('filter=ready&page=3');
+    expect(ready.total).toBe(201);
+    expect(ready.items.map((item: { itemId: string }) => item.itemId)).toEqual([`${job.id}-200`]);
+    expect(ready.counts).toEqual({ all: 205, ready: 201, unselected: 1, attention: 2 });
+    const attention = await call('filter=attention&page=3');
+    expect(attention.page).toBe(1);
+    expect(attention.items.map((item: { itemId: string }) => item.itemId)).toEqual([
+      `${job.id}-201`,
+      `${job.id}-202`,
+    ]);
+    expect(attention.items.every((item: { needsAttention: boolean }) => item.needsAttention)).toBe(
+      true,
+    );
+    expect(
+      (await call('filter=unselected')).items.map((item: { itemId: string }) => item.itemId),
+    ).toEqual([`${job.id}-203`]);
+    const searched = await call('filter=attention&q=００２０２');
+    expect(searched.total).toBe(1);
+    expect(searched.counts).toEqual({ all: 1, ready: 0, unselected: 0, attention: 1 });
+    expect((await call('filter=invalid')).filter).toBe('all');
+    h.store.db.prepare("UPDATE job_commands SET state = 'REJECTED' WHERE id = ?").run(command.id);
+    expect((await call('filter=ready')).total).toBe(202);
+    const otherJob = seed(1, 'REVIEW_REQUIRED');
+    expect((await call('filter=all')).allTotal).toBe(205);
+    expect(h.store.reviewPage(otherJob.id).allTotal).toBe(1);
+  });
+  it('includes valid local destination drafts in global filters without persisting or approving them', async () => {
+    const job = seed(205, 'REVIEW_REQUIRED');
+    const context = { params: Promise.resolve({ jobId: job.id }) };
+    const view = buildReviewPage(job.id, 3).items[4]!;
+    const destination = h.catalog.entries.find(
+      (entry) => entry.key !== h.catalog.needsReviewKey,
+    )!.key;
+    const saved = {
+      revision: reviewRevision(view),
+      commandId: null,
+      savedAt: Date.now(),
+      draft: { ...draftFor(view), destinationKey: destination },
+    };
+    const call = async (drafts: unknown[], filter = 'ready') => {
+      const response = await POST(
+        new Request('http://localhost/review', {
+          method: 'POST',
+          body: JSON.stringify({ page: 1, query: '', filter, drafts }),
+        }),
+        context,
+      );
+      expect(response.status).toBe(200);
+      return response.json() as Promise<ReturnType<typeof buildReviewPage>>;
+    };
+    const ready = await call([saved]);
+    expect(ready.items.map((row) => row.itemId)).toEqual([view.itemId]);
+    expect(ready.counts).toEqual({ all: 205, ready: 1, unselected: 204, attention: 0 });
+    expect(ready.destinationOverrides[view.itemId]).toBe(destination);
+    expect((await call([saved], 'unselected')).total).toBe(204);
+    expect(h.store.getRouting(view.itemId)).toBeNull();
+    expect(h.store.listCommands(job.id)).toHaveLength(0);
+    expect((await call([{ ...saved, savedAt: 0 }])).total).toBe(0);
+    expect((await call([null, {}, { ...saved, revision: '{broken' }])).total).toBe(0);
+    const other = seed(1, 'REVIEW_REQUIRED');
+    const otherView = buildReviewPage(other.id).items[0]!;
+    expect((await call([{ ...saved, revision: reviewRevision(otherView) }])).total).toBe(0);
+    h.store.updateItem(view.itemId, { boxFileVersionId: 'changed' });
+    expect((await call([saved])).total).toBe(0);
   });
   it('reports a stopped worker only when the job needs work and recovers on a fresh heartbeat', () => {
     const job = seed(1, 'REVIEW_REQUIRED');

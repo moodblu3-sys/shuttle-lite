@@ -82,6 +82,9 @@ describe('review preview interactions', () => {
         }),
       ),
     );
+    if (items.length && !container.querySelector('aside')) {
+      await click(items[0]!.sourceFileName);
+    }
   }
   function button(text: string) {
     const element = [...container.querySelectorAll('button')].find(

@@ -1,4 +1,6 @@
-import { createElement } from 'react';
+// @vitest-environment jsdom
+import { act, createElement, type ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { buildConfig, parseEnv } from '@shuttle-lite/config';
@@ -23,6 +25,23 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => '/',
 }));
+
+async function openedReview(element: ReactNode) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  localStorage.clear();
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(element));
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('#review-file-itm_1')!.click(),
+    );
+    return container.innerHTML;
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+}
 
 describe('concise workspace screens', () => {
   it('renders navigation and page content without the top bar or sidebar slogan', () => {
@@ -123,7 +142,7 @@ describe('concise review and empty states', () => {
     expect(html).not.toContain('右上の');
   });
 
-  it('keeps conflict recovery, approval and original-file access without placeholder content', () => {
+  it('keeps conflict recovery, approval and original-file access without placeholder content', async () => {
     const item: ReviewItemView = {
       itemId: 'itm_1',
       jobId: 'job_1',
@@ -147,7 +166,7 @@ describe('concise review and empty states', () => {
       extraction: null,
       reviewCommand: null,
     };
-    const html = renderToStaticMarkup(
+    const html = await openedReview(
       createElement(ReviewList, {
         jobId: 'job_1',
         items: [item],
@@ -179,7 +198,7 @@ describe('concise review and empty states', () => {
     expect(html).toMatch(/<span>4<\/span>配置/);
 
     // Previously saved manual-routing hints must disappear without recreating the job.
-    const manual = renderToStaticMarkup(
+    const manual = await openedReview(
       createElement(ReviewList, {
         jobId: 'job_1',
         items: [
@@ -229,7 +248,7 @@ describe('concise review and empty states', () => {
     );
     expect(html).toContain('承認待ちなし');
     expect(html).toContain('/jobs/job_1');
-    expect(html).toContain('ファイル未選択');
+    expect(html).not.toContain('<aside');
     expect(html).not.toContain('一覧からファイルを選ぶと');
   });
 

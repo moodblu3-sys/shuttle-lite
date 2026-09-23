@@ -7,6 +7,7 @@ import {
 import { hasRoutingDecision } from '@shuttle-lite/routing';
 import type { ReviewItemView } from './review-types';
 import { getCatalog, getStore, getConfig } from './runtime';
+import { validReviewDraft, type SavedReviewDraft } from './review-drafts';
 
 /**
  * Shared by the review page and the review API so the screen and any
@@ -95,7 +96,43 @@ export function buildReviewViews(
   });
 }
 
-export function buildReviewPage(jobId: string, requestedPage = 1, query = '') {
-  const page = getStore().reviewPage(jobId, requestedPage, query);
-  return { ...page, items: buildReviewViews(jobId, page.pageSize, page.items) };
+export function buildReviewPage(
+  jobId: string,
+  requestedPage = 1,
+  query = '',
+  filter = 'all',
+  drafts: readonly SavedReviewDraft[] = [],
+) {
+  const catalog = getCatalog(jobId);
+  const destinationOverrides: Record<string, string> = {};
+  for (const saved of drafts) {
+    try {
+      const observed = JSON.parse(saved.revision) as { itemId?: string };
+      if (typeof observed.itemId !== 'string') continue;
+      const item = getStore().getItem(observed.itemId);
+      if (
+        !item ||
+        item.jobId !== jobId ||
+        !['REVIEW_REQUIRED', 'NEEDS_REVIEW'].includes(item.state)
+      )
+        continue;
+      const view = buildReviewViews(jobId, 1, [item])[0]!;
+      if (typeof saved.draft?.destinationKey === 'string' && validReviewDraft(view, saved))
+        destinationOverrides[item.id] = saved.draft.destinationKey;
+    } catch {
+      // A damaged browser draft must never affect the server's review projection.
+    }
+  }
+  const page = getStore().reviewPage(jobId, requestedPage, query, {
+    filter,
+    destinationOverrides,
+    destinationKeys: catalog.entries
+      .filter((entry) => entry.key !== catalog.needsReviewKey)
+      .map((entry) => entry.key),
+  });
+  return {
+    ...page,
+    destinationOverrides,
+    items: buildReviewViews(jobId, page.pageSize, page.items),
+  };
 }
