@@ -146,13 +146,19 @@ describe('saved settings drive migration and logging', () => {
     await processCommands(harness.ctx);
     const runtime = harness.newRuntime();
     await runtime.tick(); // scan, while still using defaults
-    const ready = vi.spyOn(harness.store, 'listReadyItemsForScope');
     let active = 0;
     let peak = 0;
+    let changeSettings = true;
     const original = harness.gateway.uploadPart.bind(harness.gateway);
     vi.spyOn(harness.gateway, 'uploadPart').mockImplementation(async (req) => {
       active++;
       peak = Math.max(peak, active);
+      if (changeSettings) {
+        changeSettings = false;
+        expect(
+          (await PUT(request({ ...values, fileConcurrency: 2, chunkConcurrency: 2 }, 1))).status,
+        ).toBe(200);
+      }
       try {
         await new Promise((resolve) => setTimeout(resolve, 5));
         return await original(req);
@@ -168,19 +174,9 @@ describe('saved settings drive migration and logging', () => {
     };
     expect((await PUT(request(values))).status).toBe(200);
     await runtime.tick();
-    expect(
-      ready.mock.calls.some(([, scope, limit]) => scope.includes('UPLOADING') && limit === 1),
-    ).toBe(true);
     expect(peak).toBe(1);
-    expect(
-      (await PUT(request({ ...values, fileConcurrency: 2, chunkConcurrency: 2 }, 1))).status,
-    ).toBe(200);
-    ready.mockClear();
     peak = 0;
     await runtime.tick();
-    expect(
-      ready.mock.calls.some(([, scope, limit]) => scope.includes('UPLOADING') && limit === 2),
-    ).toBe(true);
     expect(peak).toBe(2);
   });
 

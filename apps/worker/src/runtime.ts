@@ -1,12 +1,6 @@
 import { applyRuntimeSettings } from '@shuttle-lite/config';
 import { ensureJobStagingFolder } from '@shuttle-lite/box';
-import {
-  type ItemState,
-  type MigrationItem,
-  Semaphore,
-  sleep,
-  toShuttleError,
-} from '@shuttle-lite/core';
+import { type ItemState, Semaphore, sleep, toShuttleError } from '@shuttle-lite/core';
 import { processCommands } from './commands';
 import { processTestCleanup } from './test-cleanup';
 import { destinationsForJob, type JobContext, type WorkerContext } from './context';
@@ -36,6 +30,9 @@ export class WorkerRuntime {
   readonly #reconciled = new Set<string>();
   #stopping = false;
   #currentJobId: string | null = null;
+  #leaseLost = false;
+  #settingsRevision = 0;
+  #ticking = false;
 
   constructor(ctx: WorkerContext, options: RuntimeOptions = {}) {
     this.#ctx = ctx;
@@ -72,10 +69,20 @@ export class WorkerRuntime {
 
   /** Returns true when the tick did something, so the loop can poll faster. */
   async tick(): Promise<boolean> {
-    const config = applyRuntimeSettings(
-      this.#baseConfig,
-      this.#ctx.store.getRuntimeSettings().settings,
-    );
+    if (this.#ticking) throw new Error('worker tick is already running');
+    if (this.#stopping) return false;
+    this.#ticking = true;
+    try {
+      return await this.#tick();
+    } finally {
+      this.#ticking = false;
+    }
+  }
+
+  async #tick(): Promise<boolean> {
+    const settings = this.#ctx.store.getRuntimeSettings();
+    this.#settingsRevision = settings.revision;
+    const config = applyRuntimeSettings(this.#baseConfig, settings.settings);
     this.#ctx = {
       ...this.#ctx,
       config,
@@ -87,16 +94,32 @@ export class WorkerRuntime {
     const claimed = this.#ctx.store.claimJob(this.#ctx.workerId, leaseTtl);
     if (!claimed) return false;
     this.#currentJobId = claimed.id;
+    this.#leaseLost = false;
+    // Keep ownership during slow uploads/AI calls, including setup and scan.
+    const heartbeat = setInterval(
+      () => {
+        if (this.#leaseLost) return;
+        try {
+          if (!this.#ctx.store.renewLease(claimed.id, this.#ctx.workerId, leaseTtl)) {
+            this.#leaseLost = true;
+          }
+        } catch {
+          this.#leaseLost = true;
+        }
+      },
+      Math.max(1, Math.floor(leaseTtl / 3)),
+    );
+    heartbeat.unref();
     try {
-      return await this.#runJob(claimed.id, leaseTtl);
+      return await this.#runJob(claimed.id);
     } finally {
-      // The lease is always handed back, including on an early return, so the
-      // next tick (or another worker) can pick the job up again.
+      clearInterval(heartbeat);
+      // All in-flight steps settle before another worker or cleanup can enter.
       this.#releaseCurrentJob();
     }
   }
 
-  async #runJob(jobId: string, leaseTtl: number): Promise<boolean> {
+  async #runJob(jobId: string): Promise<boolean> {
     const job = this.#ctx.store.getJob(jobId);
     if (!job) return false;
     const profile = this.#ctx.store.getProfile(job.profileId);
@@ -179,53 +202,99 @@ export class WorkerRuntime {
       return true;
     }
 
-    this.#ctx.store.renewLease(job.id, this.#ctx.workerId, leaseTtl);
-
-    // Upload work and AI work progress independently: a file waiting for a
-    // document representation must not hold up another file's transfer.
-    const [transferred, routed, placed] = await Promise.all([
-      this.#drainQueue(
-        ctx,
-        TRANSFER_SCOPE,
-        this.#ctx.config.limits.fileConcurrency,
-        this.#ctx.fileGate,
-      ),
-      this.#drainQueue(ctx, ROUTING_SCOPE, this.#options.routingConcurrency ?? 2),
-      this.#drainQueue(ctx, PLACEMENT_SCOPE, 2),
-    ]);
-
-    const progressed = transferred + routed + placed > 0;
-    if (!progressed) this.#maybeFinishJob(ctx);
+    const progressed = await this.#runQueues(ctx);
+    if (!this.#shouldYield(job.id)) this.#maybeFinishJob(ctx);
     return progressed;
   }
 
-  async #drainQueue(
-    ctx: JobContext,
-    scope: readonly ItemState[],
-    concurrency: number,
-    gate?: { withPermit<T>(fn: () => Promise<T>): Promise<T> },
-  ): Promise<number> {
-    const batch = ctx.store.listReadyItemsForScope(ctx.job.id, scope, concurrency);
-    if (batch.length === 0) return 0;
-    let processed = 0;
-    await Promise.all(
-      batch.map((item: MigrationItem) => {
-        const work = async () => {
-          // Walk this item as far as the queue's scope allows.
-          for (let steps = 0; steps < scope.length + 2; steps += 1) {
-            if (this.#stopping) return;
-            const result = await advanceItem(ctx, item.id, scope);
-            if (result === 'ADVANCED') {
-              processed += 1;
-              continue;
-            }
-            return;
-          }
-        };
-        return gate ? gate.withPermit(work) : work();
-      }),
+  #shouldYield(jobId: string): boolean {
+    const job = this.#ctx.store.getJob(jobId);
+    return (
+      this.#stopping ||
+      this.#leaseLost ||
+      !job ||
+      job.leaseOwner !== this.#ctx.workerId ||
+      !job.leaseExpiresAt ||
+      Date.parse(job.leaseExpiresAt) <= Date.now() ||
+      job.pauseRequested ||
+      job.cleanupState !== 'NONE' ||
+      job.state !== 'RUNNING' ||
+      this.#ctx.store.getRuntimeSettings().revision !== this.#settingsRevision ||
+      // Commands run after active steps settle, so rescan/skip/retry cannot
+      // change an item underneath an upload or an AI response.
+      this.#ctx.store.hasOutstandingCommands(jobId)
     );
-    return processed;
+  }
+
+  async #runQueues(ctx: JobContext): Promise<boolean> {
+    const queues = [
+      { scope: TRANSFER_SCOPE, limit: ctx.config.limits.fileConcurrency, active: 0 },
+      { scope: ROUTING_SCOPE, limit: this.#options.routingConcurrency ?? 2, active: 0 },
+      { scope: PLACEMENT_SCOPE, limit: 2, active: 0 },
+    ];
+    const inFlight = new Map<string, Promise<void>>();
+    let progressed = false;
+    let draining = false;
+    let yielding = false;
+    let failed = false;
+    let failure: unknown;
+    let wake: (() => void) | undefined;
+    const shouldStop = () => draining || failed || (yielding ||= this.#shouldYield(ctx.job.id));
+    try {
+      while (true) {
+        if (failed) throw failure;
+        if (!shouldStop()) {
+          for (const queue of queues) {
+            const available = queue.limit - queue.active;
+            if (available <= 0) continue;
+            // Active rows still have a runnable state. Read past them without
+            // picking one item twice, even while it changes pipeline stages.
+            const ready = ctx.store
+              .listReadyItemsForScope(ctx.job.id, queue.scope, available + inFlight.size)
+              .filter((item) => !inFlight.has(item.id))
+              .slice(0, available);
+            for (const item of ready) {
+              queue.active += 1;
+              const work = async () => {
+                for (let step = 0; step < queue.scope.length + 2; step += 1) {
+                  if (shouldStop()) return;
+                  if ((await advanceItem(ctx, item.id, queue.scope)) !== 'ADVANCED') return;
+                  progressed = true;
+                }
+              };
+              const task = work()
+                .catch((error: unknown) => {
+                  if (!failed) failure = error;
+                  failed = true;
+                })
+                .finally(() => {
+                  queue.active -= 1;
+                  inFlight.delete(item.id);
+                  wake?.();
+                });
+              inFlight.set(item.id, task);
+            }
+          }
+        }
+        if (inFlight.size === 0) break;
+        // Any completion frees a slot; neither a large file nor a slow AI
+        // request holds the other queues at a batch barrier.
+        // One completion signal avoids retaining a new Promise.race handler
+        // on a long upload for every small file. Poll also wakes due retries.
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, Math.max(10, this.#options.idleDelayMs ?? 500));
+          wake = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+        wake = undefined;
+      }
+    } finally {
+      draining = true;
+      await Promise.allSettled(inFlight.values());
+    }
+    return progressed;
   }
 
   #maybeFinishJob(ctx: JobContext): void {

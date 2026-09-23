@@ -171,6 +171,7 @@ describe('sqlite store', () => {
     store.setJobState(job.id, 'SCANNING');
     const claimed = store.claimJob('crashed-worker', -1_000);
     expect(claimed).not.toBeNull();
+    expect(store.renewLease(job.id, 'crashed-worker', 60_000)).toBe(false);
     expect(store.claimJob('fresh-worker', 60_000)?.id).toBe(claimed!.id);
   });
 

@@ -545,12 +545,13 @@ export class ShuttleStore {
   }
 
   renewLease(jobId: string, owner: string, ttlMs: number): boolean {
+    const now = nowIso();
     const expires = new Date(Date.now() + ttlMs).toISOString();
     const result = this.db
       .prepare(
-        'UPDATE migration_jobs SET lease_expires_at = ?, updated_at = ? WHERE id = ? AND lease_owner = ?',
+        'UPDATE migration_jobs SET lease_expires_at = ?, updated_at = ? WHERE id = ? AND lease_owner = ? AND lease_expires_at > ?',
       )
-      .run(expires, nowIso(), jobId, owner);
+      .run(expires, now, jobId, owner, now);
     return result.changes === 1;
   }
 
@@ -1150,6 +1151,17 @@ export class ShuttleStore {
       CommandRow | undefined;
     if (!row) throw new ShuttleError('UNKNOWN', 'commandを読み出せませんでした');
     return mapCommand(row);
+  }
+
+  /** Let the scheduler drain active steps before operator commands change their state. */
+  hasOutstandingCommands(jobId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare(
+          "SELECT 1 FROM job_commands WHERE job_id = ? AND state IN ('PENDING','CLAIMED') LIMIT 1",
+        )
+        .get(jobId),
+    );
   }
 
   /** Claims expire after a crash. Local actions and DONE are committed atomically by the worker. */
