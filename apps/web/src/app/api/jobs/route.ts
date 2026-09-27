@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { getConfig, getStore } from '../../../lib/runtime';
 import { destinationError, readJobDestinations } from '../../../lib/box-destinations';
 import type { JobDestinations } from '@shuttle-lite/core';
+import { checkSource } from '../../../lib/source-check';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,8 +16,8 @@ export async function GET() {
 }
 
 /**
- * Creates the job row and appends a START_JOB command. The scan and every
- * transfer happen in the worker process, never in this request.
+ * Validates the optional source preview, then creates the job and START_JOB command.
+ * Every transfer remains in the worker process.
  */
 export async function POST(request: Request) {
   const input: unknown = await request.json().catch(() => null);
@@ -144,6 +145,19 @@ export async function POST(request: Request) {
   }
 
   let destinations: JobDestinations;
+  if (body.sourceCheck !== undefined) {
+    if (typeof body.sourceCheck !== 'string' || !/^[a-f0-9]{64}$/.test(body.sourceCheck))
+      return NextResponse.json({ error: '移行元を再確認してください。' }, { status: 400 });
+    const checked = await checkSource(sourceRootPath, request.signal);
+    if (!checked.complete || checked.errorCount || checked.signature !== body.sourceCheck)
+      return NextResponse.json(
+        {
+          error: '移行元の内容または読み取り状態が変わりました。再確認してください。',
+          sourceChanged: true,
+        },
+        { status: 409 },
+      );
+  }
   try {
     destinations = await readJobDestinations(body.destinationFolderId, migrationMode);
   } catch (error) {

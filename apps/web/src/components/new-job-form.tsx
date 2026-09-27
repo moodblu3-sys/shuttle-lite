@@ -4,6 +4,9 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { BoxFolderPicker, type SelectedBoxFolder } from './box-folder-picker';
 import type { FolderSelection } from '../lib/folder-picker';
+import type { SourceCheck } from '../lib/source-check';
+import { formatBytes } from '@shuttle-lite/core/progress';
+import { WorkspaceIcon } from './workspace-icon';
 
 export function NewJobForm({
   aiEnabled,
@@ -24,11 +27,50 @@ export function NewJobForm({
   const [selectingDestination, setSelectingDestination] = useState(false);
   const [picking, setPicking] = useState(false);
   const pickerRequest = useRef<AbortController | null>(null);
+  const checkRequest = useRef<AbortController | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checked, setChecked] = useState<SourceCheck | null>(null);
+  const sourceReady =
+    checked?.complete &&
+    checked.errorCount === 0 &&
+    !!checked.signature &&
+    (migrationMode === 'AS_IS' || checked.fileCount > 0);
 
-  useEffect(() => () => pickerRequest.current?.abort(), []);
+  useEffect(
+    () => () => {
+      pickerRequest.current?.abort();
+      checkRequest.current?.abort();
+    },
+    [],
+  );
+
+  async function inspectSource() {
+    if (!folder || checking || checkRequest.current || busy) return;
+    const controller = new AbortController();
+    checkRequest.current = controller;
+    setChecking(true);
+    setChecked(null);
+    setError(null);
+    try {
+      const response = await fetch('/api/source-check', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-shuttle-source-check': '1' },
+        body: JSON.stringify({ sourceRootPath: folder.path }),
+        signal: controller.signal,
+      });
+      const result = (await response.json()) as SourceCheck & { error?: string };
+      if (!response.ok) throw new Error(result.error ?? '確認できませんでした。');
+      if (!controller.signal.aborted) setChecked(result);
+    } catch (cause) {
+      if (!controller.signal.aborted) setError((cause as Error).message);
+    } finally {
+      checkRequest.current = null;
+      if (!controller.signal.aborted) setChecking(false);
+    }
+  }
 
   async function selectFolder() {
-    if (pickerRequest.current || busy) return;
+    if (pickerRequest.current || busy || checking) return;
     const controller = new AbortController();
     pickerRequest.current = controller;
     setPicking(true);
@@ -44,7 +86,10 @@ export function NewJobForm({
         throw new Error(body.error ?? 'フォルダーを選択できませんでした。');
       }
       const selection = (await response.json()) as FolderSelection;
-      if (!selection.cancelled) setFolder(selection);
+      if (!selection.cancelled) {
+        setFolder(selection);
+        setChecked(null);
+      }
     } catch (cause) {
       if (!controller.signal.aborted) setError((cause as Error).message);
     } finally {
@@ -55,13 +100,17 @@ export function NewJobForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || picking || selectingDestination) return;
+    if (busy || picking || checking || selectingDestination) return;
     if (!folder) {
       setError('移行元フォルダーを選択してください。');
       return;
     }
     if (!destination) {
       setError('Boxの移行先フォルダーを選択してください。');
+      return;
+    }
+    if (!sourceReady) {
+      setError('移行元を確認してください。');
       return;
     }
     const form = new FormData(event.currentTarget);
@@ -75,6 +124,7 @@ export function NewJobForm({
           migrationMode,
           name: form.get('name'),
           sourceRootPath: folder.path,
+          sourceCheck: checked!.signature,
           destinationFolderId: destination.folderId,
           operatorLabel: form.get('operatorLabel'),
           aiRoutingEnabled:
@@ -84,7 +134,12 @@ export function NewJobForm({
           testMode,
         }),
       });
-      const body = (await response.json()) as { job?: { id: string }; error?: string };
+      const body = (await response.json()) as {
+        job?: { id: string };
+        error?: string;
+        sourceChanged?: boolean;
+      };
+      if (body.sourceChanged) setChecked(null);
       if (!response.ok || !body.job) throw new Error(body.error ?? `HTTP ${response.status}`);
       router.push(`/jobs/${body.job.id}`);
     } catch (cause) {
@@ -95,27 +150,46 @@ export function NewJobForm({
 
   return (
     <form className="stack new-migration-form" onSubmit={submit}>
-      <h2>新しい移行</h2>
       {error ? (
         <p className="error" role="alert">
           {error}
         </p>
       ) : null}
-      <label>
-        移行方式
-        <select
-          name="migrationMode"
-          value={migrationMode}
-          disabled={busy || selectingDestination}
-          onChange={(event) => {
-            setMigrationMode(event.target.value as 'AS_IS' | 'AI_ORGANIZE');
-            setDestination(null);
-          }}
-        >
-          <option value="AI_ORGANIZE">AIで整理して移行</option>
-          <option value="AS_IS">そのまま移行</option>
-        </select>
-      </label>
+      <fieldset
+        className="migration-mode-options"
+        disabled={busy || picking || checking || selectingDestination}
+      >
+        <legend>移行方式</legend>
+        <div className="migration-mode-cards">
+          {(
+            [
+              ['AI_ORGANIZE', 'AIで整理して移行', '内容から配置先・メタデータを提案', 'review'],
+              ['AS_IS', 'そのまま移行', 'フォルダー構成を維持して転送', 'folder'],
+            ] as const
+          ).map(([value, title, description, icon]) => (
+            <label
+              key={value}
+              className={`migration-mode-card ${migrationMode === value ? 'selected' : ''}`}
+            >
+              <input
+                type="radio"
+                name="migrationMode"
+                value={value}
+                checked={migrationMode === value}
+                onChange={() => {
+                  setMigrationMode(value);
+                  setDestination(null);
+                }}
+              />
+              <span>
+                <WorkspaceIcon kind={icon} />
+                <strong>{title}</strong>
+                <span>{description}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <label>
         移行名
         <input
@@ -127,39 +201,111 @@ export function NewJobForm({
           disabled={busy}
         />
       </label>
-      <div className="source-folder" role="group" aria-labelledby="source-folder-label">
-        <span id="source-folder-label" className="small">
-          移行元
-        </span>
-        <div className="source-folder-choice">
-          <div aria-live="polite">
-            <strong>{folder?.name ?? 'フォルダー未選択'}</strong>
-            {folder ? <p className="small muted source-folder-path">{folder.path}</p> : null}
+      <div className="migration-folder-columns">
+        <div className="source-folder" role="group" aria-labelledby="source-folder-label">
+          <span id="source-folder-label" className="small">
+            移行元
+          </span>
+          <div className="source-folder-choice">
+            <div aria-live="polite">
+              <strong>{folder?.name ?? 'フォルダー未選択'}</strong>
+              {folder ? <p className="small muted source-folder-path">{folder.path}</p> : null}
+            </div>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || picking || checking || !folderPickerAvailable}
+              onClick={() => void selectFolder()}
+            >
+              {picking ? '選択中…' : folder ? '変更' : 'フォルダーを選択'}
+            </button>
           </div>
+          {!folderPickerAvailable || picking ? (
+            <p className="small muted" role="status">
+              {!folderPickerAvailable ? 'フォルダー選択はMacのみ対応' : 'フォルダーを選択中…'}
+            </p>
+          ) : null}
+        </div>
+        <BoxFolderPicker
+          key={migrationMode}
+          migrationMode={migrationMode}
+          value={destination}
+          onChange={setDestination}
+          onBusyChange={setSelectingDestination}
+          disabled={busy || picking || checking}
+          boxMode={boxMode}
+        />
+      </div>
+      {destination && folder ? (
+        <div className="migration-target" aria-live="polite">
+          <span>{migrationMode === 'AS_IS' ? '最終配置先' : '配置先の範囲'}</span>
+          <strong>
+            {destination.name}
+            {migrationMode === 'AS_IS' ? ` / ${folder.name}` : ' 配下の既存フォルダー'}
+          </strong>
+        </div>
+      ) : null}
+      <section className="source-check" aria-label="開始前の確認">
+        <div className="card-head">
+          <h2>開始前の確認</h2>
           <button
             type="button"
             className="secondary"
-            disabled={busy || picking || !folderPickerAvailable}
-            onClick={() => void selectFolder()}
+            disabled={!folder || busy || picking || checking}
+            onClick={() => void inspectSource()}
           >
-            {picking ? '選択中…' : folder ? '変更' : 'フォルダーを選択'}
+            {checking ? '確認中…' : checked ? '再確認' : '移行元を確認'}
           </button>
         </div>
-        {!folderPickerAvailable || picking ? (
-          <p className="small muted" role="status">
-            {!folderPickerAvailable ? 'フォルダー選択はMacのみ対応' : 'フォルダーを選択中…'}
+        {checked ? (
+          <div aria-live="polite">
+            <div className="source-check-metrics">
+              <span>
+                ファイル <strong>{checked.fileCount}件</strong>
+              </span>
+              <span>
+                合計容量 <strong>{formatBytes(checked.totalBytes)}</strong>
+              </span>
+              <span>
+                フォルダー <strong>{checked.folderCount}件</strong>
+              </span>
+              <span>
+                読み取りエラー <strong>{checked.errorCount}件</strong>
+              </span>
+            </div>
+            {checked.excludedCount > 0 ? (
+              <p className="small muted">
+                隠し項目・一時ファイルなど対象外 {checked.excludedCount}件
+              </p>
+            ) : null}
+            {!checked.complete || checked.errorCount > 0 ? (
+              <p className="error">確認未完了（件数・容量は読み取れた分のみ）</p>
+            ) : null}
+            {checked.errorCount > 0 ? (
+              <div role="alert">
+                <ul>
+                  {checked.errors.map((e, i) => (
+                    <li key={i}>
+                      {e.path}：{e.message}
+                    </li>
+                  ))}
+                </ul>
+                {checked.errorCount > checked.errors.length ? (
+                  <p>先頭{checked.errors.length}件を表示</p>
+                ) : null}
+              </div>
+            ) : checked.fileCount === 0 && migrationMode !== 'AS_IS' ? (
+              <p>対象ファイルがありません。</p>
+            ) : checked.complete ? (
+              <p className="source-check-ok">確認済み</p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="small muted">
+            {checking ? 'ファイル数・容量・読み取り可否を確認しています。' : '未確認'}
           </p>
-        ) : null}
-      </div>
-      <BoxFolderPicker
-        key={migrationMode}
-        migrationMode={migrationMode}
-        value={destination}
-        onChange={setDestination}
-        onBusyChange={setSelectingDestination}
-        disabled={busy || picking}
-        boxMode={boxMode}
-      />
+        )}
+      </section>
       <label>
         <span>
           <input
@@ -188,7 +334,7 @@ export function NewJobForm({
             </label>
           ) : null}
           <label>
-            同名ファイルの扱い
+            {migrationMode === 'AS_IS' ? '初回の同名ファイル' : '同名ファイルの扱い'}
             <select
               key={`${migrationMode}-${testMode}`}
               name="conflictPolicy"
@@ -212,16 +358,22 @@ export function NewJobForm({
         <button
           type="button"
           className="secondary"
-          disabled={busy || picking}
-          onClick={(event) =>
-            event.currentTarget.closest('details.newjob')?.removeAttribute('open')
-          }
+          disabled={busy || picking || checking}
+          onClick={() => router.push('/')}
         >
           キャンセル
         </button>
         <button
           type="submit"
-          disabled={busy || picking || selectingDestination || !folder || !destination}
+          disabled={
+            busy ||
+            picking ||
+            checking ||
+            selectingDestination ||
+            !folder ||
+            !destination ||
+            !sourceReady
+          }
         >
           {busy ? '開始中…' : '移行を開始'}
         </button>

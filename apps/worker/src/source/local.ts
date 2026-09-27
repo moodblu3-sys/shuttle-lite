@@ -3,15 +3,13 @@ import { open, opendir, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import type { Readable } from 'node:stream';
 import {
-  isOfficeLockFile,
+  excludedSourceName,
   isTooLongForWindows,
   sha1File,
   ShuttleError,
   WINDOWS_MAX_PATH,
 } from '@shuttle-lite/core';
 import type { SourceAdapter, SourceDigest, SourceItemInfo, SourceRef } from './adapter';
-
-const SKIPPED_NAMES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini', '.localized']);
 
 export interface LocalSourceOptions {
   readonly rootPath: string;
@@ -122,13 +120,7 @@ export class LocalSourceAdapter implements SourceAdapter {
       throw mapReadError(error, dir);
     });
     for await (const entry of handle) {
-      if (
-        entry.name.startsWith('.') ||
-        SKIPPED_NAMES.has(entry.name) ||
-        isOfficeLockFile(entry.name) ||
-        entry.isSymbolicLink() ||
-        !entry.isDirectory()
-      )
+      if (excludedSourceName(entry.name) || entry.isSymbolicLink() || !entry.isDirectory())
         continue;
       const absolute = join(dir, entry.name);
       yield relative(this.#rootPath, absolute).split(sep).join('/');
@@ -142,10 +134,7 @@ export class LocalSourceAdapter implements SourceAdapter {
     });
     for await (const entry of handle) {
       const absolute = join(dir, entry.name);
-      if (entry.name.startsWith('.') || SKIPPED_NAMES.has(entry.name)) continue;
-      // An Office lock file means a colleague has the document open. Migrating
-      // the lock file itself is never useful.
-      if (isOfficeLockFile(entry.name)) continue;
+      if (excludedSourceName(entry.name)) continue;
       // Junctions and symlinks are skipped rather than followed, so a link
       // cannot pull content from outside the source root.
       if (entry.isSymbolicLink()) continue;

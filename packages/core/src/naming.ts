@@ -137,6 +137,13 @@ export function isOfficeLockFile(name: string): boolean {
   return name.startsWith('~$');
 }
 
+/** Keep the preview and worker scan aligned, including hidden folders. */
+export function excludedSourceName(name: string): boolean {
+  return (
+    name.startsWith('.') || ['Thumbs.db', 'desktop.ini'].includes(name) || isOfficeLockFile(name)
+  );
+}
+
 export function isTooLongForWindows(absolutePath: string, limit = WINDOWS_MAX_PATH): boolean {
   return absolutePath.length >= limit;
 }

@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MigrationJob } from '@shuttle-lite/core';
+import { checkSource } from '../apps/web/src/lib/source-check';
 import { POST } from '../apps/web/src/app/api/jobs/route';
 import { getBoxGateway, getCatalog, getConfig, getStore } from '../apps/web/src/lib/runtime';
 import { approveItem, createHarness, runUntilIdle, type Harness } from './harness';
@@ -40,6 +41,39 @@ describe('creating a migration without registering a source first', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     harness.cleanup();
+  });
+
+  it('creates a job after a successful source check without changing the inventory', async () => {
+    harness.writeSource('確認.txt', '内容');
+    const checked = await checkSource(harness.sourceRoot);
+    const response = await POST(
+      request({
+        name: '確認済み',
+        sourceRootPath: harness.sourceRoot,
+        sourceCheck: checked.signature,
+      }),
+    );
+    expect(response.status).toBe(201);
+    expect(harness.store.listJobs()).toHaveLength(1);
+  });
+
+  it('rejects a changed source before reading Box or creating a job', async () => {
+    harness.writeSource('確認.txt', '内容');
+    const checked = await checkSource(harness.sourceRoot);
+    harness.writeSource('追加.txt', '確認後の追加');
+    const box = vi.spyOn(harness.gateway, 'getFolder');
+    const response = await POST(
+      request({
+        name: '変更あり',
+        sourceRootPath: harness.sourceRoot,
+        sourceCheck: checked.signature,
+      }),
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ sourceChanged: true });
+    expect(box).not.toHaveBeenCalled();
+    expect(harness.store.listProfiles()).toHaveLength(0);
+    expect(harness.store.listJobs()).toHaveLength(0);
   });
 
   it('persists test mode only when explicitly selected', async () => {
@@ -163,6 +197,8 @@ describe('creating a migration without registering a source first', () => {
 
   it.each([
     { name: '' },
+    { sourceCheck: 'invalid' },
+    { sourceCheck: null },
     { destinationFolderId: undefined },
     { destinationFolderId: '0' },
     { destinationFolderId: '../outside' },

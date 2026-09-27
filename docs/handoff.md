@@ -6,7 +6,7 @@ ChatGPTを設計・実装・自動テストの主担当とし、GitHub経由で�
 設計レビューで合意した次の開発範囲と受け渡し方針は
 [development-plan.md](development-plan.md) を参照する。新しい設計は未実装の項目を含む。
 
-更新日 2026-09-25
+更新日 2026-09-27
 
 ## このプロダクトは何か
 
@@ -19,9 +19,14 @@ Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋�
 
 ## いまの状態
 
+- 2026-09-27: 新規移行を`/jobs/new`の専用ページに変更。AI既定の2方式カード、開始前の件数・容量・読み取り確認、
+  そのまま移行の最終配置先、「初回の同名ファイル」を追加。確認は転送せず、開始時に再走査して変更を検出する。
+  上限・対象外・確認の限界はmigration-workflow-review.md、CursorへのSnowflake設定依頼はcursor-snowflake-setup.md。
+  自動テスト560件、root/web型チェック・lint・隔離コピーでの本番ビルド成功。実ブラウザーの外観とMac/Snowflake疎通は未確認。
+
 - 2026-09-27: 左メニューを移行一覧・設定に固定。移行詳細に進捗・方式別操作・実行履歴タブを追加。
   既存の進捗・承認URLは維持し、差分は`/jobs/[jobId]/delta`、履歴は`/jobs/[jobId]/history`。
-  方式選択カードの専用ページは画像案のみ。仕様レビューはmigration-workflow-review.md参照。
+  仕様レビューはmigration-workflow-review.md参照。
 - Snowflake設定に「テストログを送信」を追加。保存済み設定とリビジョンを確認し、合成イベント1件を送る。
   実環境接続は未検証。操作者・ファイル名を含む監査ログ拡張は未実装で、既存allowlistを維持。
 

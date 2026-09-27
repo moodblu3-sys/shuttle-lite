@@ -1,13 +1,11 @@
 import { buildJobSnapshot } from '@shuttle-lite/telemetry';
 import { JobCard } from '../components/job-card';
-import { NewJobForm } from '../components/new-job-form';
-import { getConfig, getStore } from '../lib/runtime';
+import { getStore } from '../lib/runtime';
 
 export const dynamic = 'force-dynamic';
 
 export default function HomePage() {
   const store = getStore();
-  const config = getConfig();
   const jobs = store.listJobs(20).map((job) => ({
     job,
     snapshot: buildJobSnapshot(store, job.id),
@@ -20,17 +18,9 @@ export default function HomePage() {
         <div>
           <h1 className="page-title">移行一覧</h1>
         </div>
-        {/* Admin Consoleと同じく、新規作成は右上のprimary actionに置く。 */}
-        <details className="newjob">
-          <summary className="newjob-trigger">新しい移行</summary>
-          <div className="newjob-panel">
-            <NewJobForm
-              aiEnabled={config.ai.enabled}
-              boxMode={config.box.mode}
-              folderPickerAvailable={process.platform === 'darwin'}
-            />
-          </div>
-        </details>
+        <a className="new-migration-link" href="/jobs/new">
+          新しい移行
+        </a>
       </div>
 
       <div className="overview" aria-label="表示中の移行の概要">
