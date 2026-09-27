@@ -1,16 +1,10 @@
 .workspace {
-  --template-column: minmax(115px, 0.6fr);
-  --status-column: 92px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  position: relative;
   height: 100%;
   min-height: 0;
   overflow: hidden;
   background: #fff;
   color: var(--ink);
-}
-.workspace.withoutInspector {
-  grid-template-columns: minmax(0, 1fr);
 }
 .workspace button,
 .workspace input,
@@ -22,6 +16,7 @@
   outline-offset: 3px;
 }
 .main {
+  height: 100%;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -135,61 +130,101 @@
   margin-left: 3px;
   font-variant-numeric: tabular-nums;
 }
-.columnHead {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--template-column) var(--status-column);
-  gap: 12px;
-  padding: 9px 12px 9px 81px;
-  font-size: 11px;
-  color: var(--ink-soft);
-  position: sticky;
-  top: 0;
-  background: #fff;
-  z-index: 1;
-}
-.columnHead span:last-child {
-  text-align: right;
-}
 .list {
   min-height: 0;
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   scrollbar-gutter: stable;
-  padding: 0 14px 24px;
+  padding: 0 28px 24px;
 }
-.group {
-  margin-bottom: 16px;
+.table {
+  width: 100%;
+  min-width: 860px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
 }
-.groupHeader {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 14px;
-  border-radius: 7px 7px 0 0;
-  background: #f5f7fa;
-  color: #3b4c60;
+.checkColumn {
+  width: 40px;
 }
-.groupHeader > div {
-  flex: 1;
+.destinationColumn {
+  width: 21%;
+}
+.templateColumn {
+  width: 20%;
+}
+.statusColumn {
+  width: 90px;
+}
+.previewColumn {
+  width: 42px;
+}
+.table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+  text-align: left;
+  color: #69788e;
+  font-weight: 500;
+  font-size: 12px;
+  padding: 14px 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid #edf0f5;
+  vertical-align: middle;
+}
+.table input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: #2164de;
+  cursor: pointer;
+}
+.table input:disabled {
+  cursor: not-allowed;
+}
+.fileRow:hover {
+  background: #f7f9fd;
+}
+.fileRow.selected {
+  background: #eef5ff;
+}
+.fileRow.focused {
+  background: #e5efff;
+}
+.workspace .inlineSelect {
+  width: 100%;
   min-width: 0;
-}
-.groupHeader h2 {
-  font-size: 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background-color: transparent;
+  padding: 9px 22px 9px 6px;
   margin: 0;
-  font-weight: 600;
-  overflow-wrap: anywhere;
+  color: #273346;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  cursor: pointer;
 }
-.groupHeader h2 span {
-  color: #697587;
-  font-weight: 400;
-  display: inline-block;
-  margin-left: 7px;
+.workspace .inlineSelect:hover:not(:disabled) {
+  border-color: #ccd9eb;
+  background-color: #fff;
 }
-.groupHeader p {
-  margin: 3px 0 0;
-  font-size: 11px;
-  overflow-wrap: anywhere;
-  color: #68758a;
+.workspace .inlineSelect:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.workspace .inlineSelect.warning {
+  color: #9b6014;
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 .workspace .textButton {
   color: #2164de;
@@ -208,35 +243,9 @@
   cursor: not-allowed;
   opacity: 0.45;
 }
-.files {
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-.fileRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid #edf0f5;
-  padding: 0 12px;
-  min-width: 0;
-}
-.fileRow input[type='checkbox'] {
-  width: 19px;
-  height: 19px;
-  flex: 0 0 auto;
-  accent-color: #2164de;
-}
-.checkboxSpacer {
-  width: 19px;
-  flex: 0 0 auto;
-}
-.focused {
-  background: #e5efff;
-}
 .workspace .fileButton {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) var(--template-column) var(--status-column);
+  grid-template-columns: 28px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
   text-align: left;
@@ -246,8 +255,8 @@
   border-radius: 0;
   min-width: 0;
   width: 100%;
-  min-height: 64px;
-  padding: 12px 0;
+  min-height: 48px;
+  padding: 4px 0;
   font-weight: 400;
 }
 .fileButton :global(.document-icon) {
@@ -268,7 +277,7 @@
   display: block;
   color: var(--ink-soft);
   font-size: 11px;
-  margin-top: 3px;
+  margin: 2px 0 0 7px;
 }
 .workspace .fileButton:hover {
   background: #f4f7fc;
@@ -295,18 +304,17 @@
   margin-top: 3px;
 }
 .status {
-  font-size: 12px;
-  color: #6b778b;
-  flex: 0 0 auto;
-  text-align: right;
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #536780;
+  background: #eef3fa;
+  border-radius: 20px;
+  padding: 5px 9px;
 }
-.warning {
+.status.warning {
   color: #9b6014;
-  font-size: 12px;
-}
-.exceptionGroup .groupHeader {
-  background: #fff8ec;
-  color: #925b13;
+  background: #fff4df;
 }
 .approvalBar {
   flex: 0 0 auto;
@@ -319,16 +327,43 @@
 .approvalActions {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+  flex-wrap: wrap;
   font-size: 13px;
 }
 .workspace .primary {
-  margin-left: auto;
   background: #2164de;
   border-color: #2164de;
   border-radius: 7px;
   padding: 11px 22px;
   box-shadow: 0 2px 5px #2164de20;
+}
+.bulkButtons {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.bulkButtons button {
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.bulkEditor {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  background: #f5f8fd;
+  border-radius: 8px;
+}
+.bulkEditor label {
+  margin: 0;
+  width: 320px;
+  font-size: 12px;
+}
+.bulkEditor button {
+  font-size: 13px;
+  white-space: nowrap;
 }
 .hint {
   font-size: 11px;
@@ -356,6 +391,13 @@
   padding: 6px 0;
 }
 .inspector {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 380px;
+  z-index: 3;
+  box-shadow: -12px 0 32px #25385914;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -502,13 +544,6 @@
 .empty h2 {
   font-size: 18px;
 }
-/* Desktop-only: keep the list and inspector side by side at every width. */
-@media (min-width: 1600px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr) 410px;
-  }
-}
-
 .search {
   position: relative;
   flex: 0 0 auto;

@@ -236,9 +236,13 @@ describe('persistent review drafts', () => {
     )!;
     expect(details.open).toBe(false);
     expect(details.querySelector<HTMLInputElement>('input')!.value).toBe('A社');
-    expect(container.querySelector('#review-file-one')?.textContent).toContain(
-      '契約書管理抽出済み',
+    expect(container.querySelector('#review-file-one')?.closest('tr')?.textContent).toContain(
+      '抽出済み',
     );
+    expect(
+      container.querySelector<HTMLSelectElement>('[aria-label="contract.pdf のテンプレート"]')!
+        .value,
+    ).toBe('enterprise_123/contract');
     expect(container.textContent).not.toContain('AIで抽出');
     await act(async () =>
       container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click(),

@@ -3,7 +3,7 @@
 import {
   loadReviewDraft,
   saveReviewDraft,
-  validReviewDraft,
+  reconcileReviewDraft,
   type SavedReviewDraft,
 } from '../lib/review-drafts';
 import type { TemplateMapping } from '@shuttle-lite/core';
@@ -19,7 +19,6 @@ import {
   canApprove,
   commandFor,
   draftFor,
-  groupReviewItems,
   matchesReviewSearch,
   isReviewPending,
   reviewRevision,
@@ -100,13 +99,9 @@ export function ReviewList({
   const [submitted, setSubmitted] = useState<Record<string, ReviewCommandView>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bulkEdit, setBulkEdit] = useState<'destination' | 'template' | null>(null);
+  const [bulkValue, setBulkValue] = useState('');
   const active = items.find((item) => item.itemId === activeId);
-  const { groups, attention, undecided } = groupReviewItems(
-    items,
-    destinations,
-    needsReviewKey,
-    currentDraft,
-  );
   const visibleItems = items.filter(
     (item) =>
       (pagination || matchesReviewSearch(item, query)) &&
@@ -114,6 +109,9 @@ export function ReviewList({
   );
   const pending = visibleItems.filter((item) => !isReviewPending(item, submitted[item.itemId]));
   const ready = bulkReviewItems(pending, selected, currentDraft, destinations, needsReviewKey);
+  const selectable = pending.filter((item) => !item.needsAttention);
+  const chosen = selectable.filter(isSelected);
+  const allSelected = selectable.length > 0 && selectable.every(isSelected);
   const filterCounts = { all: 0, ready: 0, unselected: 0, attention: 0, ...pagination?.counts };
   for (const item of items) {
     if (!pagination && !matchesReviewSearch(item, query)) continue;
@@ -149,8 +147,8 @@ export function ReviewList({
 
   function currentDraft(item: ReviewItemView) {
     const edit = edits[item.itemId];
-    // Never reuse edits against a new worker snapshot (version, error or AI result).
-    return validReviewDraft(item, edit) ? edit!.draft : draftFor(item);
+    // Only our completed template command may carry placement edits into a new snapshot.
+    return reconcileReviewDraft(item, edit)?.draft ?? draftFor(item);
   }
   function categoryFor(item: ReviewItemView, draft: ApprovalDraft, includeReceipt: boolean) {
     if (isReviewPending(item, includeReceipt ? submitted[item.itemId] : undefined))
@@ -179,8 +177,8 @@ export function ReviewList({
       }
       setEdits((previous) => {
         for (const item of items) {
-          if (validReviewDraft(item, previous[item.itemId]))
-            restored[item.itemId] = previous[item.itemId]!;
+          const saved = reconcileReviewDraft(item, previous[item.itemId]);
+          if (saved) restored[item.itemId] = saved;
         }
         return restored;
       });
@@ -196,12 +194,14 @@ export function ReviewList({
   }
   function navigate(page: number, search = query, nextFilter = filter) {
     setSelected(new Map());
+    setBulkEdit(null);
     if (onNavigate) onNavigate(page, search, nextFilter);
     else router.push(pageUrl(page, search, nextFilter));
   }
   function changeFilter(nextFilter: ReviewFilter) {
     setSelected(new Map());
     setActiveId(null);
+    setBulkEdit(null);
     if (pagination) navigate(1, pagination.query, nextFilter);
     else setLocalFilter(nextFilter);
   }
@@ -215,11 +215,6 @@ export function ReviewList({
     return selected.get(item.itemId) === reviewRevision(item);
   }
   function updateDraft(item: ReviewItemView, patch: Partial<ApprovalDraft>) {
-    setSelected((previous) => {
-      const next = new Map(previous);
-      next.delete(item.itemId);
-      return next;
-    });
     const draft = { ...currentDraft(item), ...patch };
     let saved: SavedReviewDraft = {
       revision: reviewRevision(item),
@@ -235,7 +230,9 @@ export function ReviewList({
     setEdits((previous) => ({ ...previous, [item.itemId]: saved }));
   }
   function toggleGroup(group: readonly ReviewItemView[]) {
-    const available = group.filter((item) => !isReviewPending(item, submitted[item.itemId]));
+    const available = group.filter(
+      (item) => !item.needsAttention && !isReviewPending(item, submitted[item.itemId]),
+    );
     setSelected((previous) => {
       const next = new Map(previous);
       const remove = available.every((item) => previous.get(item.itemId) === reviewRevision(item));
@@ -298,45 +295,113 @@ export function ReviewList({
       setBusy(false);
     }
   }
-  async function selectTemplate(item: ReviewItemView, templateId: string | null) {
-    if (sending.current || !item.businessMetadata) return;
+  async function selectTemplates(targets: readonly ReviewItemView[], templateId: string | null) {
+    if (sending.current) return;
     sending.current = true;
     setBusy(true);
     setError(null);
+    setNotice(null);
+    const failures: string[] = [];
+    let accepted = 0;
     try {
-      const response = await fetch(`/api/jobs/${jobId}/commands`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          type: 'SELECT_METADATA_TEMPLATE',
-          payload: {
-            itemId: item.itemId,
-            templateId,
-            revision: item.businessMetadata.revision,
-            observedBoxFileId: item.boxFileId,
-            observedSha1: item.boxSha1,
-          },
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setSubmitted((previous) => ({ ...previous, [item.itemId]: data.command }));
-      setSelected((previous) => {
-        const next = new Map(previous);
-        next.delete(item.itemId);
-        return next;
-      });
+      for (const item of targets) {
+        if (!item.businessMetadata || isReviewPending(item, submitted[item.itemId])) continue;
+        try {
+          const response = await fetch(`/api/jobs/${jobId}/commands`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              type: 'SELECT_METADATA_TEMPLATE',
+              payload: {
+                itemId: item.itemId,
+                templateId,
+                revision: item.businessMetadata.revision,
+                observedBoxFileId: item.boxFileId,
+                observedSha1: item.boxSha1,
+              },
+            }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error ?? '変更を受け付けられませんでした。');
+          // Preserve placement edits across our own extraction, never old metadata values.
+          const saved: SavedReviewDraft = {
+            revision: reviewRevision(item),
+            commandId: item.reviewCommand?.id ?? null,
+            draft: currentDraft(item),
+            savedAt: Date.now(),
+            templateChange: { commandId: data.command.id, templateId },
+          };
+          setEdits((previous) => ({ ...previous, [item.itemId]: saved }));
+          try {
+            saveReviewDraft(window.localStorage, item, saved.draft, saved.templateChange);
+          } catch {
+            failures.push(`${item.sourceFileName}: 下書きを保存できません。`);
+          }
+          setSubmitted((previous) => ({ ...previous, [item.itemId]: data.command }));
+          setSelected((previous) => {
+            const next = new Map(previous);
+            next.delete(item.itemId);
+            return next;
+          });
+          accepted++;
+        } catch (cause) {
+          failures.push(`${item.sourceFileName}: ${(cause as Error).message}`);
+        }
+      }
+      if (accepted) setNotice(`${accepted}件のテンプレート変更を受け付けました。`);
+      if (failures.length) setError(failures.join(' / '));
       refresh();
-    } catch (cause) {
-      setError((cause as Error).message);
     } finally {
       sending.current = false;
       setBusy(false);
     }
   }
-  function renderRow(item: ReviewItemView, bulk: boolean) {
+  function selectTemplate(item: ReviewItemView, templateId: string | null) {
+    return selectTemplates([item], templateId);
+  }
+  function templateOptions(item?: ReviewItemView) {
+    const metadata = item?.businessMetadata;
+    return (
+      <>
+        <option value="">未選択</option>
+        {metadata?.template &&
+        !metadataTemplates.some(
+          ({ template }) => `${template.scope}/${template.templateKey}` === metadata.templateId,
+        ) ? (
+          <option value={metadata.templateId!} disabled>
+            {metadata.template.displayName}（選択済み）
+          </option>
+        ) : null}
+        {metadataTemplates.map(({ template }) => (
+          <option
+            key={`${template.scope}/${template.templateKey}`}
+            value={`${template.scope}/${template.templateKey}`}
+          >
+            {template.displayName}
+          </option>
+        ))}
+      </>
+    );
+  }
+  function destinationOptions() {
+    return (
+      <>
+        <option value="">未選択</option>
+        {destinations
+          .filter((entry) => entry.key !== needsReviewKey)
+          .map((entry) => (
+            <option key={entry.key} value={entry.key}>
+              {entry.label}
+            </option>
+          ))}
+      </>
+    );
+  }
+  function renderRow(item: ReviewItemView) {
     const queued = isReviewPending(item, submitted[item.itemId]);
-    const changed = currentDraft(item).destinationKey !== draftFor(item).destinationKey;
+    const draft = currentDraft(item);
+    const category = categoryFor(item, draft, true);
+    const destination = destinations.find((entry) => entry.key === draft.destinationKey);
     const subtitle = duplicateNames.has(item.sourceFileName)
       ? item.sourceRelativePath
       : item.needsAttention
@@ -344,95 +409,92 @@ export function ReviewList({
           ? 'メタデータを抽出できませんでした'
           : errorPresentation(item.lastErrorCategory).title
         : null;
+    const previewLink = boxLinkBase && item.boxFileId ? `${boxLinkBase}${item.boxFileId}` : null;
     return (
-      <li
+      <tr
         key={item.itemId}
-        className={`${styles.fileRow} ${activeId === item.itemId ? styles.focused : ''}`}
+        className={`${styles.fileRow} ${isSelected(item) ? styles.selected : ''} ${activeId === item.itemId ? styles.focused : ''}`}
       >
-        {bulk ? (
+        <td>
           <input
             type="checkbox"
-            checked={isSelected(item)}
-            disabled={busy || queued}
+            checked={isSelected(item) && !queued && !item.needsAttention}
+            disabled={busy || queued || item.needsAttention}
             onChange={() => toggleGroup([item])}
             aria-label={`${item.sourceRelativePath} を選択`}
           />
-        ) : (
-          <span className={styles.checkboxSpacer} />
-        )}
-        <button
-          id={`review-file-${item.itemId}`}
-          type="button"
-          className={styles.fileButton}
-          aria-pressed={activeId === item.itemId}
-          aria-controls="review-inspector"
-          onClick={() => setActiveId(item.itemId)}
-        >
-          <DocumentIcon name={item.sourceFileName} />
-          <span className={styles.fileText}>
-            <strong>{item.sourceFileName}</strong>
-            {subtitle ? <span>{subtitle}</span> : null}
-          </span>
-          <span className={styles.templateCell}>
-            <span title={item.businessMetadata?.template?.displayName}>
-              {item.businessMetadata
-                ? (item.businessMetadata.template?.displayName ?? '未選択')
-                : '—'}
+        </td>
+        <td>
+          <button
+            id={`review-file-${item.itemId}`}
+            title={item.sourceRelativePath}
+            type="button"
+            className={styles.fileButton}
+            aria-pressed={activeId === item.itemId}
+            aria-controls={active ? 'review-inspector' : undefined}
+            onClick={() => setActiveId(item.itemId)}
+          >
+            <DocumentIcon name={item.sourceFileName} />
+            <span className={styles.fileText}>
+              <strong>{item.sourceFileName}</strong>
+              {subtitle ? <span>{subtitle}</span> : null}
             </span>
-            {item.businessMetadata?.template ? <small>{metadataStatus(item, queued)}</small> : null}
-          </span>
-          <span className={`${styles.status} ${!bulk ? styles.warning : ''}`}>
-            {queued
-              ? '処理待ち'
-              : changed
-                ? '配置先を変更'
-                : item.needsAttention
-                  ? '要対応'
-                  : bulk
-                    ? '承認待ち'
-                    : '未選択'}
-          </span>
-        </button>
-      </li>
-    );
-  }
-  function renderSection(
-    key: string,
-    title: string,
-    group: readonly ReviewItemView[],
-    bulk: boolean,
-  ) {
-    const visible = group.filter((item) => visibleItems.includes(item));
-    if (visible.length === 0) return null;
-    const available = visible.filter((item) => !isReviewPending(item, submitted[item.itemId]));
-    return (
-      <section
-        key={key}
-        className={`${styles.group} ${!bulk ? styles.exceptionGroup : ''}`}
-        aria-label={title}
-      >
-        <div className={styles.groupHeader}>
-          <Icon kind="folder" />
-          <div>
-            <h2>
-              {title} <span>{visible.length}件</span>
-            </h2>
-          </div>
-          {bulk ? (
-            <button
-              type="button"
-              className={styles.textButton}
-              disabled={busy || available.length === 0}
-              onClick={() => toggleGroup(visible)}
+          </button>
+        </td>
+        <td>
+          <select
+            className={`${styles.inlineSelect} ${!destination ? styles.warning : ''}`}
+            aria-label={`${item.sourceRelativePath} の配置先`}
+            title={destination?.boxPath ?? '未選択'}
+            value={draft.destinationKey}
+            disabled={busy || queued}
+            onChange={(event) => updateDraft(item, { destinationKey: event.target.value })}
+          >
+            {destinationOptions()}
+          </select>
+        </td>
+        <td className={styles.templateCell}>
+          {item.businessMetadata ? (
+            <select
+              className={`${styles.inlineSelect} ${!item.businessMetadata.templateId ? styles.warning : ''}`}
+              aria-label={`${item.sourceRelativePath} のテンプレート`}
+              title={item.businessMetadata.template?.displayName ?? '未選択'}
+              value={item.businessMetadata.templateId ?? ''}
+              disabled={busy || queued}
+              onChange={(event) => void selectTemplate(item, event.target.value || null)}
             >
-              {available.length > 0 && available.every((item) => isSelected(item))
-                ? '選択を解除'
-                : '全選択'}
-            </button>
+              {templateOptions(item)}
+            </select>
+          ) : (
+            <span>—</span>
+          )}
+          {item.businessMetadata?.template ? <small>{metadataStatus(item, queued)}</small> : null}
+        </td>
+        <td>
+          <span
+            className={`${styles.status} ${category === 'attention' || category === 'unselected' ? styles.warning : ''}`}
+          >
+            {queued
+              ? '処理中'
+              : category === 'attention'
+                ? '要対応'
+                : category === 'ready'
+                  ? '承認待ち'
+                  : '未選択'}
+          </span>
+        </td>
+        <td>
+          {previewLink ? (
+            <FilePreviewButton
+              key={`${item.boxFileId}:${item.boxVersionId}:${item.boxSha1}:${item.state}:${item.reviewCommand?.state ?? ''}`}
+              item={item}
+              boxLink={previewLink}
+              compact
+              disabled={busy || queued || !item.boxVersionId || !item.boxSha1}
+            />
           ) : null}
-        </div>
-        <ul className={styles.files}>{visible.map((item) => renderRow(item, bulk))}</ul>
-      </section>
+        </td>
+      </tr>
     );
   }
   const draft = active ? currentDraft(active) : null;
@@ -449,13 +511,13 @@ export function ReviewList({
     active && boxLinkBase && active.boxFileId ? `${boxLinkBase}${active.boxFileId}` : null;
   const locked = busy || !!(active && isReviewPending(active, submitted[active.itemId]));
   return (
-    <div className={`${styles.workspace} ${!active ? styles.withoutInspector : ''}`}>
+    <div className={styles.workspace}>
       <section className={styles.main} aria-label="分類結果">
         <header className={styles.heading}>
           <p className={styles.breadcrumb}>
             <a href="/">移行一覧</a> / <a href={`/jobs/${jobId}`}>進捗</a> / 承認
           </p>
-          <h1>分類結果を確認</h1>
+          <h1>分類・承認</h1>
         </header>
         <ol className={styles.workflow} aria-label="移行の工程">
           <li>
@@ -518,17 +580,41 @@ export function ReviewList({
         ) : null}
         <div className={styles.list}>
           {visibleItems.length > 0 ? (
-            <div className={styles.columnHead} aria-hidden="true">
-              <span>ファイル名</span>
-              <span>テンプレート</span>
-              <span>状態</span>
-            </div>
+            <table className={styles.table} aria-label="承認するファイル">
+              <colgroup>
+                <col className={styles.checkColumn} />
+                <col />
+                <col className={styles.destinationColumn} />
+                <col className={styles.templateColumn} />
+                <col className={styles.statusColumn} />
+                <col className={styles.previewColumn} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">
+                    <input
+                      type="checkbox"
+                      aria-label="全選択"
+                      checked={allSelected}
+                      ref={(node) => {
+                        if (node) node.indeterminate = chosen.length > 0 && !allSelected;
+                      }}
+                      disabled={busy || selectable.length === 0}
+                      onChange={() => toggleGroup(selectable)}
+                    />
+                  </th>
+                  <th scope="col">ファイル名</th>
+                  <th scope="col">配置先</th>
+                  <th scope="col">テンプレート</th>
+                  <th scope="col">状態</th>
+                  <th scope="col">
+                    <span className={styles.srOnly}>{boxLinkBase ? 'プレビュー' : '操作'}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>{visibleItems.map(renderRow)}</tbody>
+            </table>
           ) : null}
-          {renderSection('attention', '対応が必要', attention, false)}
-          {groups.map(({ destination, items: group }) =>
-            renderSection(destination.key, destination.label, group, true),
-          )}
-          {renderSection('undecided', '未選択', undecided, false)}
           {visibleItems.length === 0 ? (
             <div className={styles.empty}>
               <Icon kind="check" />
@@ -580,24 +666,120 @@ export function ReviewList({
             </p>
           ) : null}
           <div className={styles.approvalActions}>
-            <strong>{ready.length}件を選択中</strong>
+            <strong>{chosen.length}件を選択中</strong>
             <button
               type="button"
               className={styles.textButton}
               disabled={busy || selected.size === 0}
-              onClick={() => setSelected(new Map())}
+              onClick={() => {
+                setSelected(new Map());
+                setBulkEdit(null);
+              }}
             >
               選択解除
             </button>
+            <div className={styles.bulkButtons}>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || chosen.length === 0}
+                aria-expanded={bulkEdit === 'destination'}
+                onClick={() => {
+                  setBulkEdit(bulkEdit === 'destination' ? null : 'destination');
+                  setBulkValue('');
+                }}
+              >
+                配置先を変更
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                disabled={
+                  busy || chosen.length === 0 || chosen.some((item) => !item.businessMetadata)
+                }
+                aria-expanded={bulkEdit === 'template'}
+                onClick={() => {
+                  setBulkEdit(bulkEdit === 'template' ? null : 'template');
+                  setBulkValue('');
+                }}
+              >
+                テンプレートを変更
+              </button>
+            </div>
             <button
               type="button"
               className={styles.primary}
-              disabled={busy || ready.length === 0 || !operatorLabel.trim()}
+              disabled={
+                busy ||
+                !!bulkEdit ||
+                ready.length === 0 ||
+                ready.length !== chosen.length ||
+                !operatorLabel.trim()
+              }
               onClick={() => void send(ready)}
             >
-              {busy ? '送信中…' : `選択した${ready.length}件を承認`}
+              {busy ? '送信中…' : `選択した${chosen.length}件を承認`}
             </button>
           </div>
+          {bulkEdit && chosen.length > 0 ? (
+            <form
+              className={styles.bulkEditor}
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (busy || !bulkValue) return;
+                if (bulkEdit === 'destination') {
+                  for (const item of chosen)
+                    updateDraft(item, {
+                      destinationKey: bulkValue === '__clear__' ? '' : bulkValue,
+                    });
+                } else {
+                  void selectTemplates(chosen, bulkValue === '__clear__' ? null : bulkValue);
+                }
+                setBulkEdit(null);
+              }}
+            >
+              <label>
+                {bulkEdit === 'destination' ? '一括変更する配置先' : '一括変更するテンプレート'}
+                <select
+                  value={bulkValue}
+                  disabled={busy}
+                  onChange={(event) => setBulkValue(event.target.value)}
+                >
+                  <option value="" disabled>
+                    選択してください
+                  </option>
+                  <option value="__clear__">未選択に戻す</option>
+                  {bulkEdit === 'destination'
+                    ? destinations
+                        .filter((entry) => entry.key !== needsReviewKey)
+                        .map((entry) => (
+                          <option key={entry.key} value={entry.key}>
+                            {entry.label}
+                          </option>
+                        ))
+                    : metadataTemplates.map(({ template }) => (
+                        <option
+                          key={`${template.scope}/${template.templateKey}`}
+                          value={`${template.scope}/${template.templateKey}`}
+                        >
+                          {template.displayName}
+                        </option>
+                      ))}
+                </select>
+              </label>
+              <button type="submit" disabled={busy || !bulkValue}>
+                選択した{chosen.length}件に適用
+              </button>
+              <button
+                type="button"
+                className={styles.textButton}
+                disabled={busy}
+                onClick={() => setBulkEdit(null)}
+              >
+                キャンセル
+              </button>
+            </form>
+          ) : null}
           <details className={styles.operator}>
             <summary>承認者</summary>
             <label>
@@ -871,22 +1053,24 @@ export function ReviewList({
                   </details>
                 </fieldset>
               </div>
-              <div className={styles.individual}>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={
-                    locked ||
-                    !canApprove(draft, destinations, needsReviewKey) ||
-                    !operatorLabel.trim()
-                  }
-                  onClick={() => void send([active])}
-                >
-                  {isReviewPending(active, submitted[active.itemId])
-                    ? '処理待ち'
-                    : 'このファイルを承認'}
-                </button>
-              </div>
+              {active.needsAttention ? (
+                <div className={styles.individual}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={
+                      locked ||
+                      !canApprove(draft, destinations, needsReviewKey) ||
+                      !operatorLabel.trim()
+                    }
+                    onClick={() => void send([active])}
+                  >
+                    {isReviewPending(active, submitted[active.itemId])
+                      ? '処理待ち'
+                      : 'このファイルを承認'}
+                  </button>
+                </div>
+              ) : null}
             </>
           ) : (
             <p className={styles.inspectorEmpty}>ファイル未選択</p>

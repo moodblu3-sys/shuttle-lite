@@ -102,3 +102,16 @@
     gap: 8px;
   }
 }
+
+.previewButton.compact {
+  display: inline-grid;
+  place-items: center;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: #536780;
+}
+.previewButton.compact:hover:not(:disabled) {
+  background: #edf3ff;
+  color: #2164de;
+}

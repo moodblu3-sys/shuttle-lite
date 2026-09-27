@@ -92,6 +92,36 @@ describe('review after a transient AI failure', () => {
     expect(page.items[0]).toMatchObject({ needsAttention: false, lastError: null });
   });
 
+  it('keeps destination filtering consistent after the browser template command completes', async () => {
+    const failed = await start(new ShuttleError('AI_NOT_READY', 'retry'));
+    await advanceItem(await h.jobContext(failed.jobId), failed.id, ROUTING_SCOPE);
+    const row = buildReviewPage(failed.jobId).items[0]!;
+    const destinationKey = h.catalog.entries.find(
+      (entry) => entry.key !== h.catalog.needsReviewKey,
+    )!.key;
+    const command = h.store.enqueueCommand(failed.jobId, 'SELECT_METADATA_TEMPLATE', {
+      itemId: row.itemId,
+      templateId: null,
+      revision: row.businessMetadata!.revision,
+      observedBoxFileId: row.boxFileId,
+      observedSha1: row.boxSha1,
+    });
+    const saved = {
+      revision: reviewRevision(row),
+      commandId: row.reviewCommand?.id ?? null,
+      draft: { ...draftFor(row), destinationKey },
+      savedAt: Date.now(),
+      templateChange: { commandId: command.id, templateId: null },
+    };
+    await runUntilIdle(h);
+    const ready = buildReviewPage(failed.jobId, 1, '', 'ready', [saved]);
+    expect(ready.items.map((entry) => entry.itemId)).toEqual([row.itemId]);
+    expect(ready.destinationOverrides[row.itemId]).toBe(destinationKey);
+    expect(ready.counts).toEqual({ all: 1, ready: 1, unselected: 0, attention: 0 });
+    h.store.updateItem(row.itemId, { boxFileVersionId: 'changed-version' });
+    expect(buildReviewPage(failed.jobId, 1, '', 'ready', [saved]).items).toEqual([]);
+  });
+
   it('does not swallow a persistent 412 after exhausting the retry budget', async () => {
     const error = new ShuttleError('AI_NOT_READY', 'Box API 412 precondition_failed');
     const failed = await start(error);

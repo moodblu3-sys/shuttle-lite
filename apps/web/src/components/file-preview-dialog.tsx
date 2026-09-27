@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import type { ReviewItemView } from '../lib/review-types';
+import { WorkspaceIcon } from './workspace-icon';
 import styles from './file-preview-dialog.module.css';
 
 type PreviewItem = Pick<
@@ -13,10 +14,12 @@ export function FilePreviewButton({
   item,
   boxLink,
   disabled,
+  compact = false,
 }: {
   item: PreviewItem;
   boxLink: string;
   disabled: boolean;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -25,11 +28,13 @@ export function FilePreviewButton({
       <button
         ref={triggerRef}
         type="button"
-        className={styles.previewButton}
+        className={`${styles.previewButton} ${compact ? styles.compact : ''}`}
+        aria-label={compact ? `${item.sourceFileName} をプレビュー` : undefined}
+        title={compact ? 'プレビュー' : undefined}
         disabled={disabled}
         onClick={() => setOpen(true)}
       >
-        プレビュー
+        {compact ? <WorkspaceIcon kind="eye" /> : 'プレビュー'}
       </button>
       {open ? (
         <FilePreviewDialog

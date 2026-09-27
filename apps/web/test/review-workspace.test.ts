@@ -147,7 +147,7 @@ describe('review workspace', () => {
     expect(alert.textContent).toContain('メタデータを抽出できませんでした');
     expect(alert.textContent).toContain('値を入力してください');
     expect(alert.querySelector('details')).toBeNull();
-    expect(container.querySelector('input[type=checkbox]')).toBeNull();
+    expect(container.querySelector<HTMLInputElement>('input[type=checkbox]')!.disabled).toBe(true);
   });
   it('opens details on demand and restores focus and edits after closing', async () => {
     await render();
@@ -185,14 +185,16 @@ describe('review workspace', () => {
     await click('未選択 1');
     expect(files()).toEqual(['メモ.pdf']);
     expect(container.textContent).toContain('0件を選択中');
-    expect(container.querySelector('input[type=checkbox]')).toBeNull();
+    expect(container.querySelector<HTMLInputElement>('tbody input[type=checkbox]')!.disabled).toBe(
+      false,
+    );
     await click('要対応 1');
     expect(files()).toEqual(['抽出失敗.pdf']);
     await click('承認待ち 2');
     expect(files()).toEqual(['契約.pdf', '請求.pdf']);
     await act(async () => {
       container
-        .querySelectorAll<HTMLInputElement>('input[type=checkbox]')
+        .querySelectorAll<HTMLInputElement>('tbody input[type=checkbox]')
         .forEach((input) => input.click());
     });
     await click('選択した2件を承認');

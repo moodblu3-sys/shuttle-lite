@@ -7,7 +7,7 @@ import {
 import { hasRoutingDecision } from '@shuttle-lite/routing';
 import type { ReviewItemView } from './review-types';
 import { getCatalog, getStore, getConfig } from './runtime';
-import { validReviewDraft, type SavedReviewDraft } from './review-drafts';
+import { reconcileReviewDraft, type SavedReviewDraft } from './review-drafts';
 
 /**
  * Shared by the review page and the review API so the screen and any
@@ -117,8 +117,9 @@ export function buildReviewPage(
       )
         continue;
       const view = buildReviewViews(jobId, 1, [item])[0]!;
-      if (typeof saved.draft?.destinationKey === 'string' && validReviewDraft(view, saved))
-        destinationOverrides[item.id] = saved.draft.destinationKey;
+      const current = reconcileReviewDraft(view, saved);
+      if (typeof current?.draft.destinationKey === 'string')
+        destinationOverrides[item.id] = current.draft.destinationKey;
     } catch {
       // A damaged browser draft must never affect the server's review projection.
     }

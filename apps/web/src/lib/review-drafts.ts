@@ -6,6 +6,7 @@ export interface SavedReviewDraft {
   commandId: string | null;
   draft: ApprovalDraft;
   savedAt: number;
+  templateChange?: { commandId: string; templateId: string | null };
 }
 
 const prefix = 'shuttle:review-draft:v1:';
@@ -50,6 +51,52 @@ export function validReviewDraft(item: ReviewItemView, saved?: SavedReviewDraft)
   );
 }
 
+/** Carry placement drafts only across the exact template command submitted by this browser. */
+export function reconcileReviewDraft(
+  item: ReviewItemView,
+  saved?: SavedReviewDraft,
+): SavedReviewDraft | undefined {
+  if (validReviewDraft(item, saved)) return saved;
+  if (
+    !saved?.templateChange ||
+    Date.now() - saved.savedAt >= maxAge ||
+    item.reviewCommand?.state !== 'DONE' ||
+    item.reviewCommand.id !== saved.templateChange.commandId ||
+    item.businessMetadata?.templateId !== saved.templateChange.templateId
+  )
+    return;
+  try {
+    const previous = JSON.parse(saved.revision) as ReviewItemView;
+    const stable = (row: ReviewItemView) => {
+      const {
+        businessMetadata: _metadata,
+        needsAttention: _attention,
+        reviewCommand: _command,
+        ...rest
+      } = row;
+      return JSON.stringify(rest);
+    };
+    if (
+      !previous.businessMetadata ||
+      item.businessMetadata.revision !== previous.businessMetadata.revision + 1 ||
+      stable(previous) !== stable(item)
+    )
+      return;
+    return {
+      revision: reviewRevision(item),
+      commandId: item.reviewCommand.id,
+      savedAt: saved.savedAt,
+      draft: {
+        ...draftFor(item),
+        destinationKey: saved.draft.destinationKey,
+        finalName: saved.draft.finalName,
+      },
+    };
+  } catch {
+    return;
+  }
+}
+
 export function loadReviewDraft(
   storage: Storage,
   item: ReviewItemView,
@@ -58,10 +105,11 @@ export function loadReviewDraft(
   const raw = storage.getItem(key);
   if (!raw) return;
   try {
-    const saved = JSON.parse(raw) as SavedReviewDraft;
+    const saved = reconcileReviewDraft(item, JSON.parse(raw) as SavedReviewDraft);
     const defaults = draftFor(item);
     const values = saved?.draft?.businessValues;
     if (
+      saved &&
       validReviewDraft(item, saved) &&
       Object.keys(defaults)
         .filter((key) => key !== 'businessValues')
@@ -86,12 +134,14 @@ export function saveReviewDraft(
   storage: Storage,
   item: ReviewItemView,
   draft: ApprovalDraft,
+  templateChange?: SavedReviewDraft['templateChange'],
 ): SavedReviewDraft {
   const saved = {
     revision: reviewRevision(item),
     commandId: item.reviewCommand?.id ?? null,
     draft,
     savedAt: Date.now(),
+    ...(templateChange ? { templateChange } : {}),
   };
   storage.setItem(keyFor(item), JSON.stringify(saved));
   return saved;

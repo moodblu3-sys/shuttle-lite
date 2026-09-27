@@ -145,6 +145,19 @@ describe('review preview interactions', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('opens the row preview without opening details and restores focus to its icon', async () => {
+    fetchMock.mockResolvedValue(response('inline'));
+    await render();
+    await click('詳細を閉じる');
+    expect(container.querySelector('aside')).toBeNull();
+    await click('one.pdf をプレビュー');
+    expect(container.querySelector('iframe')?.src).toBe(url('inline'));
+    expect(container.querySelector('aside')).toBeNull();
+    await click('プレビューを閉じる');
+    expect(document.activeElement).toBe(button('one.pdf をプレビュー'));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('aborts a closed request and ignores its late response after another file is opened', async () => {
     let finishOld!: (value: Response) => void;
     fetchMock.mockImplementationOnce(
