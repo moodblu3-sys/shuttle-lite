@@ -19,6 +19,10 @@ function internalFolder(folder: BoxFolder, excluded: readonly string[]): boolean
 export function excludedDestinationIds(config: AppConfig): string[] {
   const layout = loadCachedLayout(config);
   return [
+    // 実Boxのrootは作業領域。fakeのrootには検証用の配置先も含まれる。
+    ...(config.box.mode === 'real'
+      ? [config.box.rootFolderId, layout?.rootFolderId].filter((id) => id !== '0')
+      : []),
     config.box.stagingFolderId,
     config.box.needsReviewFolderId,
     config.box.reportsFolderId,

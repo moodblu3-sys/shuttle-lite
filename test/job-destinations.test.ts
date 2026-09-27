@@ -6,6 +6,7 @@ import {
   collectJobDestinations,
   compatibleRoutingMetadata,
   ensureBoxLayout,
+  excludedDestinationIds,
   loadCachedLayout,
   migrationTemplateSpec,
   saveLayout,
@@ -39,6 +40,67 @@ describe('per-migration Box destination selection', () => {
     const contracts = await h.gateway.ensureFolder(client.id, '契約書');
     return { root, client, contracts };
   }
+
+  it.each(['configured', 'cached'] as const)(
+    'hides the %s work root and rejects direct selection of its descendants in both modes',
+    async (source) => {
+      const workRoot = h.ctx.layout.rootFolderId;
+      const child = await h.gateway.ensureFolder(workRoot, '作業用');
+      const business = await tree('コスモス株式会社');
+      const sameName = await h.gateway.ensureFolder(business.root.id, 'Shuttle Lite');
+      const config = {
+        ...h.config,
+        box: {
+          ...h.config.box,
+          mode: 'real' as const,
+          rootFolderId: source === 'configured' ? workRoot : undefined,
+        },
+      };
+      // configuredケースではfakeキャッシュを無視し、設定IDだけで除外する。
+      if (source === 'cached') saveLayout(config, { ...h.ctx.layout, mode: 'real' });
+      vi.mocked(getConfig).mockReturnValue(config);
+      const create = vi.spyOn(h.gateway, 'ensureFolder');
+      const response = await GET(new Request('http://localhost/api/box-folders'));
+      expect(response.status).toBe(200);
+      expect(((await response.json()) as { folders: unknown[] }).folders).toEqual([
+        expect.objectContaining({ id: business.root.id }),
+      ]);
+      for (const folderId of [workRoot, child.id]) {
+        expect(
+          (await GET(new Request('http://localhost/api/box-folders?folderId=' + folderId))).status,
+        ).toBe(400);
+        for (const migrationMode of ['AI_ORGANIZE', 'AS_IS']) {
+          const rejected = await POST(
+            new Request('http://localhost/api/box-folders', {
+              method: 'POST',
+              body: JSON.stringify({ folderId, migrationMode }),
+            }),
+          );
+          expect(rejected.status).toBe(400);
+          expect(await rejected.json()).toMatchObject({ error: expect.stringContaining('処理用') });
+        }
+      }
+      const snapshot = await collectJobDestinations(
+        h.gateway,
+        business.root.id,
+        'real',
+        excludedDestinationIds(config),
+      );
+      expect(snapshot.entries.some((entry) => entry.folderId === sameName.id)).toBe(true);
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not exclude the account root or the fake demo destination tree', () => {
+    expect(excludedDestinationIds(h.config)).not.toContain(h.ctx.layout.rootFolderId);
+    const config = {
+      ...h.config,
+      box: { ...h.config.box, mode: 'real' as const, rootFolderId: '0' },
+    };
+    saveLayout(config, { ...h.ctx.layout, mode: 'real', rootFolderId: '0' });
+    expect(excludedDestinationIds(config)).not.toContain('0');
+    expect(excludedDestinationIds(config)).toContain(h.ctx.layout.stagingRootFolderId);
+  });
 
   it('browses existing folders and captures nested destinations without writing to Box', async () => {
     const { root, contracts } = await tree();
