@@ -33,7 +33,9 @@ function buttonsFor(snapshot: JobSnapshot): {
     ? [{ type: 'END_TEST', label: 'テストを終了してファイルを削除', variant: 'secondary' }]
     : [];
   const secondary: ControlButton[] = [
-    { type: 'RESCAN_JOB', label: '移行元を再スキャン', variant: 'ghost' },
+    ...(snapshot.job.migrationMode === 'AS_IS'
+      ? []
+      : [{ type: 'RESCAN_JOB' as const, label: '移行元を再スキャン', variant: 'ghost' as const }]),
     { type: 'GENERATE_REPORT', label: 'レポートをBoxに保存', variant: 'ghost' },
   ];
 

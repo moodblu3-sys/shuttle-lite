@@ -32,6 +32,8 @@ export async function placePreservedItem(ctx: JobContext, item: MigrationItem): 
     file.parentFolderId === targetId &&
     file.name === item.finalName
   ) {
+    if (ctx.store.getItem(item.id)?.state === 'APPROVED')
+      ctx.store.transitionItem({ itemId: item.id, to: 'MOVING', telemetry: ctx.telemetry });
     await verifyPreservedItem(ctx, item);
     return;
   }
@@ -40,6 +42,14 @@ export async function placePreservedItem(ctx: JobContext, item: MigrationItem): 
   }
   let requestedName = item.finalName ?? item.sourceFileName;
   for (let attempt = 0; attempt <= 20; attempt += 1) {
+    if (
+      ctx.profile.conflictPolicy === 'OVERWRITE' &&
+      (await ctx.gateway.findFileByName(targetId, requestedName))
+    )
+      throw new ShuttleError(
+        'BOX_CONFLICT',
+        '転送中に同名ファイルが作成されました。確認が必要です。',
+      );
     const planned = await resolveName(ctx, { ...item, finalName: null }, targetId, requestedName);
     if (planned.kind === 'SKIP') {
       ctx.store.transitionItem({

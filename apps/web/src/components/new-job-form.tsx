@@ -189,8 +189,16 @@ export function NewJobForm({
           ) : null}
           <label>
             同名ファイルの扱い
-            <select name="conflictPolicy" defaultValue="RENAME" disabled={busy}>
+            <select
+              key={`${migrationMode}-${testMode}`}
+              name="conflictPolicy"
+              defaultValue="RENAME"
+              disabled={busy}
+            >
               <option value="RENAME">改名して両方残す</option>
+              {migrationMode === 'AS_IS' && !testMode ? (
+                <option value="OVERWRITE">上書き（新しいバージョン）</option>
+              ) : null}
               <option value="SKIP">スキップ</option>
             </select>
           </label>

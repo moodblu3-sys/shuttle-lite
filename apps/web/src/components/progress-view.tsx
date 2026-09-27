@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 // for the browser.
 import { formatBytes, formatDuration, PHASE_LABELS } from '@shuttle-lite/core/progress';
 import type { JobSnapshot } from '@shuttle-lite/telemetry';
+import { DeltaControls } from './delta-controls';
 import { JobControls } from './job-controls';
 import { StatePill } from './state-pill';
 import { JobIdentity } from './job-card';
@@ -158,6 +159,9 @@ export function ProgressView({
       </ProgressPanel>
 
       <JobControls jobId={jobId} snapshot={snapshot} showReports={!finished} />
+      {snapshot.job.migrationMode === 'AS_IS' && !snapshot.job.testMode ? (
+        <DeltaControls jobId={jobId} />
+      ) : null}
 
       <details className="card" onToggle={(event) => setShowDetail(event.currentTarget.open)}>
         <summary>

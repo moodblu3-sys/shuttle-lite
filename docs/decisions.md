@@ -37,6 +37,8 @@
 - Box AI実行前にaccess-limited stagingへuploadする
 - staging upload後にsize/SHA-1を検証する
 - approval後はBox内moveを使い、再uploadしない
+- 2026-09-25: AS_ISの既存ファイル更新は例外。既存IDに新しいversionを直接uploadし、
+  If-Matchで競合を防ぎ、size/SHA-1・配置を検証する。新規ファイルのstaging→moveは維持する。
 
 ### D-007: AI authority
 
@@ -176,19 +178,27 @@ Box Shuttleが同じ問いにどう答えているか:
   [Expand / Restrict / Skip files that have conflicts](https://docs.box.com/en/box-shuttle/about-box-shuttle/box-shuttle-standard-and-advanced-tooling#permissions-mapping)
   の3択を先に選ばせ、1件ずつ人に触らせない
 
-決定:
+決定（2026-09-25 更新）:
 
-- `migration_profiles.conflict_policy` を追加し、`RENAME`（既定）と`SKIP`から選ぶ
+- `migration_profiles.conflict_policy` は`RENAME`（既定）、`SKIP`、AS_IS専用の`OVERWRITE`から選ぶ
 - `RENAME`: `report.pdf` → `report (2).pdf` と連番を付けて両方残す。Shuttleは
   一意IDを使うが、Lite は移行規模が小さく `findFileByName` で空きを確認できるため、
   人が読める連番を選ぶ。20回試して空きが無ければ人の判断へ回す
 - `SKIP`: 配置せずSKIPPEDにしてreportに残す。Shuttleの
   "Skip files that have conflicts" と同じく、後で回収する運用を想定する
-- **上書き（新version追加）は実装しない**。Box APIの「上書き」は
-  `POST /files/:id/content` による新version追加で、moveでは実現できない。
-  再uploadが必要になり、file IDも移行先の既存fileのものへ変わるため、
-  「file IDを保存したままmoveする」という[D-006](#d-006-box-staging)の
-  前提が崩れる。加えてShuttleの明文化された方針とも反する
+- `OVERWRITE`: 明示選択時だけ既存IDに新versionを追加する。AI方式・テストモードでは禁止。
+  通常uploadは`POST /files/:id/content`、分割uploadは既存ファイル用sessionとcommitを使う。
+  更新先のID・etag・配置を送信前に保存し、If-Matchを外して再試行しない。
+  既存ファイルを削除・再作成せず、権限・共有設定・業務メタデータは変更しない。
+- 差分移行は同じ移行元・移行先を使うAS_IS専用。初回・各差分を別jobに保存し、
+  画面上は一つの移行の実行履歴として扱う。前回成功した相対パス→Box IDの対応で更新する。
+  新規の同名衝突と、追跡済みファイルの更新は別扱い。後者は差分一覧で選択した対象を新versionで反映する。
+  Boxだけの変更は維持、双方の変更・所在変更・結果未確定は要対応。削除の反映はしない。
+  全走査に失敗した一覧は確定せず、確認後の移行元変更も拒否する。差分実行中の再scanは行わない。
+  結果不明の更新は既存ID・配置・digestを照合し、同じ内容を二重uploadしない。
+- 公式API: [通常version](https://developer.box.com/reference/post-files-id-content)、
+  [既存ファイルsession](https://developer.box.com/reference/post-files-id-upload-sessions)、
+  [commitのIf-Match](https://developer.box.com/reference/post-files-upload-sessions-id-commit)。
 - 操作者がreview画面で名前を入力した場合は、policyを適用せず衝突をreviewへ戻す。
   衝突を見たうえでの判断を、裏で書き換えないため
 - 名前を確認してからmoveするまでの間に別のitemが同じ名前を取りうる。Boxが返す

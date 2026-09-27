@@ -31,6 +31,15 @@ export async function POST(request: Request) {
   if (body.testMode !== undefined && typeof body.testMode !== 'boolean') {
     return NextResponse.json({ error: 'テストモードの指定を確認してください。' }, { status: 400 });
   }
+  if (
+    body.conflictPolicy === 'OVERWRITE' &&
+    (migrationMode !== 'AS_IS' || body.testMode === true)
+  ) {
+    return NextResponse.json(
+      { error: '上書きは通常の「そのまま移行」で選択できます。' },
+      { status: 400 },
+    );
+  }
   const operatorLabel =
     typeof body.operatorLabel === 'string' && body.operatorLabel.trim().length > 0
       ? body.operatorLabel.trim()
@@ -57,6 +66,11 @@ export async function POST(request: Request) {
     if (!profile) {
       return NextResponse.json({ error: '登録済みの移行元が見つかりません。' }, { status: 404 });
     }
+    if (
+      profile.conflictPolicy === 'OVERWRITE' &&
+      (migrationMode !== 'AS_IS' || body.testMode === true)
+    )
+      return NextResponse.json({ error: 'この移行方式では上書きできません。' }, { status: 400 });
     let destinations: JobDestinations | null = null;
     if (
       body.destinationFolderId !== undefined ||
@@ -103,7 +117,8 @@ export async function POST(request: Request) {
     (body.aiRoutingEnabled !== undefined && typeof body.aiRoutingEnabled !== 'boolean') ||
     (body.conflictPolicy !== undefined &&
       body.conflictPolicy !== 'RENAME' &&
-      body.conflictPolicy !== 'SKIP')
+      body.conflictPolicy !== 'SKIP' &&
+      body.conflictPolicy !== 'OVERWRITE')
   ) {
     return NextResponse.json(
       { error: '詳細オプションの設定を確認してください。' },
@@ -150,7 +165,12 @@ export async function POST(request: Request) {
       aiRoutingEnabled:
         migrationMode !== 'AS_IS' && config.ai.enabled && body.aiRoutingEnabled !== false,
       snowflakeLoggingEnabled: true,
-      conflictPolicy: body.conflictPolicy === 'SKIP' ? 'SKIP' : 'RENAME',
+      conflictPolicy:
+        body.conflictPolicy === 'OVERWRITE'
+          ? 'OVERWRITE'
+          : body.conflictPolicy === 'SKIP'
+            ? 'SKIP'
+            : 'RENAME',
     });
     const created = store.createJob({
       name,

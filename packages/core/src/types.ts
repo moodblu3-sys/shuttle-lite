@@ -3,11 +3,10 @@ import type { ItemState, Phase } from './state';
 
 /**
  * What to do when the destination already holds a file with that name.
- * Box Shuttle never overwrites: it appends a unique suffix, or skips the file
- * so a later delta sync can pick it up. Shuttle Lite follows the same two
- * answers, chosen per job (docs/decisions.md D-017).
+ * OVERWRITE is available only for AS_IS. Existing destination IDs are retained
+ * through guarded version uploads (docs/decisions.md D-006, D-017).
  */
-export const CONFLICT_POLICIES = ['RENAME', 'SKIP'] as const;
+export const CONFLICT_POLICIES = ['RENAME', 'SKIP', 'OVERWRITE'] as const;
 
 export type ConflictPolicy = (typeof CONFLICT_POLICIES)[number];
 
@@ -163,6 +162,8 @@ export interface RoutingDecisionRecord {
 }
 
 export const COMMAND_TYPES = [
+  'CHECK_DELTA',
+  'START_DELTA',
   'START_JOB',
   'PAUSE_JOB',
   'RESUME_JOB',

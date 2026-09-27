@@ -591,7 +591,15 @@ export class ShuttleStore {
 
   listJobs(limit = 50): MigrationJob[] {
     const rows = this.db
-      .prepare('SELECT * FROM migration_jobs ORDER BY created_at DESC LIMIT ?')
+      .prepare(
+        `SELECT j.* FROM migration_jobs roots JOIN migration_jobs j ON j.id=(
+          SELECT run.id FROM migration_jobs run WHERE run.id=roots.id OR run.id IN
+            (SELECT job_id FROM delta_runs WHERE root_job_id=roots.id)
+          ORDER BY CASE WHEN run.state IN ('RUNNING','SCANNING','PAUSED') THEN 0 ELSE 1 END,
+            run.created_at DESC, run.rowid DESC LIMIT 1)
+          WHERE roots.id NOT IN (SELECT job_id FROM delta_runs)
+          ORDER BY roots.created_at DESC LIMIT ?`,
+      )
       .all(limit) as JobRow[];
     return rows.map(mapJob);
   }

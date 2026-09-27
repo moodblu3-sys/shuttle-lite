@@ -1,3 +1,4 @@
+import { getVersionTarget } from '@shuttle-lite/db';
 import { hostname } from 'node:os';
 import { ShuttleError, toShuttleError, type MigrationItem } from '@shuttle-lite/core';
 import type { WorkerContext } from './context';
@@ -24,6 +25,7 @@ export async function processTestCleanup(ctx: WorkerContext): Promise<boolean> {
       if (page.length < 500) break;
     }
     for (const item of items) {
+      if (getVersionTarget(ctx.store, item.id)) continue;
       const session = ctx.store.getOpenSession(item.id);
       if (session) {
         try {

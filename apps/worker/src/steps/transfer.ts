@@ -1,3 +1,5 @@
+import { getVersionTarget } from '@shuttle-lite/db';
+import { prepareVersionTarget } from '../version-upload';
 import {
   checkBoxFileName,
   isWindowsReservedName,
@@ -25,6 +27,12 @@ export async function hashItem(ctx: JobContext, item: MigrationItem): Promise<vo
   }
   await assertSourceUnchanged(ctx, item);
   const digest = await ctx.source.digest(sourceRefOf(item));
+  await assertSourceUnchanged(ctx, item);
+  if (item.sourceSha1 && item.sourceSha1 !== digest.sha1)
+    throw new ShuttleError(
+      'SOURCE_CHANGED',
+      '差分確認後に内容が変わりました。差分を確認し直してください。',
+    );
   if (digest.bytes !== item.sourceSize) {
     throw new ShuttleError('SOURCE_CHANGED', 'Hash中にsource fileのsizeが変わりました', {
       details: { expected: item.sourceSize, actual: digest.bytes },
@@ -45,6 +53,8 @@ export async function hashItem(ctx: JobContext, item: MigrationItem): Promise<vo
  * review item. It is never an overwrite (acceptance criterion 6).
  */
 export async function preflightItem(ctx: JobContext, item: MigrationItem): Promise<void> {
+  if (ctx.profile.conflictPolicy === 'OVERWRITE' && ctx.job.migrationMode !== 'AS_IS')
+    throw new ShuttleError('CONFIG_INVALID', 'AI方式では上書きできません。');
   await assertSourceUnchanged(ctx, item);
   if (!item.sourceSha1) {
     throw new ShuttleError('STATE_INVALID', 'SHA-1未計算のままpreflightに進んでいます');
@@ -75,6 +85,7 @@ export async function preflightItem(ctx: JobContext, item: MigrationItem): Promi
     );
   }
 
+  if (await prepareVersionTarget(ctx, item)) return;
   const stagingName = item.stagingName ?? stagingFileName(item.id, item.sourceFileName);
   const adopted = await adoptStagedCopy(ctx, item, stagingName);
   if (adopted) return;
@@ -187,6 +198,16 @@ export async function uploadItem(ctx: JobContext, item: MigrationItem): Promise<
     throw new ShuttleError('STATE_INVALID', 'SHA-1未計算のままuploadに進んでいます');
   }
 
+  const target = getVersionTarget(ctx.store, item.id);
+  if (target) {
+    await prepareVersionTarget(ctx, item);
+    if (ctx.store.getItem(item.id)?.state === 'STAGED') return;
+    const digest = await ctx.source.digest(sourceRefOf(item));
+    await assertSourceUnchanged(ctx, item);
+    if (digest.sha1 !== item.sourceSha1 || digest.bytes !== item.sourceSize)
+      throw new ShuttleError('SOURCE_CHANGED', '更新前に移行元の内容が変わりました。');
+    ctx.store.db.prepare('UPDATE version_targets SET attempted=1 WHERE item_id=?').run(item.id);
+  }
   const started = Date.now();
   let file;
   try {
@@ -198,7 +219,7 @@ export async function uploadItem(ctx: JobContext, item: MigrationItem): Promise<
     // 409 here means a request whose outcome we never recorded had actually
     // landed. Real Box returned this after an HTTP/2 stream error was retried.
     // Adopting our own copy is what keeps the retry from creating a duplicate.
-    if ((error as { category?: string }).category !== 'BOX_CONFLICT') throw error;
+    if (target || (error as { category?: string }).category !== 'BOX_CONFLICT') throw error;
     ctx.logger.warn('upload中に409を受けたのでstaging上のfileと照合します', {
       itemId: item.id,
       stagingName,
@@ -230,9 +251,11 @@ export async function uploadItem(ctx: JobContext, item: MigrationItem): Promise<
 
 async function uploadDirect(ctx: JobContext, item: MigrationItem, stagingName: string) {
   let lastReport = 0;
+  const target = getVersionTarget(ctx.store, item.id);
   return ctx.gateway.uploadDirect({
-    parentFolderId: ctx.stagingFolderId,
-    name: stagingName,
+    ...(target ? { versionTarget: { fileId: target.id, etag: target.etag! } } : {}),
+    parentFolderId: target?.parentFolderId ?? ctx.stagingFolderId,
+    name: target?.name ?? stagingName,
     size: item.sourceSize,
     sha1Hex: item.sourceSha1 ?? '',
     contentModifiedAt: item.sourceModifiedAt,
@@ -252,6 +275,7 @@ async function uploadDirect(ctx: JobContext, item: MigrationItem, stagingName: s
  * (docs/requirements.md 4.6, acceptance criterion 5).
  */
 async function uploadChunked(ctx: JobContext, item: MigrationItem, stagingName: string) {
+  const target = getVersionTarget(ctx.store, item.id);
   let session = ctx.store.getOpenSession(item.id);
   // A session recorded locally is only usable if Box still has it.
   const remote = session ? await ctx.gateway.getUploadSession(session.boxSessionId) : null;
@@ -267,8 +291,9 @@ async function uploadChunked(ctx: JobContext, item: MigrationItem, stagingName: 
 
   if (!session) {
     const created = await ctx.gateway.createUploadSession({
-      parentFolderId: ctx.stagingFolderId,
-      name: stagingName,
+      ...(target ? { versionTarget: { fileId: target.id, etag: target.etag! } } : {}),
+      parentFolderId: target?.parentFolderId ?? ctx.stagingFolderId,
+      name: target?.name ?? stagingName,
       size: item.sourceSize,
     });
     const parts = [];
@@ -337,10 +362,17 @@ async function uploadChunked(ctx: JobContext, item: MigrationItem, stagingName: 
     .map((part) => (part.boxPartId ? (JSON.parse(part.boxPartId) as UploadedPart) : null))
     .filter((part): part is UploadedPart => part !== null);
 
+  await assertSourceUnchanged(ctx, item);
+  if (target) {
+    const digest = await ctx.source.digest(ref);
+    if (digest.sha1 !== item.sourceSha1 || digest.bytes !== item.sourceSize)
+      throw new ShuttleError('SOURCE_CHANGED', '分割転送中に移行元が変更されました。');
+  }
   ctx.store.setSessionState(activeSession.id, 'COMMITTING');
   ctx.store.incrementCommitAttempts(activeSession.id);
   const file = await ctx.gateway.commitUploadSession({
     sessionId: activeSession.boxSessionId,
+    ...(target ? { ifMatch: target.etag! } : {}),
     parts,
     sha1Hex: item.sourceSha1 ?? '',
     contentModifiedAt: item.sourceModifiedAt,

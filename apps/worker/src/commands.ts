@@ -1,3 +1,5 @@
+import { checkDelta, startDelta, isDeltaRun } from './delta';
+import { migrationRuns } from '@shuttle-lite/db';
 import { selectMetadataTemplate, validateBusinessApproval } from './business-metadata';
 import {
   type ItemState,
@@ -37,7 +39,13 @@ export async function processCommands(ctx: WorkerContext, limit = 20): Promise<n
         ) {
           throw new ShuttleError('STATE_INVALID', 'そのまま移行では分類・承認操作は使用しません。');
         }
-        if (command.type === 'SELECT_METADATA_TEMPLATE') {
+        if (command.type === 'CHECK_DELTA') {
+          const save = await checkDelta(ctx, command);
+          ctx.store.withCommandClaim(command, () => {
+            save();
+            ctx.store.completeCommand(command.id);
+          });
+        } else if (command.type === 'SELECT_METADATA_TEMPLATE') {
           if (!ctx.store.withCommandClaim(command, () => {})) continue;
           const save = await selectMetadataTemplate(ctx, command);
           ctx.store.withCommandClaim(command, () => {
@@ -118,18 +126,41 @@ function applyCommand(ctx: WorkerContext, command: JobCommandRecord): void {
   ) {
     ctx = { ...ctx, ...destinationsForJob(ctx, job.id) };
   }
+  if (
+    job.migrationMode === 'AS_IS' &&
+    !['GENERATE_REPORT', 'END_TEST', 'START_DELTA'].includes(command.type)
+  ) {
+    const runs = migrationRuns(ctx.store, job.id);
+    const retry = ['RETRY_FAILED', 'RETRY_ITEM'].includes(command.type);
+    if (
+      runs.at(-1)?.id !== job.id &&
+      (!retry || runs.some((r) => r.id !== job.id && !['COMPLETED', 'FAILED'].includes(r.state)))
+    )
+      throw new ShuttleError('STATE_INVALID', '最新の実行が完了してから再試行してください。');
+    if (command.type === 'RESCAN_JOB' && ['COMPLETED', 'FAILED'].includes(job.state))
+      throw new ShuttleError('STATE_INVALID', '差分を確認してください。');
+  }
   const telemetry = ctx.store.getProfile(job.profileId)?.snowflakeLoggingEnabled ?? true;
 
   switch (command.type) {
+    case 'START_DELTA': {
+      startDelta(ctx, command);
+      return;
+    }
     case 'END_TEST': {
       ctx.store.requestTestCleanup(job.id);
       return;
     }
     case 'START_JOB': {
+      if (
+        ctx.store.getProfile(job.profileId)?.conflictPolicy === 'OVERWRITE' &&
+        (job.migrationMode !== 'AS_IS' || job.testMode)
+      )
+        throw new ShuttleError('CONFIG_INVALID', 'この移行方式では上書きできません。');
       if (job.state === 'COMPLETED') {
         throw new ShuttleError('STATE_INVALID', '完了済みjobは開始できません');
       }
-      ctx.store.setJobState(job.id, 'SCANNING', {
+      ctx.store.setJobState(job.id, isDeltaRun(ctx, job.id) ? 'RUNNING' : 'SCANNING', {
         startedAt: job.startedAt ?? new Date().toISOString(),
         pauseRequested: false,
         lastError: null,
@@ -142,7 +173,11 @@ function applyCommand(ctx: WorkerContext, command: JobCommandRecord): void {
       return;
     }
     case 'RESCAN_JOB': {
-      ctx.store.setJobState(job.id, 'SCANNING', { pauseRequested: false });
+      if (isDeltaRun(ctx, job.id))
+        throw new ShuttleError('STATE_INVALID', '差分実行の対象は変更できません。');
+      ctx.store.setJobState(job.id, isDeltaRun(ctx, job.id) ? 'RUNNING' : 'SCANNING', {
+        pauseRequested: false,
+      });
       return;
     }
     case 'PAUSE_JOB': {
@@ -154,10 +189,14 @@ function applyCommand(ctx: WorkerContext, command: JobCommandRecord): void {
       return;
     }
     case 'RESUME_JOB': {
-      ctx.store.setJobState(job.id, job.migrationMode === 'AS_IS' ? 'SCANNING' : 'RUNNING', {
-        pauseRequested: false,
-        ...(job.migrationMode === 'AS_IS' ? { lastError: null, lastErrorCategory: null } : {}),
-      });
+      ctx.store.setJobState(
+        job.id,
+        job.migrationMode === 'AS_IS' && !isDeltaRun(ctx, job.id) ? 'SCANNING' : 'RUNNING',
+        {
+          pauseRequested: false,
+          ...(job.migrationMode === 'AS_IS' ? { lastError: null, lastErrorCategory: null } : {}),
+        },
+      );
       return;
     }
     case 'RETRY_ITEM': {
@@ -226,6 +265,9 @@ function retryItem(ctx: WorkerContext, itemId: string, telemetry: boolean): void
   if (item.state === 'COMPLETED') {
     throw new ShuttleError('STATE_INVALID', '完了済みitemは再実行できません');
   }
+  const job = ctx.store.getJob(item.jobId)!;
+  if (job.migrationMode === 'AS_IS' && ['COMPLETED', 'FAILED'].includes(job.state))
+    ctx.store.setJobState(job.id, 'RUNNING', { finishedAt: null, pauseRequested: false });
   const to = item.resumeState ?? RESUMABLE_FROM;
   ctx.store.transitionItem({
     itemId,

@@ -303,6 +303,25 @@ export const MIGRATIONS: readonly Migration[] = [
       PRIMARY KEY (job_id, relative_path)
     ) STRICT;`,
   },
+  {
+    version: 12,
+    name: 'incremental migration plans and executions',
+    sql: `CREATE TABLE delta_runs (
+    job_id TEXT PRIMARY KEY REFERENCES migration_jobs(id),
+    root_job_id TEXT NOT NULL REFERENCES migration_jobs(id),
+    plan_id TEXT NOT NULL UNIQUE
+  ) STRICT;
+  CREATE INDEX delta_runs_root ON delta_runs(root_job_id);
+  CREATE TABLE delta_plans (
+    id TEXT PRIMARY KEY, root_job_id TEXT NOT NULL REFERENCES migration_jobs(id),
+    snapshot TEXT NOT NULL, created_at TEXT NOT NULL,
+    started_job_id TEXT REFERENCES migration_jobs(id)
+  ) STRICT;
+  CREATE TABLE version_targets (
+    item_id TEXT PRIMARY KEY REFERENCES migration_items(id), snapshot TEXT NOT NULL,
+    attempted INTEGER NOT NULL DEFAULT 0
+  ) STRICT;`,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

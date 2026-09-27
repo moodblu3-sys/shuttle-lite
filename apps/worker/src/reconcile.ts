@@ -1,3 +1,4 @@
+import { getVersionTarget } from '@shuttle-lite/db';
 import { parseStagingFileName, stagingFileName } from '@shuttle-lite/core';
 import type { JobContext } from './context';
 
@@ -41,6 +42,8 @@ export async function reconcileJob(ctx: JobContext): Promise<ReconcileSummary> {
   let restarted = 0;
 
   for (const item of candidates) {
+    // 更新はstaging名ではなく保存した既存IDで、uploadステップが照合する。
+    if (getVersionTarget(ctx.store, item.id)) continue;
     const expectedName = item.stagingName ?? stagingFileName(item.id, item.sourceFileName);
     const found = byStagingName.get(expectedName) ?? byItemId.get(item.id);
 

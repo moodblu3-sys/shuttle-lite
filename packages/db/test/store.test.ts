@@ -120,6 +120,8 @@ describe('sqlite store', () => {
       .all() as Array<{ name: string }>;
     expect(tables.map((t) => t.name)).toEqual([
       'business_metadata_writes',
+      'delta_plans',
+      'delta_runs',
       'extraction_results',
       'item_metadata',
       'job_commands',
@@ -137,6 +139,7 @@ describe('sqlite store', () => {
       'test_deleted_files',
       'upload_parts',
       'upload_sessions',
+      'version_targets',
       'worker_heartbeats',
     ]);
   });

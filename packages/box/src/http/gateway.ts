@@ -229,7 +229,7 @@ export class HttpBoxGateway implements BoxGateway {
   async uploadDirect(request: UploadDirectRequest): Promise<BoxFile> {
     const attributes = {
       name: request.name,
-      parent: { id: request.parentFolderId },
+      ...(request.versionTarget ? {} : { parent: { id: request.parentFolderId } }),
       ...(request.contentModifiedAt
         ? { content_modified_at: toBoxRfc3339(request.contentModifiedAt) }
         : {}),
@@ -247,9 +247,11 @@ export class HttpBoxGateway implements BoxGateway {
     );
     const response = await this.#client.json<{ entries: ApiFile[] }>({
       method: 'POST',
-      url: `${this.#box.uploadBaseUrl}/files/content?fields=${FILE_FIELDS}`,
+      url: `${this.#box.uploadBaseUrl}/files/${request.versionTarget ? `${encodeURIComponent(request.versionTarget.fileId)}/` : ''}content?fields=${FILE_FIELDS}`,
       headers: {
         'content-type': multipart.contentType,
+        ...(request.versionTarget ? { 'if-match': request.versionTarget.etag } : {}),
+        ...(request.versionTarget ? { 'content-md5': request.sha1Hex } : {}),
         // Box verifies the digest itself, so a corrupted transfer fails fast.
         digest: `sha=${hexToBase64Sha1(request.sha1Hex)}`,
       },
@@ -265,6 +267,7 @@ export class HttpBoxGateway implements BoxGateway {
   }
 
   async createUploadSession(request: {
+    versionTarget?: { fileId: string; etag: string };
     parentFolderId: string;
     name: string;
     size: number;
@@ -276,10 +279,10 @@ export class HttpBoxGateway implements BoxGateway {
       session_expires_at?: string;
     }>({
       method: 'POST',
-      url: `${this.#box.uploadBaseUrl}/files/upload_sessions`,
+      url: `${this.#box.uploadBaseUrl}/files/${request.versionTarget ? `${encodeURIComponent(request.versionTarget.fileId)}/` : ''}upload_sessions`,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        folder_id: request.parentFolderId,
+        ...(request.versionTarget ? {} : { folder_id: request.parentFolderId }),
         file_name: request.name,
         file_size: request.size,
       }),
@@ -370,6 +373,7 @@ export class HttpBoxGateway implements BoxGateway {
       headers: {
         'content-type': 'application/json',
         digest: `sha=${hexToBase64Sha1(request.sha1Hex)}`,
+        ...(request.ifMatch ? { 'if-match': request.ifMatch } : {}),
       },
       body: JSON.stringify({
         parts: request.parts.map((part) => ({

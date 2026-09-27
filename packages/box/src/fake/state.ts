@@ -30,6 +30,7 @@ export interface FakeSessionPart {
 }
 
 export interface FakeSession {
+  versionTarget?: { fileId: string; etag: string };
   sessionId: string;
   parentId: string;
   name: string;

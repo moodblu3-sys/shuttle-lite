@@ -46,7 +46,12 @@ export function mapProfile(row: ProfileRow): MigrationProfile {
     chunkConcurrency: row.chunk_concurrency,
     aiRoutingEnabled: toBool(row.ai_routing_enabled),
     snowflakeLoggingEnabled: toBool(row.snowflake_logging_enabled),
-    conflictPolicy: row.conflict_policy === 'SKIP' ? 'SKIP' : 'RENAME',
+    conflictPolicy:
+      row.conflict_policy === 'OVERWRITE'
+        ? 'OVERWRITE'
+        : row.conflict_policy === 'SKIP'
+          ? 'SKIP'
+          : 'RENAME',
     createdAt: row.created_at,
   };
 }

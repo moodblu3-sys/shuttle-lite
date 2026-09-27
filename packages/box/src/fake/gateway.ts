@@ -5,6 +5,7 @@ import {
   createReadStream,
   createWriteStream,
   mkdirSync,
+  renameSync,
   readFileSync,
   rmSync,
   statSync,
@@ -229,11 +230,12 @@ export class FakeBoxGateway implements BoxGateway {
   async uploadDirect(request: UploadDirectRequest): Promise<BoxFile> {
     this.#checkInjectedFailure('uploadDirect');
     this.#countUploadAttempt();
-    await this.preflightUpload({
-      parentFolderId: request.parentFolderId,
-      name: request.name,
-      size: request.size,
-    });
+    if (!request.versionTarget)
+      await this.preflightUpload({
+        parentFolderId: request.parentFolderId,
+        name: request.name,
+        size: request.size,
+      });
     await this.#throttle();
 
     const fileId = this.#state.nextId('fil');
@@ -261,6 +263,8 @@ export class FakeBoxGateway implements BoxGateway {
         details: { expected: request.sha1Hex, actual: sha1 },
       });
     }
+    if (request.versionTarget)
+      return this.#commitVersion(fileId, request.versionTarget, written, sha1);
     return this.#commitFileEntry({
       fileId,
       parentId: request.parentFolderId,
@@ -272,11 +276,12 @@ export class FakeBoxGateway implements BoxGateway {
   }
 
   async createUploadSession(request: {
+    versionTarget?: { fileId: string; etag: string };
     parentFolderId: string;
     name: string;
     size: number;
   }): Promise<UploadSessionInfo> {
-    await this.preflightUpload(request);
+    if (!request.versionTarget) await this.preflightUpload(request);
     const partSize = this.#options.partSize ?? DEFAULT_PART_SIZE;
     const totalParts = Math.max(1, Math.ceil(request.size / partSize));
     const sessionId = this.#state.nextId('ses');
@@ -286,6 +291,7 @@ export class FakeBoxGateway implements BoxGateway {
     this.#state.mutate((state) => {
       state.sessions[sessionId] = {
         sessionId,
+        ...(request.versionTarget ? { versionTarget: request.versionTarget } : {}),
         parentId: request.parentFolderId,
         name: request.name,
         size: request.size,
@@ -412,14 +418,21 @@ export class FakeBoxGateway implements BoxGateway {
         details: { expected: request.sha1Hex, actual: sha1 },
       });
     }
-    const file = this.#commitFileEntry({
-      fileId,
-      parentId: session.parentId,
-      name: session.name,
-      size,
-      sha1,
-      contentModifiedAt: request.contentModifiedAt ?? null,
-    });
+    const file = session.versionTarget
+      ? this.#commitVersion(
+          fileId,
+          { fileId: session.versionTarget.fileId, etag: request.ifMatch ?? '' },
+          size,
+          sha1,
+        )
+      : this.#commitFileEntry({
+          fileId,
+          parentId: session.parentId,
+          name: session.name,
+          size,
+          sha1,
+          contentModifiedAt: request.contentModifiedAt ?? null,
+        });
     this.#state.mutate((state) => {
       const current = state.sessions[request.sessionId];
       if (current) current.state = 'COMMITTED';
@@ -686,6 +699,29 @@ export class FakeBoxGateway implements BoxGateway {
 
   openStored(fileId: string) {
     return createReadStream(this.#state.objectPath(fileId));
+  }
+
+  #commitVersion(
+    temporaryId: string,
+    target: { fileId: string; etag: string },
+    size: number,
+    sha1: string,
+  ): BoxFile {
+    return this.#state.mutate((state) => {
+      const file = state.files[target.fileId];
+      if (!file || !target.etag || toBoxFile(file).etag !== target.etag) {
+        rmSync(this.#state.objectPath(temporaryId), { force: true });
+        throw new ShuttleError('BOX_PRECONDITION', 'Boxのファイルが変更されています。', {
+          status: 412,
+        });
+      }
+      renameSync(this.#state.objectPath(temporaryId), this.#state.objectPath(file.id));
+      file.size = size;
+      file.sha1 = sha1;
+      file.versionId = `ver${temporaryId}`;
+      file.modifiedAt = new Date().toISOString();
+      return toBoxFile(file);
+    });
   }
 
   #commitFileEntry(input: {

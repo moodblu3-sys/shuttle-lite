@@ -44,6 +44,7 @@ export interface BoxItemSummary {
 }
 
 export interface UploadDirectRequest {
+  readonly versionTarget?: { fileId: string; etag: string };
   readonly parentFolderId: string;
   readonly name: string;
   readonly size: number;
@@ -79,6 +80,7 @@ export interface UploadPartRequest {
 }
 
 export interface CommitSessionRequest {
+  readonly ifMatch?: string;
   readonly sessionId: string;
   readonly parts: readonly UploadedPart[];
   readonly sha1Hex: string;
@@ -194,6 +196,7 @@ export interface BoxGateway {
   uploadDirect(request: UploadDirectRequest): Promise<BoxFile>;
 
   createUploadSession(request: {
+    versionTarget?: { fileId: string; etag: string };
     parentFolderId: string;
     name: string;
     size: number;

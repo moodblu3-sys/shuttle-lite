@@ -1,5 +1,5 @@
 import type { MigrationFolder, MigrationMode } from '@shuttle-lite/core';
-import type { ShuttleStore } from '@shuttle-lite/db';
+import { executionPlan, rootJobId, type DeltaPlan, type ShuttleStore } from '@shuttle-lite/db';
 
 export interface ReportRow {
   readonly migrationItemId: string;
@@ -100,6 +100,8 @@ export function reportToCsv(rows: readonly ReportRow[]): string {
 }
 
 export interface ReportDocument {
+  readonly migrationRootJobId: string;
+  readonly deltaPlan: DeltaPlan | null;
   readonly migrationMode: MigrationMode;
   readonly folders: readonly MigrationFolder[];
   readonly jobId: string;
@@ -121,6 +123,8 @@ export function buildReportDocument(store: ShuttleStore, jobId: string): ReportD
   const job = store.getJob(jobId);
   return {
     jobId,
+    migrationRootJobId: rootJobId(store, jobId),
+    deltaPlan: executionPlan(store, jobId),
     migrationMode: job?.migrationMode ?? 'AI_ORGANIZE',
     folders: store.listMigrationFolders(jobId),
     generatedAt: new Date().toISOString(),
