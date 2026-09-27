@@ -58,6 +58,38 @@ describe('creating a migration without registering a source first', () => {
     expect(harness.store.listJobs()).toHaveLength(1);
   });
 
+  it('creates an independent preserve-hierarchy job without collecting classification candidates', async () => {
+    const nested = await harness.gateway.ensureFolder(destinationFolderId, '多数の既存フォルダー');
+    const list = vi.spyOn(harness.gateway, 'listFolder');
+    const response = await POST(
+      request({
+        name: 'そのまま',
+        sourceRootPath: harness.sourceRoot,
+        migrationMode: 'AS_IS',
+        aiRoutingEnabled: true,
+      }),
+    );
+    expect(response.status).toBe(201);
+    const { job } = (await response.json()) as { job: MigrationJob };
+    expect(job.migrationMode).toBe('AS_IS');
+    expect(harness.store.getProfile(job.profileId)?.aiRoutingEnabled).toBe(false);
+    expect(harness.store.getJobMetadata(job.id)).toEqual([]);
+    expect(harness.store.getJobDestinations(job.id)?.entries).toHaveLength(1);
+    expect(list).not.toHaveBeenCalledWith(nested.id);
+  });
+
+  it('keeps AI-disabled existing mode waiting for manual approval', async () => {
+    harness.writeSource('メモ.txt', '打合せ');
+    const response = await POST(
+      request({ name: '手動', sourceRootPath: harness.sourceRoot, aiRoutingEnabled: false }),
+    );
+    const { job } = (await response.json()) as { job: MigrationJob };
+    expect(job.migrationMode).toBe('AI_ORGANIZE');
+    await runUntilIdle(harness);
+    expect(harness.store.listItems(job.id)[0]?.state).toBe('REVIEW_REQUIRED');
+    expect(harness.store.listMigrationFolders(job.id)).toEqual([]);
+  });
+
   it('creates and starts a named migration, then waits for approval before placement', async () => {
     const source = harness.writeSource('契約書.txt', '業務委託契約書 契約番号 LEG-2026-0042');
     expect(harness.store.listProfiles()).toHaveLength(0);
@@ -143,6 +175,9 @@ describe('creating a migration without registering a source first', () => {
     { conflictPolicy: 'OVERWRITE' },
     { conflictPolicy: ['SKIP'] },
     { autoStart: 'false' },
+    { migrationMode: 'UNKNOWN_MODE' },
+    { migrationMode: null },
+    { migrationMode: 'AS_IS', sourceRootPath: '/' },
   ])('rejects invalid input without leaving any job or source behind: %j', async (input) => {
     const response = await POST(
       request({ name: 'テスト', sourceRootPath: harness.sourceRoot, ...input }),

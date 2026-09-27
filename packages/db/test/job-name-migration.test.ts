@@ -35,6 +35,7 @@ describe('migration names on existing databases', () => {
         name: profile.name,
         profileId: profile.id,
         state: 'QUEUED',
+        migrationMode: 'AI_ORGANIZE',
       });
       expect(store.getProfile(profile.id)).toEqual(profile);
       expect(store.listCommands('existing-job')).toEqual([command]);

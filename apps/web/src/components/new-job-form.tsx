@@ -15,6 +15,7 @@ export function NewJobForm({
   folderPickerAvailable: boolean;
 }) {
   const router = useRouter();
+  const [migrationMode, setMigrationMode] = useState<'AS_IS' | 'AI_ORGANIZE'>('AI_ORGANIZE');
   const [busy, setBusy] = useState(false);
   const [testMode, setTestMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,11 +72,13 @@ export function NewJobForm({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          migrationMode,
           name: form.get('name'),
           sourceRootPath: folder.path,
           destinationFolderId: destination.folderId,
           operatorLabel: form.get('operatorLabel'),
-          aiRoutingEnabled: aiEnabled && form.get('aiRoutingEnabled') === 'on',
+          aiRoutingEnabled:
+            migrationMode !== 'AS_IS' && aiEnabled && form.get('aiRoutingEnabled') === 'on',
           conflictPolicy: form.get('conflictPolicy'),
           autoStart: true,
           testMode,
@@ -98,6 +101,21 @@ export function NewJobForm({
           {error}
         </p>
       ) : null}
+      <label>
+        移行方式
+        <select
+          name="migrationMode"
+          value={migrationMode}
+          disabled={busy || selectingDestination}
+          onChange={(event) => {
+            setMigrationMode(event.target.value as 'AS_IS' | 'AI_ORGANIZE');
+            setDestination(null);
+          }}
+        >
+          <option value="AI_ORGANIZE">AIで整理して移行</option>
+          <option value="AS_IS">そのまま移行</option>
+        </select>
+      </label>
       <label>
         移行名
         <input
@@ -134,6 +152,8 @@ export function NewJobForm({
         ) : null}
       </div>
       <BoxFolderPicker
+        key={migrationMode}
+        migrationMode={migrationMode}
         value={destination}
         onChange={setDestination}
         onBusyChange={setSelectingDestination}
@@ -154,17 +174,19 @@ export function NewJobForm({
       <details className="migration-options">
         <summary>詳細オプション</summary>
         <div className="migration-options-body">
-          <label>
-            <span>
-              <input
-                name="aiRoutingEnabled"
-                type="checkbox"
-                defaultChecked={aiEnabled}
-                disabled={busy || !aiEnabled}
-              />{' '}
-              AI分類
-            </span>
-          </label>
+          {migrationMode !== 'AS_IS' ? (
+            <label>
+              <span>
+                <input
+                  name="aiRoutingEnabled"
+                  type="checkbox"
+                  defaultChecked={aiEnabled}
+                  disabled={busy || !aiEnabled}
+                />{' '}
+                AI分類
+              </span>
+            </label>
+          ) : null}
           <label>
             同名ファイルの扱い
             <select name="conflictPolicy" defaultValue="RENAME" disabled={busy}>

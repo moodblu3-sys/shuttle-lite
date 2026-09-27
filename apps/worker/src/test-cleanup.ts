@@ -58,7 +58,8 @@ export async function processTestCleanup(ctx: WorkerContext): Promise<boolean> {
             'BOX_NOT_FOUND',
             '対象の所在を確認できません。Box上で確認してください',
           );
-        const businessMode = ctx.store.getJobMetadata(job.id) !== null;
+        const businessMode =
+          job.migrationMode === 'AS_IS' || ctx.store.getJobMetadata(job.id) !== null;
         const owned = businessMode
           ? ctx.store.hasUploadRecord(job.id, item.id, file.id)
           : await ctx.gateway

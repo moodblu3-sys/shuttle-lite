@@ -91,9 +91,13 @@ export async function reconcileJob(ctx: JobContext): Promise<ReconcileSummary> {
       });
       ctx.store.transitionItem({
         itemId: item.id,
-        to: 'NEEDS_REVIEW',
+        to: ctx.job.migrationMode === 'AS_IS' ? 'FAILED' : 'NEEDS_REVIEW',
         telemetry: ctx.telemetry,
-        patch: { lastErrorCategory: 'BOX_CONFLICT', lastError: 'staging上のfileが一致しません' },
+        patch: {
+          resumeState: 'PREFLIGHT',
+          lastErrorCategory: 'BOX_CONFLICT',
+          lastError: 'staging上のfileが一致しません',
+        },
         event: { status: 'FAILED', phase: 'UPLOAD', errorCategory: 'BOX_CONFLICT' },
       });
       continue;

@@ -1,3 +1,4 @@
+import type { MigrationFolder, MigrationMode } from '@shuttle-lite/core';
 import type {
   TemplateMapping,
   BusinessMetadataDraft,
@@ -431,14 +432,15 @@ export class ShuttleStore {
     operatorLabel: string;
     name?: string;
     testMode?: boolean;
+    migrationMode?: MigrationMode;
   }): MigrationJob {
     const id = newJobId();
     const at = nowIso();
     const name = input.name ?? this.getProfile(input.profileId)?.name ?? null;
     this.db
       .prepare(
-        `INSERT INTO migration_jobs (id, profile_id, state, operator_label, created_at, updated_at, name, test_mode)
-         VALUES (?,?,?,?,?,?,?,?)`,
+        `INSERT INTO migration_jobs (id, profile_id, state, operator_label, created_at, updated_at, name, test_mode, migration_mode)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         id,
@@ -449,6 +451,7 @@ export class ShuttleStore {
         at,
         name,
         fromBool(input.testMode === true),
+        input.migrationMode ?? 'AI_ORGANIZE',
       );
     const job = this.getJob(id);
     if (!job) throw new ShuttleError('UNKNOWN', 'jobの作成直後に読み出せませんでした');
@@ -550,6 +553,34 @@ export class ShuttleStore {
       .prepare('SELECT snapshot FROM job_destinations WHERE job_id = ?')
       .get(jobId) as { snapshot: string } | undefined;
     return row ? (JSON.parse(row.snapshot) as JobDestinations) : null;
+  }
+
+  saveScannedFolder(jobId: string, folder: Omit<MigrationFolder, 'boxFolderId'>): void {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO migration_folders
+      (job_id, relative_path, name, parent_path) VALUES (?,?,?,?)`,
+      )
+      .run(jobId, folder.relativePath, folder.name, folder.parentPath);
+  }
+
+  listMigrationFolders(jobId: string): MigrationFolder[] {
+    return this.db
+      .prepare(
+        `SELECT relative_path AS relativePath, name,
+      parent_path AS parentPath, box_folder_id AS boxFolderId FROM migration_folders
+      WHERE job_id = ? ORDER BY length(relative_path), relative_path`,
+      )
+      .all(jobId) as MigrationFolder[];
+  }
+
+  setMigrationFolderId(jobId: string, relativePath: string, folderId: string): void {
+    this.db
+      .prepare(
+        `UPDATE migration_folders SET box_folder_id = ?
+      WHERE job_id = ? AND relative_path = ? AND box_folder_id IS NULL`,
+      )
+      .run(folderId, jobId, relativePath);
   }
 
   getJob(id: string): MigrationJob | null {

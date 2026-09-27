@@ -113,7 +113,7 @@ export function JobIdentity({
       ? status.label
       : job.state === 'COMPLETED' && snapshot?.skippedItems
         ? `終了（${snapshot.skippedItems}件スキップ）`
-        : job.state === 'COMPLETED' && snapshot?.totalItems === 0
+        : job.state === 'COMPLETED' && snapshot?.totalItems === 0 && job.migrationMode !== 'AS_IS'
           ? '終了（対象なし）'
           : status.label;
 
@@ -131,7 +131,11 @@ export function JobIdentity({
         <div className="jobcard-tags">
           {job.testMode ? <span className="typechip">テスト</span> : null}
           <span className="typechip">
-            {profile?.aiRoutingEnabled ? 'AI分類あり' : 'ファイル移行'}
+            {job.migrationMode === 'AS_IS'
+              ? 'そのまま移行'
+              : profile?.aiRoutingEnabled
+                ? 'AI分類あり'
+                : 'ファイル移行'}
           </span>
           <span className={`jobstatus jobstatus-${tone}`}>
             <StatusGlyph tone={tone} />

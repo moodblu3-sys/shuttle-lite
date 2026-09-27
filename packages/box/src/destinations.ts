@@ -79,6 +79,7 @@ export async function collectJobDestinations(
   rootFolderId: string,
   mode: 'fake' | 'real',
   excluded: readonly string[] = [],
+  includeDescendants = true,
 ): Promise<JobDestinations> {
   if (rootFolderId === '0')
     throw new ShuttleError('CONFIG_INVALID', '移行先には部署や案件のフォルダーを選んでください。');
@@ -110,6 +111,7 @@ export async function collectJobDestinations(
       boxPath: path,
       description: '選択したBoxフォルダー内の既存フォルダー',
     });
+    if (!includeDescendants) continue;
     for (const child of await gateway.listFolder(folder.id)) {
       if (child.type !== 'folder' || INTERNAL_NAMES.has(child.name) || excluded.includes(child.id))
         continue;

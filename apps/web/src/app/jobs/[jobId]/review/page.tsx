@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { ReviewWorkspace } from '../../../../components/review-workspace';
 import { buildReviewPage } from '../../../../lib/review';
 import { getCatalog, getConfig, getStore } from '../../../../lib/runtime';
@@ -19,6 +19,7 @@ export default async function ReviewPage({
   const { jobId } = await params;
   const job = getStore().getJob(jobId);
   if (!job) notFound();
+  if (job.migrationMode === 'AS_IS') redirect(`/jobs/${jobId}`);
   if (job.cleanupState !== 'NONE')
     return (
       <div className="page-content">

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { basename, resolve, isAbsolute } from 'node:path';
 import { NextResponse } from 'next/server';
 import { getConfig, getStore } from '../../../lib/runtime';
 import { destinationError, readJobDestinations } from '../../../lib/box-destinations';
@@ -24,6 +24,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '移行の設定を確認してください。' }, { status: 400 });
   }
   const body = input as Record<string, unknown>;
+  const migrationMode = body.migrationMode === undefined ? 'AI_ORGANIZE' : body.migrationMode;
+  if (migrationMode !== 'AI_ORGANIZE' && migrationMode !== 'AS_IS') {
+    return NextResponse.json({ error: '移行方式を選び直してください。' }, { status: 400 });
+  }
   if (body.testMode !== undefined && typeof body.testMode !== 'boolean') {
     return NextResponse.json({ error: 'テストモードの指定を確認してください。' }, { status: 400 });
   }
@@ -54,9 +58,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '登録済みの移行元が見つかりません。' }, { status: 404 });
     }
     let destinations: JobDestinations | null = null;
-    if (body.destinationFolderId !== undefined || getConfig().box.mode === 'real') {
+    if (
+      body.destinationFolderId !== undefined ||
+      getConfig().box.mode === 'real' ||
+      migrationMode === 'AS_IS'
+    ) {
       try {
-        destinations = await readJobDestinations(body.destinationFolderId);
+        destinations = await readJobDestinations(body.destinationFolderId, migrationMode);
       } catch (error) {
         return NextResponse.json(destinationError(error), { status: 400 });
       }
@@ -66,8 +74,12 @@ export async function POST(request: Request) {
         profileId: profile.id,
         operatorLabel,
         testMode: body.testMode === true,
+        migrationMode,
       });
-      store.saveJobMetadata(created.id, store.getMetadataSettings().mappings);
+      store.saveJobMetadata(
+        created.id,
+        migrationMode === 'AS_IS' ? [] : store.getMetadataSettings().mappings,
+      );
       if (destinations) store.saveJobDestinations(created.id, destinations);
       if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB');
       return created;
@@ -80,7 +92,11 @@ export async function POST(request: Request) {
   if (!name || name.length > 100) {
     return NextResponse.json({ error: '移行名を1〜100文字で入力してください。' }, { status: 400 });
   }
-  if (!isAbsolute(sourceRootPath) || sourceRootPath.includes('\0')) {
+  if (
+    !isAbsolute(sourceRootPath) ||
+    sourceRootPath.includes('\0') ||
+    (migrationMode === 'AS_IS' && !basename(resolve(sourceRootPath)))
+  ) {
     return NextResponse.json({ error: '移行元フォルダーを選び直してください。' }, { status: 400 });
   }
   if (
@@ -114,7 +130,7 @@ export async function POST(request: Request) {
 
   let destinations: JobDestinations;
   try {
-    destinations = await readJobDestinations(body.destinationFolderId);
+    destinations = await readJobDestinations(body.destinationFolderId, migrationMode);
   } catch (error) {
     return NextResponse.json(destinationError(error), { status: 400 });
   }
@@ -131,7 +147,8 @@ export async function POST(request: Request) {
       metadataTemplateKey: config.box.metadataTemplateKey,
       fileConcurrency: config.limits.fileConcurrency,
       chunkConcurrency: config.limits.chunkConcurrency,
-      aiRoutingEnabled: config.ai.enabled && body.aiRoutingEnabled !== false,
+      aiRoutingEnabled:
+        migrationMode !== 'AS_IS' && config.ai.enabled && body.aiRoutingEnabled !== false,
       snowflakeLoggingEnabled: true,
       conflictPolicy: body.conflictPolicy === 'SKIP' ? 'SKIP' : 'RENAME',
     });
@@ -140,8 +157,12 @@ export async function POST(request: Request) {
       profileId: profile.id,
       operatorLabel,
       testMode: body.testMode === true,
+      migrationMode,
     });
-    store.saveJobMetadata(created.id, store.getMetadataSettings().mappings);
+    store.saveJobMetadata(
+      created.id,
+      migrationMode === 'AS_IS' ? [] : store.getMetadataSettings().mappings,
+    );
     store.saveJobDestinations(created.id, destinations);
     if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB');
     return created;

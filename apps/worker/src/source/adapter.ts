@@ -47,6 +47,7 @@ export interface SourceAdapter {
   verifyRoot(): Promise<void>;
 
   scan(): AsyncIterable<SourceItemInfo>;
+  scanDirectories?(): AsyncIterable<string>;
 
   /** Re-read the current state, used to detect a source changed under us. */
   stat(ref: SourceRef): Promise<SourceItemInfo>;

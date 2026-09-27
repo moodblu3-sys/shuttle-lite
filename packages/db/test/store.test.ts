@@ -79,7 +79,7 @@ describe('sqlite store', () => {
         db.exec(migration.sql);
       db.pragma('user_version = 9');
       const legacy = new ShuttleStore(db);
-      const { itemId } = seed(legacy);
+      const { itemId, job } = seed(legacy, true);
       db.prepare('INSERT INTO item_metadata VALUES (?, ?, ?, ?)').run(
         itemId,
         3,
@@ -88,6 +88,8 @@ describe('sqlite store', () => {
       );
       migrate(db);
       migrate(db);
+      expect(legacy.getJob(job.id)?.migrationMode).toBe('AI_ORGANIZE');
+      expect(legacy.listMigrationFolders(job.id)).toEqual([]);
       expect(legacy.getBusinessMetadata(itemId)).toEqual({
         revision: 3,
         templateId: 'enterprise/contract',
@@ -125,6 +127,7 @@ describe('sqlite store', () => {
       'job_metadata',
       'metadata_settings',
       'migration_events',
+      'migration_folders',
       'migration_items',
       'migration_jobs',
       'migration_profiles',

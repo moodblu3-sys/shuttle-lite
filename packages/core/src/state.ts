@@ -57,7 +57,7 @@ export function isTerminal(state: ItemState): boolean {
 
 /**
  * States the worker may pick up on its own. REVIEW_REQUIRED and NEEDS_REVIEW
- * wait for an operator command, and APPROVED is only reached through one.
+ * wait for an operator command. AS_IS jobs use the start command as placement intent.
  */
 export function isWorkable(state: ItemState): boolean {
   return isPipelineState(state) && state !== 'COMPLETED' && state !== 'REVIEW_REQUIRED';
@@ -91,6 +91,8 @@ export function nextPipelineState(state: PipelineState): PipelineState | null {
  * state, and side states may return to the pipeline state they came from.
  */
 const EXTRA_TRANSITIONS: Partial<Record<ItemState, readonly ItemState[]>> = {
+  // そのまま移行は開始時に指定した階層へ進む。分類・個別承認は通さない。
+  TRANSFER_VERIFIED: ['APPROVED'],
   // AI can be skipped entirely when routing is disabled or unsupported.
   PROVENANCE_APPLIED: ['AI_PENDING', 'REVIEW_REQUIRED'],
   AI_PENDING: ['AI_COMPLETED', 'REVIEW_REQUIRED'],

@@ -1,3 +1,4 @@
+import { prepareFolderTree } from './folder-tree';
 import { applyRuntimeSettings } from '@shuttle-lite/config';
 import { ensureJobStagingFolder } from '@shuttle-lite/box';
 import { type ItemState, Semaphore, sleep, toShuttleError } from '@shuttle-lite/core';
@@ -200,7 +201,19 @@ export class WorkerRuntime {
     }
 
     if (job.state === 'SCANNING') {
-      const summary = await scanSource(ctx);
+      let summary;
+      try {
+        summary = await scanSource(ctx);
+      } catch (error) {
+        if (job.migrationMode !== 'AS_IS') throw error;
+        const failure = toShuttleError(error);
+        ctx.store.setJobState(job.id, 'PAUSED', {
+          pauseRequested: true,
+          lastError: failure.message,
+          lastErrorCategory: failure.category,
+        });
+        return true;
+      }
       this.#ctx.logger.info('scan完了', { jobId: job.id, ...summary });
       this.#ctx.store.appendEvent(
         {
@@ -216,6 +229,19 @@ export class WorkerRuntime {
       return true;
     }
 
+    if (job.migrationMode === 'AS_IS') {
+      try {
+        if (!(await prepareFolderTree(ctx, () => this.#shouldYield(job.id)))) return true;
+      } catch (error) {
+        const failure = toShuttleError(error);
+        ctx.store.setJobState(job.id, 'PAUSED', {
+          pauseRequested: true,
+          lastError: failure.message,
+          lastErrorCategory: failure.category,
+        });
+        return true;
+      }
+    }
     const progressed = await this.#runQueues(ctx);
     if (!this.#shouldYield(job.id)) this.#maybeFinishJob(ctx);
     return progressed;

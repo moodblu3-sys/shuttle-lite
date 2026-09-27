@@ -112,6 +112,30 @@ export class LocalSourceAdapter implements SourceAdapter {
     yield* this.#walk(this.#rootPath);
   }
 
+  async *scanDirectories(): AsyncIterable<string> {
+    yield '';
+    yield* this.#walkDirectories(this.#rootPath);
+  }
+
+  async *#walkDirectories(dir: string): AsyncIterable<string> {
+    const handle = await opendir(dir).catch((error: unknown) => {
+      throw mapReadError(error, dir);
+    });
+    for await (const entry of handle) {
+      if (
+        entry.name.startsWith('.') ||
+        SKIPPED_NAMES.has(entry.name) ||
+        isOfficeLockFile(entry.name) ||
+        entry.isSymbolicLink() ||
+        !entry.isDirectory()
+      )
+        continue;
+      const absolute = join(dir, entry.name);
+      yield relative(this.#rootPath, absolute).split(sep).join('/');
+      yield* this.#walkDirectories(absolute);
+    }
+  }
+
   async *#walk(dir: string): AsyncIterable<SourceItemInfo> {
     const handle = await opendir(dir).catch((error: unknown) => {
       throw mapReadError(error, dir);

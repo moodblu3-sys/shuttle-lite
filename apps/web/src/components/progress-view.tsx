@@ -110,11 +110,15 @@ export function ProgressView({
             value={String(snapshot.completedItems)}
             sub={`全 ${snapshot.totalItems} 件`}
           />
-          <Metric
-            label="承認待ち"
-            value={String(snapshot.reviewBacklog)}
-            tone={snapshot.reviewBacklog > 0 ? 'wait' : undefined}
-          />
+          {snapshot.job.migrationMode !== 'AS_IS' ? (
+            <Metric
+              label="承認待ち"
+              value={String(snapshot.reviewBacklog)}
+              tone={snapshot.reviewBacklog > 0 ? 'wait' : undefined}
+            />
+          ) : (
+            <Metric label="スキップ" value={String(snapshot.skippedItems)} />
+          )}
           <Metric
             label="失敗"
             value={String(snapshot.failedItems)}
@@ -177,7 +181,9 @@ function CompletionSummary({
   snapshot: JobSnapshot;
   destinationUrl?: string | null;
 }) {
-  const allSucceeded = snapshot.totalItems > 0 && snapshot.completedItems === snapshot.totalItems;
+  const allSucceeded =
+    (snapshot.totalItems > 0 || snapshot.job.migrationMode === 'AS_IS') &&
+    snapshot.completedItems === snapshot.totalItems;
   const elapsed =
     snapshot.job.startedAt && snapshot.job.finishedAt
       ? Math.max(

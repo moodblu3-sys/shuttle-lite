@@ -14,7 +14,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
   const destinations = store.getJobDestinations(jobId);
 
   return (
-    <div className="page-content">
+    <div className="page-content" data-migration-mode={snapshot.job.migrationMode}>
       <p className="breadcrumb">
         <a href="/">移行一覧</a> / 進捗
       </p>
@@ -31,7 +31,10 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
       >
         {destinations ? (
           <p className="small muted">
-            移行先：{destinations.rootFolderName}（フォルダー {destinations.entries.length}件）
+            移行先：{destinations.rootFolderName}
+            {snapshot.job.migrationMode === 'AS_IS'
+              ? ` / ${store.listMigrationFolders(jobId).find((folder) => folder.relativePath === '')?.name ?? profile?.sourceRootPath.split('/').filter(Boolean).at(-1) ?? ''}`
+              : `（フォルダー ${destinations.entries.length}件）`}
           </p>
         ) : getConfig().box.mode === 'real' ? (
           <p className="error">移行先が未設定です。「新しい移行」で移行先を指定してください。</p>

@@ -147,7 +147,24 @@ export function buildJobSnapshot(store: ShuttleStore, jobId: string): JobSnapsho
     job,
     commands,
     counts,
-    phases: buildPhaseCounters(store.countItemsByPhaseState(jobId)),
+    phases: buildPhaseCounters(
+      store
+        .countItemsByPhaseState(jobId)
+        .map((entry) =>
+          job.migrationMode === 'AS_IS'
+            ? {
+                ...entry,
+                state: entry.state === 'APPROVED' ? ('MOVING' as const) : entry.state,
+                resumeState:
+                  entry.resumeState === 'APPROVED' ? ('MOVING' as const) : entry.resumeState,
+              }
+            : entry,
+        ),
+    ).filter(
+      (phase) =>
+        job.migrationMode !== 'AS_IS' ||
+        !['METADATA', 'AI_EXTRACTION', 'REVIEW'].includes(phase.phase),
+    ),
     totalItems,
     processedItems,
     transferredItems,
@@ -232,6 +249,8 @@ export function decideNextAction(input: {
     return { kind: 'RESUME', message: '一時停止中' };
   }
   if (job.state === 'SCANNING') return { kind: 'WORKING', message: 'スキャン中' };
+  if (job.state === 'COMPLETED' && totalItems === 0 && job.migrationMode === 'AS_IS')
+    return { kind: 'REPORT', message: 'フォルダーの移行完了' };
   if (job.state === 'COMPLETED' && totalItems === 0)
     return { kind: 'REPORT', message: '対象ファイルなし' };
   if (reviewBacklog > 0) {

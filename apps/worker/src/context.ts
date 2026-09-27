@@ -40,7 +40,8 @@ export function destinationsForJob(
 ): Pick<WorkerContext, 'catalog' | 'layout'> {
   const snapshot = ctx.store.getJobDestinations(jobId);
   if (!snapshot) {
-    if (ctx.config.box.mode === 'fake') return { catalog: ctx.catalog, layout: ctx.layout };
+    if (ctx.config.box.mode === 'fake' && ctx.store.getJob(jobId)?.migrationMode !== 'AS_IS')
+      return { catalog: ctx.catalog, layout: ctx.layout };
     throw new ShuttleError(
       'CONFIG_INVALID',
       'この移行にはBoxの移行先が設定されていません。「新しい移行」で移行先を選択してください。既存のファイルと履歴は残っています。',

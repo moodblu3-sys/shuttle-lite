@@ -292,6 +292,17 @@ export const MIGRATIONS: readonly Migration[] = [
     name: 'business metadata extraction status',
     sql: `ALTER TABLE item_metadata ADD COLUMN extraction_status TEXT NOT NULL DEFAULT 'MANUAL';`,
   },
+  {
+    version: 11,
+    name: 'preserve folder hierarchy migration',
+    sql: `ALTER TABLE migration_jobs ADD COLUMN migration_mode TEXT NOT NULL DEFAULT 'AI_ORGANIZE'
+      CHECK (migration_mode IN ('AI_ORGANIZE', 'AS_IS'));
+    CREATE TABLE migration_folders (
+      job_id TEXT NOT NULL REFERENCES migration_jobs(id), relative_path TEXT NOT NULL,
+      name TEXT NOT NULL, parent_path TEXT, box_folder_id TEXT,
+      PRIMARY KEY (job_id, relative_path)
+    ) STRICT;`,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

@@ -2,7 +2,12 @@ import { collectJobDestinations, excludedDestinationIds, validFolderId } from '@
 import { ShuttleError } from '@shuttle-lite/core';
 import { getBoxGateway, getConfig } from './runtime';
 
-export async function readJobDestinations(folderId: unknown) {
+export async function readJobDestinations(
+  folderId: unknown,
+  migrationMode: unknown = 'AI_ORGANIZE',
+) {
+  if (migrationMode !== 'AI_ORGANIZE' && migrationMode !== 'AS_IS')
+    throw new ShuttleError('CONFIG_INVALID', '移行方式を選び直してください。');
   if (!validFolderId(folderId))
     throw new ShuttleError('CONFIG_INVALID', 'Boxの移行先フォルダーを選択してください。');
   const config = getConfig();
@@ -11,6 +16,7 @@ export async function readJobDestinations(folderId: unknown) {
     folderId,
     config.box.mode,
     excludedDestinationIds(config),
+    migrationMode !== 'AS_IS',
   );
 }
 

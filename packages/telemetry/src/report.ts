@@ -1,3 +1,4 @@
+import type { MigrationFolder, MigrationMode } from '@shuttle-lite/core';
 import type { ShuttleStore } from '@shuttle-lite/db';
 
 export interface ReportRow {
@@ -51,6 +52,7 @@ export const REPORT_COLUMNS = [
  * both the worker and the web app build the same rows from SQLite.
  */
 export function buildReportRows(store: ShuttleStore, jobId: string): ReportRow[] {
+  const preserve = store.getJob(jobId)?.migrationMode === 'AS_IS';
   return store.listItems(jobId, { limit: 10_000 }).map((item) => {
     const routing = store.getRouting(item.id);
     const extraction = store.latestExtraction(item.id);
@@ -67,7 +69,11 @@ export function buildReportRows(store: ShuttleStore, jobId: string): ReportRow[]
       finalName: item.finalName,
       sizeVerified: item.boxSize !== null && item.boxSize === item.sourceSize,
       sha1Verified: item.boxSha1 !== null && item.boxSha1 === item.sourceSha1,
-      metadataStatus: item.provenanceAppliedAt ? 'APPLIED' : 'MISSING',
+      metadataStatus: preserve
+        ? 'NOT_APPLICABLE'
+        : item.provenanceAppliedAt
+          ? 'APPLIED'
+          : 'MISSING',
       suggestedDestinationKey: routing?.suggestedDestinationKey ?? null,
       humanOverride: routing?.humanOverride ?? false,
       aiProvider: extraction?.provider ?? null,
@@ -94,6 +100,8 @@ export function reportToCsv(rows: readonly ReportRow[]): string {
 }
 
 export interface ReportDocument {
+  readonly migrationMode: MigrationMode;
+  readonly folders: readonly MigrationFolder[];
   readonly jobId: string;
   readonly generatedAt: string;
   readonly operatorLabel: string;
@@ -113,6 +121,8 @@ export function buildReportDocument(store: ShuttleStore, jobId: string): ReportD
   const job = store.getJob(jobId);
   return {
     jobId,
+    migrationMode: job?.migrationMode ?? 'AI_ORGANIZE',
+    folders: store.listMigrationFolders(jobId),
     generatedAt: new Date().toISOString(),
     operatorLabel: job?.operatorLabel ?? 'unknown',
     totals: {

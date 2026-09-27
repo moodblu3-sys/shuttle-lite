@@ -21,9 +21,12 @@ export async function GET(request: Request) {
 
 /** Preview only. The create-job request independently resolves and saves the subtree. */
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as { folderId?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as {
+    folderId?: unknown;
+    migrationMode?: unknown;
+  } | null;
   try {
-    const snapshot = await readJobDestinations(body?.folderId);
+    const snapshot = await readJobDestinations(body?.folderId, body?.migrationMode);
     return NextResponse.json(
       {
         folderId: snapshot.rootFolderId,

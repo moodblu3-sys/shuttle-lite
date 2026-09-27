@@ -1,19 +1,25 @@
 # 検証状況と旧MVPの実測記録
 
-更新日: 2026-09-23
+更新日: 2026-09-24
+
+「そのまま移行」の追加検証は `test/preserve-migration.test.ts` と
+`test/new-migration.test.ts`、`apps/web/test/new-job-form.test.ts`。
+階層・空フォルダー、改名／スキップ、移動応答喪失からの復旧、フォルダー作成中の停止・再開、
+移動済みフォルダーへの誤配置防止、AI・メタデータ処理を呼ばないこと、既存AIオフの手動承認を確認する。
+実Boxでの階層作成と配置の通し確認は未実施。
 
 ## 現行版の検証範囲
 
-412復旧・エラー表示の改善を含めて自動テスト492件、型チェック・lintが成功。
+「そのまま移行」、412復旧・エラー表示の改善を含めて自動テスト509件、型チェック・lintが成功。
 エラー表示は日本語の原因・対処、技術情報の折りたたみ、改名・承認操作の維持をjsdomで確認した。
-fake Box検証22項目・本番ビルドは前回の承認・完了画面改善時に成功した記録で、今回の表示変更では再実行していない。
+今回の`npm run verify`は既存方式のfake Box検証18/18項目が成功。本番ビルドもwebpackで成功（認証設定を含まない隔離コピー）。
 自動テストには候補テンプレートの受け渡し、不正なAI回答の不採用、自動抽出、抽出失敗と再抽出、
 詳細を開かない一括承認、旧DBの更新を含む。
 UI改善では全件検索・状態フィルター、205件のページング、手動配置先の下書き、
 非表示の選択解除、処理中・要対応の一括承認除外、プレビュー維持、履歴操作、通信タイムアウト、
 SSEによる完了切り替え、部分失敗・除外・対象なしの表示を確認した。
 操作テストはjsdom。ブラウザー実行は環境のsocket権限制限で失敗し、実際の画面描画の確認は未実施。
-独立した22項目の`verify`は旧共通メタデータ方式のfixtureによる転送検証。
+今回の独立した18項目の`verify`は旧共通メタデータ方式のfixtureによる転送検証。
 新方式は`test/business-metadata.test.ts`などの自動テストとMac側の実Box確認で検証する。
 
 最新のテンプレート自動選択の精度と実Boxでの通し確認、実Snowflakeへの送信、Windows実機、
@@ -90,7 +96,7 @@ fixture 32件を最後まで移行してから検証する。重要なのは、p
 | 6 | 同名競合を無断上書きしない | 自動 | `test/e2e.test.ts`「keeps two files with the same name apart」「skips a name conflict when the job asks for it」「never renames behind an operator who typed the name」、`test/recovery.test.ts`「stops at review rather than completing」、`packages/box/test/fake-gateway.test.ts` |
 | 7 | metadata失敗時にfileを再uploadしない | 自動 | `test/recovery.test.ts`「retries only the metadata write when metadata fails」 |
 | 8 | AI無効・対象外・失敗時も手動で完了できる | 自動 | `test/e2e.test.ts`「lets an operator finish a file the AI could not read」 |
-| 9 | 承認前にfinal folderへmoveしない | 自動 | `test/e2e.test.ts`「only after a human approval」、`packages/core/test/state.test.ts`「never moves an unapproved item」 |
+| 9 | AIで整理する移行では承認前にfinal folderへmoveしない | 自動 | `test/e2e.test.ts`「only after a human approval」、`packages/core/test/state.test.ts`「never moves an unapproved item」 |
 | 10 | 承認後に対象が変われば再承認する | 自動 | `test/e2e.test.ts`「asks for another decision when the file changed after approval」、`packages/routing/test/routing.test.ts` |
 | 11 | Size、SHA-1、destination、必須metadata不一致を完了扱いにしない | 自動 | `packages/core/test/state.test.ts`「refuses to skip verification」、`packages/routing/test/routing.test.ts`「detects missing provenance」、`finalVerify` の実装 |
 | 12 | Snowflake停止中もtransferを継続する | 自動 | `packages/telemetry/test/telemetry.test.ts`「keeps the backlog and does not lose events when the sink is down」 |

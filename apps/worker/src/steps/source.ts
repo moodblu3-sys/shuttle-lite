@@ -1,3 +1,4 @@
+import { basename, resolve, posix } from 'node:path';
 import { migrationItemId, type MigrationItem, ShuttleError } from '@shuttle-lite/core';
 import type { JobContext } from '../context';
 import type { SourceItemInfo, SourceRef } from '../source/adapter';
@@ -50,6 +51,20 @@ export interface ScanSummary {
  */
 export async function scanSource(ctx: JobContext): Promise<ScanSummary> {
   await ctx.source.verifyRoot();
+  if (ctx.job.migrationMode === 'AS_IS') {
+    if (!ctx.source.scanDirectories)
+      throw new ShuttleError('CONFIG_INVALID', 'この移行元の階層は取得できません。');
+    const rootName = basename(resolve(ctx.profile.sourceRootPath));
+    if (!rootName)
+      throw new ShuttleError('CONFIG_INVALID', '移行元には名前のあるフォルダーを選んでください。');
+    for await (const path of ctx.source.scanDirectories()) {
+      ctx.store.saveScannedFolder(ctx.job.id, {
+        relativePath: path,
+        name: path ? posix.basename(path) : rootName,
+        parentPath: path ? (posix.dirname(path) === '.' ? '' : posix.dirname(path)) : null,
+      });
+    }
+  }
   let inserted = 0;
   let unchanged = 0;
   let rescanned = 0;

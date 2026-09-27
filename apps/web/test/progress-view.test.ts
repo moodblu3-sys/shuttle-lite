@@ -10,6 +10,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 function snapshot(patch: Partial<JobSnapshot> = {}): JobSnapshot {
   return {
     job: {
+      migrationMode: 'AI_ORGANIZE',
       id: 'job',
       name: '9月の書類整理',
       profileId: 'profile',

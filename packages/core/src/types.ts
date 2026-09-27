@@ -27,9 +27,19 @@ export interface MigrationProfile {
   readonly createdAt: string;
 }
 
+export type MigrationMode = 'AI_ORGANIZE' | 'AS_IS';
+
+export interface MigrationFolder {
+  readonly relativePath: string;
+  readonly name: string;
+  readonly parentPath: string | null;
+  readonly boxFolderId: string | null;
+}
+
 export type JobState = 'QUEUED' | 'SCANNING' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'FAILED';
 
 export interface MigrationJob {
+  readonly migrationMode: MigrationMode;
   readonly id: string;
   readonly name: string | null;
   readonly profileId: string;

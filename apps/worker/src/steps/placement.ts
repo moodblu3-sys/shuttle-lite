@@ -217,7 +217,7 @@ const RENAME_ATTEMPTS = 20;
  * A name the operator typed is exempt. They decided it while looking at the
  * conflict, so changing it silently would replace their judgement.
  */
-async function resolveName(
+export async function resolveName(
   ctx: JobContext,
   item: MigrationItem,
   targetFolderId: string,

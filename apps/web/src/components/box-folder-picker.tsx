@@ -12,12 +12,14 @@ export function BoxFolderPicker({
   onBusyChange,
   disabled,
   boxMode,
+  migrationMode = 'AI_ORGANIZE',
 }: {
   value: SelectedBoxFolder | null;
   onChange: (value: SelectedBoxFolder) => void;
   onBusyChange: (busy: boolean) => void;
   disabled: boolean;
   boxMode: 'real' | 'fake';
+  migrationMode?: 'AS_IS' | 'AI_ORGANIZE';
 }) {
   const [open, setOpen] = useState(false);
   const [listing, setListing] = useState<Listing | null>(null);
@@ -62,7 +64,7 @@ export function BoxFolderPicker({
       const response = await fetch('/api/box-folders', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ folderId: listing.folder.id }),
+        body: JSON.stringify({ folderId: listing.folder.id, migrationMode }),
         signal: controller.signal,
       });
       const body = (await response.json()) as SelectedBoxFolder & { error?: string };

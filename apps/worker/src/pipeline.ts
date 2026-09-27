@@ -1,4 +1,9 @@
 import {
+  placePreservedItem,
+  readyForPreservedPlacement,
+  verifyPreservedItem,
+} from './steps/preserve';
+import {
   decideRetry,
   DEFAULT_BACKOFF,
   isPipelineState,
@@ -79,7 +84,14 @@ export async function advanceItem(
   const state = effectiveState(stored);
   if (!state || !scope.includes(state)) return 'OUT_OF_SCOPE';
 
-  const step = STEPS[state];
+  const preserveSteps: Partial<Record<ItemState, Step>> = {
+    TRANSFER_VERIFIED: readyForPreservedPlacement,
+    APPROVED: placePreservedItem,
+    MOVING: placePreservedItem,
+    FINAL_VERIFY: verifyPreservedItem,
+  };
+  const step =
+    ctx.job.migrationMode === 'AS_IS' ? (preserveSteps[state] ?? STEPS[state]) : STEPS[state];
   if (!step) return 'OUT_OF_SCOPE';
 
   // Resuming: bring the row back into the pipeline state before working on it.
@@ -120,7 +132,11 @@ export async function advanceItem(
     }
     return 'ADVANCED';
   } catch (error) {
-    await handleStepFailure(ctx, item, state, error);
+    const resume =
+      ctx.job.migrationMode === 'AS_IS' && ctx.store.getItem(itemId)?.state === 'MOVING'
+        ? 'MOVING'
+        : state;
+    await handleStepFailure(ctx, item, resume, error);
     return 'BLOCKED';
   }
 }
@@ -179,7 +195,7 @@ async function handleStepFailure(
     return;
   }
 
-  if (decision.action === 'NEEDS_REVIEW') {
+  if (decision.action === 'NEEDS_REVIEW' && ctx.job.migrationMode !== 'AS_IS') {
     // Give the operator something to act on: the reason is recorded as the
     // routing suggestion so the review screen can offer manual input.
     ctx.store.upsertSuggestion({

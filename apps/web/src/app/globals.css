@@ -1433,3 +1433,7 @@ button.ghost:hover:not(:disabled) {
   gap: 12px;
   margin-top: 28px;
 }
+
+.app-shell:has([data-migration-mode='AS_IS']) .workspace-nav a[href$='/review'] {
+  display: none;
+}

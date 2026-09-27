@@ -31,6 +31,12 @@ export async function processCommands(ctx: WorkerContext, limit = 20): Promise<n
   try {
     for (const command of commands) {
       try {
+        if (
+          ctx.store.getJob(command.jobId)?.migrationMode === 'AS_IS' &&
+          ['APPROVE_ITEM', 'SELECT_METADATA_TEMPLATE', 'SEND_TO_REVIEW'].includes(command.type)
+        ) {
+          throw new ShuttleError('STATE_INVALID', 'そのまま移行では分類・承認操作は使用しません。');
+        }
         if (command.type === 'SELECT_METADATA_TEMPLATE') {
           if (!ctx.store.withCommandClaim(command, () => {})) continue;
           const save = await selectMetadataTemplate(ctx, command);
@@ -148,7 +154,10 @@ function applyCommand(ctx: WorkerContext, command: JobCommandRecord): void {
       return;
     }
     case 'RESUME_JOB': {
-      ctx.store.setJobState(job.id, 'RUNNING', { pauseRequested: false });
+      ctx.store.setJobState(job.id, job.migrationMode === 'AS_IS' ? 'SCANNING' : 'RUNNING', {
+        pauseRequested: false,
+        ...(job.migrationMode === 'AS_IS' ? { lastError: null, lastErrorCategory: null } : {}),
+      });
       return;
     }
     case 'RETRY_ITEM': {
