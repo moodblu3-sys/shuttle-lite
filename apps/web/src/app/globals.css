@@ -1434,6 +1434,31 @@ button.ghost:hover:not(:disabled) {
   margin-top: 28px;
 }
 
-.app-shell:has([data-migration-mode='AS_IS']) .workspace-nav a[href$='/review'] {
-  display: none;
+.job-workspace {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.job-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.job-navigation {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 28px;
+  padding: 0 36px;
+  border-bottom: 1px solid var(--line);
+}
+.job-navigation a {
+  padding: 18px 0 14px;
+  color: var(--ink-soft);
+  border-bottom: 3px solid transparent;
+  font-weight: 600;
+}
+.job-navigation a[aria-current='page'] {
+  color: var(--box-blue);
+  border-bottom-color: var(--box-blue);
 }

@@ -1,42 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import { workspaceNavigation } from '../apps/web/src/lib/workspace-navigation';
+import { workspaceNavigation, jobNavigation } from '../apps/web/src/lib/workspace-navigation';
 
 describe('desktop workspace navigation', () => {
-  it('does not point review or progress at an arbitrary job on the dashboard', () => {
-    const links = workspaceNavigation('/');
-    expect(links.filter((link) => link.current).map((link) => link.label)).toEqual(['移行一覧']);
-    expect(links.find((link) => link.label === '分類・承認')?.href).toBeNull();
-    expect(links.find((link) => link.label === '進捗')?.href).toBeNull();
-    expect(links.find((link) => link.label === '設定')?.href).toBe('/settings');
+  it.each([
+    '/',
+    '/settings',
+    '/jobs/first',
+    '/jobs/first/review',
+    '/jobs/second/delta',
+    '/jobs/second/history',
+  ])('keeps the same enabled global links on %s', (path) => {
+    const links = workspaceNavigation(path);
+    expect(links.map(({ label, href }) => ({ label, href }))).toEqual([
+      { label: '移行一覧', href: '/' },
+      { label: '設定', href: '/settings' },
+    ]);
+    expect(links.filter((link) => link.current).map((link) => link.label)).toEqual([
+      path === '/settings' ? '設定' : '移行一覧',
+    ]);
   });
-
-  it('keeps progress and approval links scoped to the job currently open', () => {
-    for (const jobId of ['job_first', 'job_second']) {
-      const links = workspaceNavigation(`/jobs/${jobId}/review`);
-      expect(links.filter((link) => link.current).map((link) => link.label)).toEqual([
-        '分類・承認',
-      ]);
-      expect(links.find((link) => link.label === '進捗')?.href).toBe(`/jobs/${jobId}`);
-      expect(links.find((link) => link.label === '分類・承認')?.href).toBe(`/jobs/${jobId}/review`);
+  it.each(['AI_ORGANIZE', 'AS_IS'])('scopes stable %s tabs to the selected job', (mode) => {
+    for (const id of ['first', 'second']) {
+      for (const suffix of ['', '/review', '/delta', '/history']) {
+        const links = jobNavigation(id, mode, `/jobs/${id}${suffix}/`);
+        expect(links.map((link) => link.label)).toEqual([
+          '進捗',
+          mode === 'AS_IS' ? '差分移行' : '分類・承認',
+          '実行履歴',
+        ]);
+        expect(links.every((link) => link.href.startsWith(`/jobs/${id}`))).toBe(true);
+        expect(links.filter((link) => link.current)).toHaveLength(
+          suffix === (mode === 'AS_IS' ? '/review' : '/delta') ? 0 : 1,
+        );
+      }
     }
-  });
-
-  it('marks only progress as current on a job page, including a trailing slash', () => {
-    for (const pathname of ['/jobs/job_first', '/jobs/job_first/']) {
-      expect(
-        workspaceNavigation(pathname)
-          .filter((link) => link.current)
-          .map((link) => link.label),
-      ).toEqual(['進捗']);
-    }
-  });
-
-  it('makes settings reachable without retaining a previous job selection', () => {
-    const links = workspaceNavigation('/settings');
-    expect(links.filter((link) => link.current).map((link) => link.label)).toEqual(['設定']);
-    expect(links.find((link) => link.label === '分類・承認')?.href).toBeNull();
-    expect(workspaceNavigation('/jobs/job_first/unrecognized').some((link) => link.current)).toBe(
-      false,
-    );
   });
 });

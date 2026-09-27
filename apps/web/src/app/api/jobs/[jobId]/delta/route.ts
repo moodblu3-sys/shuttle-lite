@@ -5,14 +5,16 @@ export const dynamic = 'force-dynamic';
 export async function GET(_request: Request, { params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
   const store = getStore();
-  if (!store.getJob(jobId))
-    return NextResponse.json({ error: '移行が見つかりません。' }, { status: 404 });
+  const job = store.getJob(jobId);
+  if (!job) return NextResponse.json({ error: '移行が見つかりません。' }, { status: 404 });
   const runs = migrationRuns(store, jobId);
   const commands = runs
     .flatMap((r) => store.listJobOperations(r.id))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const pending = commands.some((c) => c.state === 'PENDING' || c.state === 'CLAIMED');
   const eligible =
+    job.migrationMode === 'AS_IS' &&
+    !job.testMode &&
     runs.every((r) => ['COMPLETED', 'FAILED'].includes(r.state) && r.cleanupState === 'NONE') &&
     !pending;
   return NextResponse.json({

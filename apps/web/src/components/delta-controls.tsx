@@ -17,7 +17,13 @@ interface Data {
   commands: JobCommandRecord[];
   plan: (DeltaPlan & { startedJobId: string | null }) | null;
 }
-export function DeltaControls({ jobId }: { jobId: string }) {
+export function DeltaControls({
+  jobId,
+  showHistory = true,
+}: {
+  jobId: string;
+  showHistory?: boolean;
+}) {
   const [data, setData] = useState<Data | null>(null);
   const [excluded, setExcluded] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -182,7 +188,7 @@ export function DeltaControls({ jobId }: { jobId: string }) {
           </button>
         </>
       ) : null}
-      {data ? (
+      {data && showHistory ? (
         <details open={data.runs.length > 1}>
           <summary>実行履歴</summary>
           <ul>

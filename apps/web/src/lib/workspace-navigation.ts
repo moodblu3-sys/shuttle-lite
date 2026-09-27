@@ -1,15 +1,22 @@
 export function workspaceNavigation(pathname: string) {
-  const job = /^\/jobs\/([^/]+)(\/review)?\/?$/.exec(pathname);
-  const jobPath = job ? `/jobs/${job[1]}` : null;
   return [
-    { label: '移行一覧', icon: 'folder', href: '/', current: pathname === '/' },
     {
-      label: '分類・承認',
-      icon: 'review',
-      href: jobPath ? `${jobPath}/review` : null,
-      current: !!job?.[2],
+      label: '移行一覧',
+      icon: 'folder',
+      href: '/',
+      current: pathname === '/' || pathname.startsWith('/jobs/'),
     },
-    { label: '進捗', icon: 'clock', href: jobPath, current: !!job && !job[2] },
     { label: '設定', icon: 'settings', href: '/settings', current: pathname === '/settings' },
   ] as const;
+}
+
+export function jobNavigation(jobId: string, mode: string, pathname: string) {
+  const base = `/jobs/${encodeURIComponent(jobId)}`;
+  return [
+    { label: '進捗', href: base },
+    mode === 'AS_IS'
+      ? { label: '差分移行', href: `${base}/delta` }
+      : { label: '分類・承認', href: `${base}/review` },
+    { label: '実行履歴', href: `${base}/history` },
+  ].map((link) => ({ ...link, current: pathname.replace(/\/$/, '') === link.href }));
 }

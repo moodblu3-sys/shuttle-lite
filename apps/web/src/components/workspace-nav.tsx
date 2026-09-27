@@ -10,28 +10,17 @@ export function WorkspaceNav() {
   return (
     <nav className="workspace-nav" aria-label="メインナビゲーション">
       <p className="workspace-nav-label">ワークスペース</p>
-      {links.map((link) =>
-        link.href ? (
-          <Link
-            key={link.label}
-            href={link.href}
-            className={link.icon === 'settings' ? 'workspace-settings' : undefined}
-            aria-current={link.current ? 'page' : undefined}
-          >
-            <WorkspaceIcon kind={link.icon} />
-            {link.label}
-          </Link>
-        ) : (
-          <span
-            key={link.label}
-            className="workspace-nav-unavailable"
-            title="移行一覧でジョブを選ぶと開けます"
-          >
-            <WorkspaceIcon kind={link.icon} />
-            {link.label}
-          </span>
-        ),
-      )}
+      {links.map((link) => (
+        <Link
+          key={link.label}
+          href={link.href}
+          className={link.icon === 'settings' ? 'workspace-settings' : undefined}
+          aria-current={link.current ? 'page' : undefined}
+        >
+          <WorkspaceIcon kind={link.icon} />
+          {link.label}
+        </Link>
+      ))}
     </nav>
   );
 }

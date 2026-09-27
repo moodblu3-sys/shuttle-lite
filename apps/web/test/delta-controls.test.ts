@@ -60,4 +60,14 @@ describe('差分確認と対象の選択', () => {
     await act(async () => root.render(createElement(DeltaControls, { jobId: 'job' })));
     expect(container.querySelector('button')!.disabled).toBe(true);
   });
+  it('keeps history separate on the dedicated delta page', async () => {
+    fetchMock.mockResolvedValueOnce(
+      Response.json({ eligible: true, runs: [], commands: [], plan: null }),
+    );
+    await act(async () =>
+      root.render(createElement(DeltaControls, { jobId: 'job', showHistory: false })),
+    );
+    expect(container.textContent).toContain('差分を確認');
+    expect(container.textContent).not.toContain('実行履歴');
+  });
 });
