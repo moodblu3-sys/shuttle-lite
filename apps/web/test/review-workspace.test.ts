@@ -95,6 +95,60 @@ describe('review workspace', () => {
       (b) => b.querySelector('strong')!.textContent,
     );
   }
+  it('shows a concise conflict and preserves rename and approval controls', async () => {
+    await render([
+      item('競合', {
+        needsAttention: true,
+        state: 'NEEDS_REVIEW',
+        lastErrorCategory: 'MOVE_CONFLICT',
+        lastError: 'Box API 409 item_name_in_use request_id=test',
+      }),
+    ]);
+    expect(container.querySelector('#review-file-競合')!.textContent).toContain(
+      '配置先に同名ファイルがあります',
+    );
+    expect(container.querySelector('#review-file-競合')!.textContent).not.toContain('409');
+    await open('競合');
+    const alert = container.querySelector('aside [role=alert]')!;
+    expect(alert.querySelector('details')!.open).toBe(false);
+    expect(alert.querySelector('details')!.textContent).toContain('request_id=test');
+    expect(alert.textContent).toContain('ファイル名か配置先を変更');
+    await click('連番を付ける');
+    expect(container.querySelector<HTMLInputElement>('aside input[type=text]')!.value).toBe(
+      '競合 (2).pdf',
+    );
+    expect(
+      [...container.querySelectorAll('button')].find((b) => b.textContent === 'このファイルを承認')!
+        .disabled,
+    ).toBe(false);
+  });
+
+  it('provides recovery for metadata extraction failure without a stored API error', async () => {
+    await render([
+      item('抽出', {
+        needsAttention: true,
+        businessMetadata: {
+          revision: 1,
+          templateId: 'enterprise/contract',
+          template: {
+            scope: 'enterprise',
+            templateKey: 'contract',
+            displayName: '契約書',
+            fields: [{ key: 'name', displayName: '契約先', type: 'string' }],
+          },
+          values: {},
+          canExtract: true,
+          extractionStatus: 'FAILED',
+        },
+      }),
+    ]);
+    await open('抽出');
+    const alert = container.querySelector('aside [role=alert]')!;
+    expect(alert.textContent).toContain('メタデータを抽出できませんでした');
+    expect(alert.textContent).toContain('値を入力してください');
+    expect(alert.querySelector('details')).toBeNull();
+    expect(container.querySelector('input[type=checkbox]')).toBeNull();
+  });
   it('opens details on demand and restores focus and edits after closing', async () => {
     await render();
     expect(container.querySelector('aside')).toBeNull();

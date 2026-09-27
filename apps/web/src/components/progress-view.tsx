@@ -9,6 +9,8 @@ import { JobControls } from './job-controls';
 import { StatePill } from './state-pill';
 import { JobIdentity } from './job-card';
 import type { MigrationProfile } from '@shuttle-lite/core';
+import { ErrorNotice } from './error-notice';
+import { errorPresentation } from '../lib/error-presentation';
 
 export function ProgressView({
   jobId,
@@ -270,10 +272,8 @@ export function ProgressIdentity({
           <span className="mono">{profile?.sourceRootPath ?? '-'}</span>
         </p>
       </div>
-      {snapshot.job.lastError && (
-        <p className="error" role="alert">
-          {snapshot.job.lastErrorCategory}: {snapshot.job.lastError}
-        </p>
+      {(snapshot.job.lastError || snapshot.job.lastErrorCategory) && (
+        <ErrorNotice category={snapshot.job.lastErrorCategory} message={snapshot.job.lastError} />
       )}
     </>
   );
@@ -420,7 +420,9 @@ function DetailPanels({ snapshot }: { snapshot: JobSnapshot }) {
                   <td>
                     <StatePill state={item.state} />
                     {item.lastErrorCategory ? (
-                      <div className="small muted">{item.lastErrorCategory}</div>
+                      <div className="small muted">
+                        {errorPresentation(item.lastErrorCategory).title}
+                      </div>
                     ) : null}
                   </td>
                   <td className="small">
@@ -440,7 +442,7 @@ function DetailPanels({ snapshot }: { snapshot: JobSnapshot }) {
           <ul className="small">
             {snapshot.errorCategories.map((entry) => (
               <li key={entry.category}>
-                {entry.category}: {entry.count}
+                {errorPresentation(entry.category).title}: {entry.count}件
               </li>
             ))}
           </ul>

@@ -111,6 +111,26 @@ describe('completion and live progress', () => {
     expect(transfer.open).toBe(false);
     expect(transfer.textContent).toContain('Boxへ転送');
   });
+  it('presents job failures with collapsed diagnostics and preserves retry controls', async () => {
+    const initial = snapshot({ failedItems: 1 });
+    await render({
+      ...initial,
+      job: {
+        ...initial.job,
+        state: 'FAILED',
+        lastErrorCategory: 'PROXY_AUTH',
+        lastError: 'HTTP 407 proxy authentication required',
+      },
+    });
+    const alert = container.querySelector('[role=alert]')!;
+    const details = alert.querySelector('details')!;
+    expect(details.open).toBe(false);
+    expect(details.textContent).toContain('HTTP 407');
+    details.remove();
+    expect(alert.textContent).toContain('プロキシの認証に失敗しました');
+    expect(alert.textContent).not.toContain('407');
+    expect(container.textContent).toContain('失敗した1件を再実行');
+  });
   it.each([
     { completedItems: 3, failedItems: 1, skippedItems: 1 },
     { completedItems: 0, failedItems: 0, skippedItems: 5 },

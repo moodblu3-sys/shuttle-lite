@@ -27,6 +27,8 @@ import {
 } from '../lib/review-model';
 import { DocumentIcon, WorkspaceIcon as Icon } from './workspace-icon';
 import styles from './review-workspace.module.css';
+import { ErrorNotice } from './error-notice';
+import { errorPresentation } from '../lib/error-presentation';
 
 function metadataStatus(item: ReviewItemView, pending: boolean): string {
   if (pending) return '処理中';
@@ -337,7 +339,11 @@ export function ReviewList({
     const changed = currentDraft(item).destinationKey !== draftFor(item).destinationKey;
     const subtitle = duplicateNames.has(item.sourceFileName)
       ? item.sourceRelativePath
-      : item.lastError;
+      : item.needsAttention
+        ? item.businessMetadata?.extractionStatus === 'FAILED'
+          ? 'メタデータを抽出できませんでした'
+          : errorPresentation(item.lastErrorCategory).title
+        : null;
     return (
       <li
         key={item.itemId}
@@ -562,9 +568,11 @@ export function ReviewList({
             </nav>
           ) : null}
           {error ? (
-            <p className="error" role="alert">
-              {error}
-            </p>
+            <ErrorNotice
+              title="操作を完了できませんでした"
+              action="受付状況・入力内容と技術情報を確認してください。"
+              message={error}
+            />
           ) : null}
           {notice ? (
             <p className={styles.notice} role="status">
@@ -648,10 +656,11 @@ export function ReviewList({
                   </div>
                 ) : null}
                 {active.reviewCommand?.state === 'REJECTED' ? (
-                  <p className="error" role="alert">
-                    操作を反映できませんでした。
-                    {active.reviewCommand.rejectionReason}
-                  </p>
+                  <ErrorNotice
+                    title="操作を反映できませんでした"
+                    action="最新の処理状態と入力内容を確認してください。"
+                    message={active.reviewCommand.rejectionReason}
+                  />
                 ) : null}
                 <fieldset disabled={locked} className={styles.fields}>
                   <section>
@@ -686,11 +695,20 @@ export function ReviewList({
                     </details>
                     {destinationPath ? <p className={styles.path}>{destinationPath}</p> : null}
                   </section>
-                  {active.needsAttention && (active.lastError || active.operatorAction) ? (
+                  {active.needsAttention ? (
                     <section className={styles.problem}>
-                      <h3>要対応</h3>
-                      <p>{active.lastError}</p>
-                      <p>{active.operatorAction}</p>
+                      <ErrorNotice
+                        category={active.lastErrorCategory}
+                        message={active.lastError}
+                        state={active.state}
+                        {...(active.businessMetadata?.extractionStatus === 'FAILED'
+                          ? {
+                              title: 'メタデータを抽出できませんでした',
+                              action:
+                                '「項目を確認・編集」から再抽出するか、値を入力してください。',
+                            }
+                          : {})}
+                      />
                       {active.lastErrorCategory === 'MOVE_CONFLICT' ? (
                         <>
                           <label>

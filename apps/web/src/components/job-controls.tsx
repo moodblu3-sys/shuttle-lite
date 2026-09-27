@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { CommandType, JobCommandRecord } from '@shuttle-lite/core';
 import type { JobSnapshot } from '@shuttle-lite/telemetry';
+import { ErrorNotice } from './error-notice';
 
 interface ControlButton {
   readonly type: CommandType;
@@ -177,9 +178,11 @@ export function JobControls({
 
       {operation ? <OperationResult command={operation} /> : null}
       {message ? (
-        <p className="error" role="alert">
-          {message}
-        </p>
+        <ErrorNotice
+          title="操作の受付を確認できませんでした"
+          action="進捗で受付状況を確認してください。"
+          message={message}
+        />
       ) : null}
     </div>
   );
@@ -197,23 +200,26 @@ const OPERATION_LABELS: Partial<Record<CommandType, string>> = {
 
 export function OperationResult({ command }: { command: JobCommandRecord }) {
   const label = OPERATION_LABELS[command.type] ?? '操作';
+  if (command.state === 'REJECTED')
+    return (
+      <ErrorNotice
+        title={`${label}に失敗しました`}
+        action="処理結果と技術情報を確認してください。"
+        message={command.rejectionReason}
+      />
+    );
   const message =
-    command.state === 'REJECTED'
-      ? `${label}に失敗しました。${command.rejectionReason ?? ''}`
-      : command.state === 'PENDING'
-        ? `${label}を受け付けました。`
-        : command.state === 'CLAIMED'
-          ? `${label}を実行中です。`
-          : command.type === 'GENERATE_REPORT'
-            ? 'レポートをBoxに保存しました。'
-            : command.type === 'PAUSE_JOB'
-              ? '一時停止を要求しました。'
-              : `${label}の指示を実行しました。`;
+    command.state === 'PENDING'
+      ? `${label}を受け付けました。`
+      : command.state === 'CLAIMED'
+        ? `${label}を実行中です。`
+        : command.type === 'GENERATE_REPORT'
+          ? 'レポートをBoxに保存しました。'
+          : command.type === 'PAUSE_JOB'
+            ? '一時停止を要求しました。'
+            : `${label}の指示を実行しました。`;
   return (
-    <p
-      className={command.state === 'REJECTED' ? 'error' : 'small muted'}
-      role={command.state === 'REJECTED' ? 'alert' : 'status'}
-    >
+    <p className="small muted" role="status">
       {message}
     </p>
   );

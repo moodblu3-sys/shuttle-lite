@@ -1,96 +1,84 @@
-# System連携 TODO
+# 実環境の準備と残作業
 
-更新日: 2026-09-14
+更新日: 2026-09-23
 
-Applicationは`BOX_MODE=fake`でend-to-endに動作する。この文書は、実環境へ
-接続するために残している作業だけを並べる。コードは実装済みで、実行だけが
-未了である。
+通常の利用開始と、開発用の旧MVP検証を分ける。設定の詳細は[設定画面と処理ログ](settings.md)、
+メタデータの定義は[書類別メタデータ](metadata-templates.md)、検証記録は[acceptance.md](acceptance.md)を参照する。
 
-## 1. Box CCG application
+## 1. Box認証と接続確認
 
-- [ ] Box Developer Consoleで Custom App / Server Authentication (Client Credentials Grant) を作成
-- [ ] Application Scopes: `Read all files and folders`, `Write all files and folders`
-- [ ] Advanced Features: `Make API calls using the as-user header` は不要
-- [ ] Metadata templateを作る場合のみ `Manage enterprise properties` を追加
-- [ ] Admin Consoleでapplicationを承認 (Client IDで authorize)
-- [ ] `.env` へ `BOX_CLIENT_ID` / `BOX_CLIENT_SECRET` / `BOX_ENTERPRISE_ID` を設定し、`BOX_MODE=real` にする
+社用Macにある認証設定を使う。認証情報をチャットやGitHubへ送らない。
 
-確認: `npm run check:proxy` の後、`npm run bootstrap:box` が `whoAmI` に成功すること。
-
-## 2. Box folder layoutとmetadata template
+- CCG方式: 管理者によるアプリの承認と、利用するファイル・フォルダー・メタデータ・Box AIへの権限を確認する。
+- アクセストークン方式: [接続手順](access-token-setup.md)を参照する。CCGを使用する場合は、アクセストークン設定が優先されていないことも確認する。
+- `.env`で認証設定やプロキシ設定を変更した場合はWebとWorkerを再起動する。
 
 ```sh
-npm run bootstrap:box
+npm run check:box
 ```
 
-- [ ] `/Shuttle Lite` を作成し、そのfolder IDを `BOX_ROOT_FOLDER_ID` に設定
-- [ ] `_staging` / `_needs_review` / `_reports` / `destinations/...` が作られることを確認
-- [ ] 出力された folder ID を `.env` へ反映
-- [ ] `shuttleLiteMigration` templateが作成されること（権限がなければ管理者へ依頼）
-- [ ] Service Accountへ `/Shuttle Lite` だけをEditorで共有する。上位folderのcollaborationでstagingが想定外の利用者に見えないことをAdmin Consoleで確認
+これはユーザー情報の読み取りによる認証確認。フォルダー作成・アップロード・Box AI・メタデータ付与は行わず、
+それらの操作権限まで確認したことにはならない。
 
-template作成をskipしたい場合は `npm run bootstrap:box -- --skip-template`。
+## 2. フォルダーとテンプレート
 
-## 3. Box AIの実応答を確認する (Q-004)
+1. Boxでデモ用の移行先と、その配下の分類先フォルダーを用意する。
+2. アプリの認証ユーザーが対象にアクセスできることを確認する。
+3. 使用する既存の業務メタデータテンプレートを「設定」で複数選択し、保存する。
+   テンプレートを新たに用意する場合は[準備手順](metadata-templates.md)を使う。
+4. 「新しい移行」でMacの移行元とBoxの移行先を選択する。
 
-- [ ] Upload直後に `AI_NOT_READY` (202) が返る時間を計測する
-- [ ] `ai/extract_structured` のresponseに `metadata.confidence` が含まれるか確認し、
-      含まれない場合は review画面のconfidence表示を「取得できませんでした」のままにする
-- [ ] Synthetic fixtureはtext/markdownなので、実Boxで検証する際はPDFやDOCXへ差し替える
-      （`scripts/generate-fixtures.ts` の出力形式を変更する）
-- [ ] CCG Service AccountでBox AIが利用できるか（Box AI の有効化状況）を確認
+`BOX_ROOT_FOLDER_ID`は一時保管先などの内部フォルダーを置く基点で、移行ごとに選ぶ最終配置先とは別。
+内部フォルダーは必要に応じてアプリが作成する。実Boxの分類先フォルダーは自動作成しない。
+配置先候補は移行開始時に保存するため、後からBoxに作ったフォルダーは既存移行の候補へ自動追加されない。
 
-## 4. Metadata field型の確定 (Q-005)
+新規移行には共通の`shuttleLiteMigration`テンプレートを付けない。配置先とテンプレートの候補は独立しており、
+テンプレート未選択でも配置先を指定して承認できる。その場合、業務メタデータは付けない。
 
-- [ ] `sourceSize` を `float` で扱えるか、桁数の制限を確認
-- [ ] `sourceModifiedAt` / `migratedAt` / `effectiveDate` の `date` 型がISO 8601を受けるか
-- [ ] `routingReason` などstring fieldの文字数上限を確認し、`packages/routing/src/metadata.ts` の
-      切り詰め長を合わせる
+## 3. 発表前の確認
 
-## 5. Snowflake (Q-007)
+以下は現行仕様の確認項目。チェックは社用Macで結果を確認してから付ける。
 
-SQL APIによる送信処理は実装済み。設定画面でログ出力先を選択できる。
-テーブル定義・秘密鍵・権限の準備は[設定と処理ログ](settings.md)を参照する。
+- [ ] 使用テンプレートの設定 → 新しい移行 → 自動選択・抽出 → 一括承認 → 配置完了を通す。
+- [ ] 未選択の文書に手動で配置先を指定し、承認して完了できる。
+- [ ] Box上の配置先、ファイル名、承認したメタデータとレポートを確認する。
+- [ ] 再読み込み後も下書きを復元でき、処理中・要対応のファイルを一括承認に含めない。
+- [ ] エラーの原因・対処が日本語で表示され、技術情報を開いて原文を確認できる。
+- [ ] 実際の画面サイズで、一覧・詳細・承認ボタンが隠れないことを確認する。
 
-- [x] キーペアJWT・イベント単位のMERGE・非同期応答・再送を実装
-- [x] 共通のproxy / CA設定を利用
-- [x] 合成鍵と模擬応答で署名・送信・失敗時保持・再送を検証
-- [ ] 実Snowflakeのアカウント・ユーザー・公開鍵・ウェアハウス・テーブル・権限を準備
-- [ ] 社用Macで実送信、proxy経由、重複排除、停止中のmigration継続を確認
+過去の実Box・Squid検証は[検証記録](acceptance.md)に残す。
+自動テストや旧方式の検証成功を、現行のBox AI分類精度・実Box通し確認の代わりにしない。
 
-## 6. Squid (明示的proxy) の検証
+## 4. プロキシ経由のデモ
 
-**実施済み**。Squid 7.7 (Basic認証、宛先allowlist) 経由で実Boxへ移行し、
-18 / 18 件の検証項目が成功した。Dockerが無いため `brew install squid` で
-直接起動している。結果と数値は [docs/acceptance.md](acceptance.md) の
-「proxy経由での実測」にある。
+Squidの準備は[infra/squid/README.md](../infra/squid/README.md)を参照する。
+プロキシ必須環境では`PROXY_MODE=required`を使用し、設定変更後にWebとWorkerを再起動する。
 
 ```sh
 npm run squid:start
 npm run check:proxy
-npm run verify -- --real
-npm run squid:log
 ```
 
-- [x] Basic認証ありでBox auth / API / upload / AIが通ること
-- [x] Squid access logで全Box通信が説明できること（direct接続が発生していないこと）
-  - 上り 51.3 MB がSquidを通っており、移行した51 MBと一致する
-- [x] `PROXY_MODE=required` でproxyへ到達できないとき、direct接続へ抜けず
-      `PROXY_CONNECT` で停止すること
-- [x] allowlist外の宛先が `TCP_DENIED/403` になること
-- [x] password誤りが `PROXY_AUTH` (407) に分類されること
-- [ ] Custom CAを使う場合、`PROXY_CA_BUNDLE_PATH` を設定してTLS検証を無効化せずに通ること
-  - 今回のSquidはTLS interceptしないため未確認。企業proxyでのTLS inspection時に要確認
+`check:proxy`は各接続先への到達性確認であり、ファイル転送の実証とは別。
+デモの移行を実行した時刻とSquidのアクセスログを照合し、実際の転送経路を確認する。
+過去に別の移行で取得したログを当日の証拠として扱わない。
 
-詳細は [infra/squid/README.md](../infra/squid/README.md)。
+## 5. 発表後の確認
 
-## 7. Windows実機確認（発表後へ延期）
+- Snowflake: SQL API・キーペア認証・重複排除・再送は実装済み。実アカウントへの送信は未検証。
+  準備とテーブル定義は[settings.md](settings.md)を使う。発表ではローカルログを使用する。
+- Windows: 固有のエラー処理は実装済み。ネイティブフォルダー選択は未対応で、実機検証も未実施。
+  [windows.md](windows.md)を参照する。
+- TLS検査を行う企業プロキシ: CAを設定し、証明書検証を無効化せず通信できることを実機で確認する。
 
-発表はmacOSで実演する（[D-016](decisions.md)）。Windows対応は実装済みで
-`test/windows.test.ts` が通っているが、実機では未検証である。
-checklistは [docs/windows.md](windows.md) にあり、PoCの次段階の最初に置く。
+## 旧MVPの検証用コマンド
 
-## 8. Box-to-Box (任意)
+以下は通常の利用開始には不要。実Box側への作成・更新を伴うため、専用の検証領域で扱う。
 
-移行元・移行先の2 tenantとCCG applicationが用意できた場合のみ。
-設計は [docs/box-to-box.md](box-to-box.md)、実装はSourceAdapterの追加のみで済む。
+| コマンド | 用途 |
+| --- | --- |
+| `npm run bootstrap:box` | 旧共通メタデータ方式の検証環境を準備する |
+| `npm run verify:box` | 検証用フォルダー・テンプレート・ファイルを作成・更新してAPIを確認する |
+| `npm run verify -- --real` | 旧方式の合成データを専用領域へ移行し照合する |
+
+通常の接続確認は`check:box`、現行メタデータ方式の確認は上記の画面操作を使う。
