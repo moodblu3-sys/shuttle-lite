@@ -5,6 +5,7 @@ import {
   type ItemState,
   type MigrationItem,
   phaseForState,
+  pipelineProgress,
   toShuttleError,
 } from '@shuttle-lite/core';
 import type { JobContext } from './context';
@@ -98,8 +99,24 @@ export async function advanceItem(
     // file that needed two retries during upload would start the AI step with
     // fewer attempts left than a file that uploaded cleanly.
     const advanced = ctx.store.getItem(itemId);
-    if (advanced && advanced.state !== state && advanced.attempts > 0) {
-      ctx.store.updateItem(itemId, { attempts: 0 });
+    if (
+      advanced &&
+      isPipelineState(advanced.state) &&
+      pipelineProgress(advanced.state) > pipelineProgress(state) &&
+      (advanced.attempts > 0 ||
+        advanced.nextAttemptAt !== null ||
+        advanced.lastErrorCategory !== null ||
+        advanced.lastError !== null) &&
+      advanced.lastErrorCategory === item.lastErrorCategory &&
+      advanced.lastError === item.lastError
+    ) {
+      // 前へ進んだ処理だけを復旧扱いにする。再承認・除外に戻した理由は残す。
+      ctx.store.updateItem(itemId, {
+        attempts: 0,
+        nextAttemptAt: null,
+        lastError: null,
+        lastErrorCategory: null,
+      });
     }
     return 'ADVANCED';
   } catch (error) {

@@ -10,7 +10,11 @@ export interface BoxErrorBody {
   };
 }
 
-function categoryForStatus(status: number, code: string | undefined): ErrorCategory {
+function categoryForStatus(
+  status: number,
+  code: string | undefined,
+  context: Record<string, unknown>,
+): ErrorCategory {
   if (status === 400 && (code === 'bad_digest' || code === 'invalid_content_md5')) {
     return 'INTEGRITY_MISMATCH';
   }
@@ -23,7 +27,22 @@ function categoryForStatus(status: number, code: string | undefined): ErrorCateg
   if (status === 405) return 'BOX_BAD_REQUEST';
   if (status === 409) return 'BOX_CONFLICT';
   if (status === 410) return 'UPLOAD_SESSION_EXPIRED';
-  if (status === 412) return 'UPLOAD_PART_MISMATCH';
+  if (status === 412) {
+    let path = '';
+    try {
+      if (typeof context.url === 'string') path = new URL(context.url).pathname;
+    } catch {
+      // 呼び出し先が不明な場合は、特定の処理の失敗と決めつけない。
+    }
+    if (context.method === 'PUT' && /\/files\/upload_sessions\/[^/]+\/?$/.test(path)) {
+      return 'UPLOAD_PART_MISMATCH';
+    }
+    // 実Boxで抽出直後の再試行が成功した。representation生成が原因とは断定しない。
+    if (context.method === 'POST' && /\/ai\/extract_structured\/?$/.test(path)) {
+      return 'AI_NOT_READY';
+    }
+    return 'BOX_PRECONDITION';
+  }
   if (status === 413) return 'SIZE_LIMIT';
   if (status === 429) return 'BOX_RATE_LIMIT';
   if (status === 407) return 'PROXY_AUTH';
@@ -59,7 +78,7 @@ export function mapResponseError(
   const retryAfter = parseRetryAfter(
     Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader,
   );
-  const category = categoryForStatus(status, body.code);
+  const category = categoryForStatus(status, body.code, context);
   const requestId = body.request_id ?? requestIdOf(headers);
   return new ShuttleError(
     category,
@@ -67,7 +86,7 @@ export function mapResponseError(
     {
       status,
       requestId,
-      retryAfterMs: retryAfter,
+      retryAfterMs: retryAfter ?? (category === 'AI_NOT_READY' ? 5_000 : undefined),
       details: { ...context, code: body.code, conflicts: body.context_info?.conflicts },
     },
   );

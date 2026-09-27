@@ -5,6 +5,7 @@ import type {
   BusinessTemplate,
 } from '@shuttle-lite/core';
 import {
+  ERROR_CATEGORY_META,
   sameTemplate,
   templateId,
   canTransition,
@@ -57,6 +58,28 @@ import {
   type SessionRow,
 } from './rows';
 import { fromBool, nowIso, type SqliteDatabase } from './sqlite';
+
+// 旧版で再試行成功後も残ったエラーは、復旧記録がある場合だけ表示から除く。
+// 元のitem・イベントは変更せず、一覧の件数・ページ分割にも同じ判定を使う。
+const CURRENT_REVIEW_ERROR = `last_error_category IS NOT NULL AND NOT (
+  state = 'REVIEW_REQUIRED' AND resume_state IS NULL
+  AND last_error_category IN (${Object.entries(ERROR_CATEGORY_META)
+    .filter(([, meta]) => meta.retryable)
+    .map(([category]) => `'${category}'`)
+    .join(',')})
+  AND EXISTS (
+    SELECT 1 FROM migration_events failure JOIN migration_events recovery
+      ON recovery.item_id = failure.item_id AND recovery.job_id = failure.job_id
+    WHERE failure.item_id = migration_items.id AND failure.job_id = migration_items.job_id
+      AND failure.rowid = (SELECT MAX(rowid) FROM migration_events
+        WHERE item_id = migration_items.id AND job_id = migration_items.job_id
+          AND status IN ('RETRYING', 'FAILED'))
+      AND failure.status = 'RETRYING' AND failure.error_category = last_error_category
+      AND recovery.rowid > failure.rowid
+      AND recovery.phase = 'AI_EXTRACTION' AND recovery.status = 'SUCCEEDED'
+      AND recovery.box_file_id = migration_items.box_file_id
+  )
+)`;
 
 export interface CreateProfileInput {
   readonly name: string;
@@ -887,7 +910,7 @@ export class ShuttleStore {
         AND type IN ('APPROVE_ITEM', 'SKIP_ITEM', 'SELECT_METADATA_TEMPLATE')
         AND json_extract(payload, '$.itemId') = migration_items.id
         ORDER BY created_at DESC, rowid DESC LIMIT 1) IN ('PENDING', 'CLAIMED') THEN 'processing'
-      WHEN last_error_category IS NOT NULL OR
+      WHEN (${CURRENT_REVIEW_ERROR}) OR
         (SELECT extraction_status FROM item_metadata WHERE item_id = migration_items.id) = 'FAILED'
         THEN 'attention'
       WHEN COALESCE((SELECT value FROM json_each(?) WHERE key = migration_items.id),
@@ -954,6 +977,14 @@ export class ShuttleStore {
       )
       .get(jobId) as { total: number; transferred: number };
     return { totalBytes: row.total, transferredBytes: row.transferred };
+  }
+
+  hasCurrentReviewError(itemId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare(`SELECT 1 FROM migration_items WHERE id = ? AND (${CURRENT_REVIEW_ERROR})`)
+        .get(itemId),
+    );
   }
 
   updateItem(itemId: string, patch: ItemPatch): void {

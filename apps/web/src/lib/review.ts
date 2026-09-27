@@ -32,6 +32,7 @@ export function buildReviewViews(
     const mappings = store.getJobMetadata(jobId);
     const business = mappings ? store.getBusinessMetadata(item.id) : null;
     const command = store.latestReviewCommand(jobId, item.id);
+    const hasCurrentError = item.lastErrorCategory !== null && store.hasCurrentReviewError(item.id);
     return {
       ...(business
         ? {
@@ -54,14 +55,13 @@ export function buildReviewViews(
       boxFileId: item.boxFileId,
       boxSha1: item.boxSha1,
       boxVersionId: item.boxFileVersionId,
-      lastErrorCategory: item.lastErrorCategory,
-      lastError: item.lastError,
-      operatorAction: item.lastErrorCategory
+      lastErrorCategory: hasCurrentError ? item.lastErrorCategory : null,
+      lastError: hasCurrentError ? item.lastError : null,
+      operatorAction: hasCurrentError
         ? (ERROR_CATEGORY_META[item.lastErrorCategory as ErrorCategory]?.operatorAction ?? null)
         : null,
-      // 前の試行が失敗して戻ってきたitem。同じ承認をもう一度送っても同じ
-      // 失敗になるため、一括承認の対象から外して個別対応させる。
-      needsAttention: item.lastErrorCategory !== null || business?.extractionStatus === 'FAILED',
+      // 未解決の失敗だけを一括承認から外す。復旧済みの一時エラーは含めない。
+      needsAttention: hasCurrentError || business?.extractionStatus === 'FAILED',
       finalName: item.finalName,
       suggestedDestinationKey: routing?.suggestedDestinationKey ?? null,
       hasRoutingDecision: hasRoutingDecision(

@@ -30,6 +30,28 @@ describe('Box destination HTTP contract', () => {
     vi.restoreAllMocks();
   });
 
+  it.each([202, 412])(
+    'waits after %s in both structured extraction entry points',
+    async (status) => {
+      const pool = agent.get('https://box.invalid');
+      for (const extract of [
+        () =>
+          gateway.extractStructured({ fileId: '123', fileName: 'memo.docx', destinationKeys: [] }),
+        () => gateway.extractTemplate('123', demoBusinessTemplates[0]!),
+      ]) {
+        pool.intercept({ path: '/2.0/ai/extract_structured', method: 'POST' }).reply(status, {
+          code: 'precondition_failed',
+          message: 'The resource has been modified.',
+        });
+        await expect(extract()).rejects.toMatchObject({
+          category: 'AI_NOT_READY',
+          retryAfterMs: 5000,
+        });
+      }
+      agent.assertNoPendingInterceptors();
+    },
+  );
+
   it('lists all template pages and extracts using the selected Box template', async () => {
     const template = demoBusinessTemplates[1]!;
     const pool = agent.get('https://box.invalid');

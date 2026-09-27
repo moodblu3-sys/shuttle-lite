@@ -21,6 +21,7 @@ export const ERROR_CATEGORIES = [
   'BOX_RATE_LIMIT',
   'BOX_SERVER',
   'BOX_BAD_REQUEST',
+  'BOX_PRECONDITION',
   'BOX_TIMEOUT',
   'UPLOAD_SESSION_EXPIRED',
   'UPLOAD_PART_MISMATCH',
@@ -133,6 +134,10 @@ export const ERROR_CATEGORY_META: Record<ErrorCategory, CategoryMeta> = {
     retryable: false,
     operatorAction: 'Requestが不正です。Request IDを添えて調査してください。',
   },
+  BOX_PRECONDITION: {
+    retryable: true,
+    operatorAction: 'Box上のリソースが更新されています。状態を確認して再試行します。',
+  },
   BOX_TIMEOUT: {
     retryable: true,
     needsReconcile: true,
@@ -181,7 +186,7 @@ export const ERROR_CATEGORY_META: Record<ErrorCategory, CategoryMeta> = {
   },
   AI_NOT_READY: {
     retryable: true,
-    operatorAction: 'Representation生成待ちです。時間をおいて再試行します。',
+    operatorAction: 'Box AIで処理できる状態になるまで、時間をおいて再試行します。',
   },
   AI_INVALID_OUTPUT: {
     retryable: true,
