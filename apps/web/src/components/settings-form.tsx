@@ -27,11 +27,33 @@ export function SettingsForm({
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [connection, setConnection] = useState('');
   const changed = JSON.stringify(settings) !== JSON.stringify(saved);
   function update<K extends keyof RuntimeSettings>(key: K, value: RuntimeSettings[K]) {
     setSettings((current) => ({ ...current, [key]: value }));
     setStatus('');
     setError('');
+    setConnection('');
+  }
+  async function checkSnowflake() {
+    setChecking(true);
+    setError('');
+    setConnection('');
+    try {
+      const response = await fetch('/api/settings/snowflake', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-shuttle-settings': '1' },
+        body: JSON.stringify({ revision }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? '接続を確認できませんでした。');
+      setConnection(`テストログを送信しました（${result.eventId}）`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '接続を確認できませんでした。');
+    } finally {
+      setChecking(false);
+    }
   }
   async function chooseLogFolder() {
     setPicking(true);
@@ -77,7 +99,7 @@ export function SettingsForm({
   }
   return (
     <form onSubmit={submit} className="settings-form">
-      <fieldset disabled={busy || picking}>
+      <fieldset disabled={busy || picking || checking}>
         <label className="settings-row">
           <span>AI分類</span>
           <input
@@ -175,6 +197,15 @@ export function SettingsForm({
                 Macの.envにSNOWFLAKE_PRIVATE_KEY_PATHを設定して再起動してください。
               </p>
             )}
+            <button
+              type="button"
+              className="secondary"
+              disabled={changed || !snowflakeKeyConfigured}
+              onClick={() => void checkSnowflake()}
+            >
+              {checking ? '送信中…' : 'テストログを送信'}
+            </button>
+            {connection && <p role="status">{connection}</p>}
           </div>
         )}
         <div className="settings-actions">

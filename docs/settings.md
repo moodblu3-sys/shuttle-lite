@@ -58,6 +58,9 @@ AI分類が有効なら、文書本文と候補の名前・項目からテンプ
 
 ## Snowflakeの準備
 
+まず既存の処理イベントを自動送信する。操作者名・社員ID・ファイル名を含む監査ログの拡張は
+別の変更で扱う。現時点のSnowflakeログだけで本人確認や投入ファイル名の監査ができるとはしない。
+
 SQL APIとRSAキーペア認証を利用する。追加のnpm依存はない。
 Snowflakeのアカウント、ユーザー、ウェアハウス、データベース、スキーマを準備し、
 ユーザーに公開鍵を登録する。秘密鍵はこのリポジトリ外でMacに保持する。
@@ -101,6 +104,26 @@ CREATE TABLE IF NOT EXISTS SHUTTLE_LITE_EVENTS (
 以前のintegration-todo.mdにあった列ごとのテーブル案とは異なる。
 既存テーブルを上書きせず、必要なら別名の専用テーブルを作って画面から指定する。
 イベントはPAYLOADの中に格納する。
+
+設定を保存し、「テストログを送信」を押す。保存済みの設定だけを使い、合成イベントを1件
+書き込む。Boxにはアクセスしない。成功時に表示されるevent IDをSnowflakeで検索すると、
+認証・通信・テーブルへの書き込みを照合できる。テストイベントのJOB_IDは`connection-test`。
+接続先や設定を編集すると確認結果は消える。保存前は送信できない。
+
+```sql
+SELECT EVENT_ID, PAYLOAD, LOADED_AT
+FROM SHUTTLE_LITE_EVENTS
+WHERE JOB_ID = 'connection-test'
+ORDER BY LOADED_AT DESC;
+```
+
+その後、デモファイルで新しい移行を1件実行する。アプリの「処理の内訳」にあるログ記録件数と、
+Snowflakeで対象JOB_IDの行が増えることを確認する。通常のログはworkerが自動送信するため、
+送信待ちがある間はworkerを稼働させる。テスト送信の成功だけではworker稼働の確認にはならない。
+以前ローカルへ出力済みのログは自動でSnowflakeへ再送しない。
+
+未接続のMacではSnowflake側のアカウント・公開鍵登録・専用テーブルと権限の準備が必要。
+この実装環境では実アカウントとの疎通を行っておらず、接続成功を保証するものではない。
 
 ```sql
 SELECT EVENT_ID, JOB_ID,
