@@ -82,7 +82,11 @@ describe('migration mode selection', () => {
       migrationMode: 'AS_IS',
     });
     container.querySelector<HTMLInputElement>('[name=name]')!.value = '営業資料の移行';
-    expect(container.textContent).toContain('移行データ / 営業資料');
+    expect(
+      container.querySelector('[aria-labelledby=box-folder-label] .source-folder-choice')
+        ?.textContent,
+    ).toContain('最終配置先：移行データ / 営業資料');
+    expect(container.textContent).not.toContain('配置先の範囲');
     expect(container.textContent).toContain('初回の同名ファイル');
     expect(
       [...container.querySelectorAll('button')].find((b) => b.textContent === '移行を開始')!
@@ -206,6 +210,19 @@ describe('migration mode selection', () => {
     );
     expect(container.querySelector('.source-check')?.textContent).toContain('未確認');
     expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('shows only the selected destination for AI and clears the preserve path on a mode switch', async () => {
+    await selectFolders();
+    expect(container.querySelector('[aria-labelledby=box-folder-label]')?.textContent).toContain(
+      '移行データ',
+    );
+    expect(container.textContent).not.toContain('配置先の範囲');
+    expect(container.textContent).not.toContain('最終配置先');
+    await mode('AS_IS');
+    expect(container.textContent).not.toContain('最終配置先');
+    await mode('AI_ORGANIZE');
+    expect(container.textContent).not.toContain('最終配置先');
   });
 
   it('restores the existing AI option when switching back', async () => {

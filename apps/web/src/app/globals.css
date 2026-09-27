@@ -319,18 +319,6 @@ a:hover {
   gap: 20px;
   align-items: start;
 }
-.migration-target {
-  display: grid;
-  gap: 8px;
-  overflow-wrap: anywhere;
-  padding: 16px 20px;
-  background: var(--canvas);
-  border-radius: 8px;
-}
-.migration-target > span {
-  font-size: 13px;
-  color: var(--ink-soft);
-}
 .source-check {
   padding: 20px;
   border: 1px solid var(--line);

@@ -229,6 +229,7 @@ export function NewJobForm({
         <BoxFolderPicker
           key={migrationMode}
           migrationMode={migrationMode}
+          sourceRootName={folder?.name}
           value={destination}
           onChange={setDestination}
           onBusyChange={setSelectingDestination}
@@ -236,15 +237,6 @@ export function NewJobForm({
           boxMode={boxMode}
         />
       </div>
-      {destination && folder ? (
-        <div className="migration-target" aria-live="polite">
-          <span>{migrationMode === 'AS_IS' ? '最終配置先' : '配置先の範囲'}</span>
-          <strong>
-            {destination.name}
-            {migrationMode === 'AS_IS' ? ` / ${folder.name}` : ' 配下の既存フォルダー'}
-          </strong>
-        </div>
-      ) : null}
       <section className="source-check" aria-label="開始前の確認">
         <div className="card-head">
           <h2>開始前の確認</h2>

@@ -13,6 +13,7 @@ export function BoxFolderPicker({
   disabled,
   boxMode,
   migrationMode = 'AI_ORGANIZE',
+  sourceRootName,
 }: {
   value: SelectedBoxFolder | null;
   onChange: (value: SelectedBoxFolder) => void;
@@ -20,6 +21,7 @@ export function BoxFolderPicker({
   disabled: boolean;
   boxMode: 'real' | 'fake';
   migrationMode?: 'AS_IS' | 'AI_ORGANIZE';
+  sourceRootName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [listing, setListing] = useState<Listing | null>(null);
@@ -89,6 +91,11 @@ export function BoxFolderPicker({
       <div className="source-folder-choice">
         <div aria-live="polite">
           <strong>{value?.name ?? 'フォルダー未選択'}</strong>
+          {migrationMode === 'AS_IS' && value && sourceRootName ? (
+            <p className="small muted source-folder-path">
+              最終配置先：{value.name} / {sourceRootName}
+            </p>
+          ) : null}
         </div>
         <button
           type="button"
