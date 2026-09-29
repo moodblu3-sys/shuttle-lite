@@ -27,6 +27,10 @@ export async function reconcileJob(ctx: JobContext): Promise<ReconcileSummary> {
     );
   if (candidates.length === 0) return { inspected: 0, adopted: 0, restarted: 0 };
 
+  // 直接転送は保存した配置先をuploadステップで照合する。staging名で推測しない。
+  if (ctx.job.transferMode === 'FINAL')
+    return { inspected: candidates.length, adopted: 0, restarted: 0 };
+
   const staged = await ctx.gateway.listFolder(ctx.stagingFolderId);
   const byStagingName = new Map(
     staged.filter((entry) => entry.type === 'file').map((entry) => [entry.name, entry] as const),

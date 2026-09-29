@@ -89,10 +89,6 @@
 .completion-actions .completion-primary:hover {
   background: var(--box-blue-dark);
 }
-.completion-json {
-  font-size: 12px;
-  margin-left: 4px;
-}
 
 * {
   box-sizing: border-box;
@@ -1177,8 +1173,25 @@ th {
   margin: 0;
 }
 
-.job-head .job-ids {
+.job-head-action {
   flex: 0 0 auto;
+  margin-left: auto;
+  text-align: right;
+}
+.job-head-action button {
+  white-space: nowrap;
+}
+.job-head-action .error {
+  max-width: 320px;
+  text-align: left;
+}
+@media (max-width: 640px) {
+  .job-head .jobcard-main {
+    flex-wrap: wrap;
+  }
+  .job-head-action {
+    width: 100%;
+  }
 }
 
 .job-meta {
@@ -1515,15 +1528,6 @@ th {
   color: var(--warn);
   margin: 6px 0 0;
   padding-left: 26px;
-}
-
-.job-ids > summary {
-  cursor: pointer;
-}
-
-.job-ids .kv {
-  grid-template-columns: 110px 1fr;
-  margin-top: 6px;
 }
 
 .linkbtn {

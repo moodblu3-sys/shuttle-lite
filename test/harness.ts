@@ -102,8 +102,9 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     if (!job) throw new Error(`job not found: ${jobId}`);
     const profile = store.getProfile(job.profileId);
     if (!profile) throw new Error(`profile not found: ${job.profileId}`);
-    const stagingFolderId = await ensureJobStagingFolder(gateway, layout, job.id);
-    if (job.stagingFolderId !== stagingFolderId) {
+    const stagingFolderId =
+      job.transferMode === 'FINAL' ? '' : await ensureJobStagingFolder(gateway, layout, job.id);
+    if (stagingFolderId && job.stagingFolderId !== stagingFolderId) {
       store.setJobState(job.id, job.state, { stagingFolderId });
     }
     return {

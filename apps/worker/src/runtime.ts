@@ -190,12 +190,11 @@ export class WorkerRuntime {
       return true;
     }
 
-    const stagingFolderId = await ensureJobStagingFolder(
-      this.#ctx.gateway,
-      this.#ctx.layout,
-      job.id,
-    );
-    if (job.stagingFolderId !== stagingFolderId) {
+    const stagingFolderId =
+      job.transferMode === 'FINAL'
+        ? ''
+        : await ensureJobStagingFolder(this.#ctx.gateway, this.#ctx.layout, job.id);
+    if (stagingFolderId && job.stagingFolderId !== stagingFolderId) {
       this.#ctx.store.setJobState(job.id, job.state, { stagingFolderId });
     }
 

@@ -2,6 +2,7 @@ import { type MigrationItem, ShuttleError } from '@shuttle-lite/core';
 import type { JobContext } from '../context';
 import { preservedDestination } from '../folder-tree';
 import { resolveName } from './placement';
+import { assertSourceUnchanged } from './source';
 
 export async function readyForPreservedPlacement(
   ctx: JobContext,
@@ -9,9 +10,16 @@ export async function readyForPreservedPlacement(
 ): Promise<void> {
   ctx.store.transitionItem({
     itemId: item.id,
-    to: 'APPROVED',
+    to: ctx.job.transferMode === 'FINAL' ? 'FINAL_VERIFY' : 'APPROVED',
     telemetry: ctx.telemetry,
-    event: { phase: 'TRANSFER_VERIFY', status: 'SUCCEEDED', message: '指定された階層へ配置します' },
+    event: {
+      phase: 'TRANSFER_VERIFY',
+      status: 'SUCCEEDED',
+      message:
+        ctx.job.transferMode === 'FINAL'
+          ? '配置先の最終検証へ進みます'
+          : '指定された階層へ配置します',
+    },
   });
 }
 
@@ -96,6 +104,7 @@ export async function placePreservedItem(ctx: JobContext, item: MigrationItem): 
 }
 
 export async function verifyPreservedItem(ctx: JobContext, item: MigrationItem): Promise<void> {
+  await assertSourceUnchanged(ctx, item);
   const targetId = await preservedDestination(ctx, item);
   const file = item.boxFileId ? await ctx.gateway.getFile(item.boxFileId) : null;
   if (!file) throw new ShuttleError('BOX_NOT_FOUND', '最終検証でファイルが見つかりません。');
@@ -106,6 +115,8 @@ export async function verifyPreservedItem(ctx: JobContext, item: MigrationItem):
   ) {
     throw new ShuttleError('MOVE_CONFLICT', 'ファイルが指定された配置先にありません。');
   }
+  if (ctx.job.transferMode === 'FINAL' && file.versionId !== item.boxFileVersionId)
+    throw new ShuttleError('BOX_CONFLICT', '最終検証前にBox側のファイルが更新されています。');
   if (file.size !== item.sourceSize || file.sha1 !== item.sourceSha1) {
     throw new ShuttleError('INTEGRITY_MISMATCH', '最終検証でサイズまたはSHA-1が一致しません。');
   }

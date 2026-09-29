@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { formatBytes, formatDuration, PHASE_LABELS } from '@shuttle-lite/core/progress';
 import type { JobSnapshot } from '@shuttle-lite/telemetry';
 import { JobControls } from './job-controls';
+import { CheckDeltaButton } from './check-delta-button';
 import { StatePill } from './state-pill';
 import { JobIdentity } from './job-card';
 import type { MigrationProfile } from '@shuttle-lite/core';
@@ -53,7 +54,15 @@ export function ProgressView({
 
   return (
     <>
-      <ProgressIdentity snapshot={snapshot} profile={profile} />
+      <ProgressIdentity
+        snapshot={snapshot}
+        profile={profile}
+        action={
+          finished && snapshot.job.migrationMode === 'AS_IS' && !snapshot.job.testMode ? (
+            <CheckDeltaButton jobId={jobId} />
+          ) : undefined
+        }
+      />
       {children}
       {snapshot.workerUnavailable ? (
         <p className="error" role="alert">
@@ -87,23 +96,33 @@ export function ProgressView({
           </span>
         </div>
 
-        {/* Two independent axes. Overlaying them on one bar made a fully
-            staged job look 0% complete. */}
         <div className="progress-stack">
-          <ProgressTrack
-            label={<BoxLabel>Boxへ転送</BoxLabel>}
-            done={snapshot.transferredItems}
-            total={snapshot.totalItems}
-            percent={percent(snapshot.transferredItems)}
-            tone="staged"
-          />
-          <ProgressTrack
-            label="最終フォルダーへ配置"
-            done={snapshot.completedItems}
-            total={snapshot.totalItems}
-            percent={percent(snapshot.completedItems)}
-            tone="done"
-          />
+          {snapshot.job.migrationMode === 'AS_IS' ? (
+            <ProgressTrack
+              label="移行の進捗"
+              done={snapshot.completedItems + snapshot.skippedItems}
+              total={snapshot.totalItems}
+              percent={percent(snapshot.completedItems + snapshot.skippedItems)}
+              tone="done"
+            />
+          ) : (
+            <>
+              <ProgressTrack
+                label={<BoxLabel>Boxへ転送</BoxLabel>}
+                done={snapshot.transferredItems}
+                total={snapshot.totalItems}
+                percent={percent(snapshot.transferredItems)}
+                tone="staged"
+              />
+              <ProgressTrack
+                label="最終フォルダーへ配置"
+                done={snapshot.completedItems}
+                total={snapshot.totalItems}
+                percent={percent(snapshot.completedItems)}
+                tone="done"
+              />
+            </>
+          )}
         </div>
 
         <div className="grid cols-4" style={{ marginTop: 16 }}>
@@ -160,11 +179,6 @@ export function ProgressView({
       </ProgressPanel>
 
       <JobControls jobId={jobId} snapshot={snapshot} showReports={!finished} />
-      {snapshot.job.migrationMode === 'AS_IS' && !snapshot.job.testMode ? (
-        <a className="linkbtn" href={`/jobs/${jobId}/delta`}>
-          差分移行を開く
-        </a>
-      ) : null}
 
       <details className="card" onToggle={(event) => setShowDetail(event.currentTarget.open)}>
         <summary>
@@ -245,9 +259,6 @@ function CompletionSummary({
         <a className="linkbtn" href={`/api/jobs/${jobId}/report?format=csv`}>
           レポートをダウンロード
         </a>
-        <a className="completion-json" href={`/api/jobs/${jobId}/report?format=json`}>
-          JSON
-        </a>
       </div>
       {snapshot.outbox.failed > 0 || snapshot.outbox.pending > 0 ? (
         <p className={snapshot.outbox.failed > 0 ? 'error' : 'small muted'} role="status">
@@ -261,24 +272,18 @@ function CompletionSummary({
 export function ProgressIdentity({
   snapshot,
   profile,
+  action,
 }: {
   snapshot: JobSnapshot;
   profile: MigrationProfile | null;
+  action?: ReactNode;
 }) {
   return (
     <>
       <div className="jobcard job-head">
         <div className="jobcard-main">
           <JobIdentity job={snapshot.job} snapshot={snapshot} profile={profile} />
-          <details className="job-ids">
-            <summary className="small muted">ID</summary>
-            <dl className="kv small">
-              <dt>移行ID</dt>
-              <dd className="mono">{snapshot.job.id}</dd>
-              <dt>一時保管先ID</dt>
-              <dd className="mono">{snapshot.job.stagingFolderId ?? '未作成'}</dd>
-            </dl>
-          </details>
+          {action ? <div className="job-head-action">{action}</div> : null}
         </div>
         <p className="small muted jobcard-note">
           操作者 {snapshot.job.operatorLabel} ・ 移行元{' '}

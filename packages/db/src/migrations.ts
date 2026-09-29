@@ -349,6 +349,17 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: `ALTER TABLE job_metadata ADD COLUMN selection_scope TEXT NOT NULL DEFAULT 'LEGACY'
       CHECK (selection_scope IN ('LEGACY', 'JOB'));`,
   },
+  {
+    version: 15,
+    name: 'direct transfer to preserved destination',
+    sql: `ALTER TABLE migration_jobs ADD COLUMN transfer_mode TEXT NOT NULL DEFAULT 'STAGED'
+      CHECK (transfer_mode IN ('STAGED', 'FINAL'));
+    CREATE TABLE direct_upload_targets (
+      item_id TEXT PRIMARY KEY REFERENCES migration_items(id),
+      folder_id TEXT NOT NULL, name TEXT NOT NULL,
+      attempted INTEGER NOT NULL DEFAULT 0 CHECK (attempted IN (0, 1))
+    ) STRICT;`,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

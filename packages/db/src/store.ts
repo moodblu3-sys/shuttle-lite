@@ -450,6 +450,7 @@ export class ShuttleStore {
     name?: string;
     testMode?: boolean;
     migrationMode?: MigrationMode;
+    transferMode?: MigrationJob['transferMode'];
     ownerUserId?: string;
   }): MigrationJob {
     const id = newJobId();
@@ -457,8 +458,8 @@ export class ShuttleStore {
     const name = input.name ?? this.getProfile(input.profileId)?.name ?? null;
     this.db
       .prepare(
-        `INSERT INTO migration_jobs (id, profile_id, state, operator_label, created_at, updated_at, name, test_mode, migration_mode)
-         VALUES (?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO migration_jobs (id, profile_id, state, operator_label, created_at, updated_at, name, test_mode, migration_mode, transfer_mode)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         id,
@@ -470,6 +471,7 @@ export class ShuttleStore {
         name,
         fromBool(input.testMode === true),
         input.migrationMode ?? 'AI_ORGANIZE',
+        input.migrationMode === 'AS_IS' ? (input.transferMode ?? 'FINAL') : 'STAGED',
       );
     if (input.ownerUserId) this.setJobOwner(id, input.ownerUserId);
     const job = this.getJob(id);

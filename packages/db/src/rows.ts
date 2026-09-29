@@ -58,6 +58,7 @@ export function mapProfile(row: ProfileRow): MigrationProfile {
 
 export interface JobRow {
   migration_mode: MigrationJob['migrationMode'];
+  transfer_mode: MigrationJob['transferMode'];
   id: string;
   name: string | null;
   profile_id: string;
@@ -83,6 +84,7 @@ export interface JobRow {
 export function mapJob(row: JobRow): MigrationJob {
   return {
     migrationMode: row.migration_mode,
+    transferMode: row.transfer_mode,
     id: row.id,
     name: row.name,
     profileId: row.profile_id,

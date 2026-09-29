@@ -126,6 +126,7 @@ describe('sqlite store', () => {
       'command_actors',
       'delta_plans',
       'delta_runs',
+      'direct_upload_targets',
       'extraction_results',
       'item_metadata',
       'job_commands',

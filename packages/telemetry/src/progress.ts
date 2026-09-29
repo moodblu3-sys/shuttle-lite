@@ -148,22 +148,21 @@ export function buildJobSnapshot(store: ShuttleStore, jobId: string): JobSnapsho
     commands,
     counts,
     phases: buildPhaseCounters(
-      store
-        .countItemsByPhaseState(jobId)
-        .map((entry) =>
-          job.migrationMode === 'AS_IS'
-            ? {
-                ...entry,
-                state: entry.state === 'APPROVED' ? ('MOVING' as const) : entry.state,
-                resumeState:
-                  entry.resumeState === 'APPROVED' ? ('MOVING' as const) : entry.resumeState,
-              }
-            : entry,
-        ),
+      store.countItemsByPhaseState(jobId).map((entry) =>
+        job.migrationMode === 'AS_IS'
+          ? {
+              ...entry,
+              state: entry.state === 'APPROVED' ? ('MOVING' as const) : entry.state,
+              resumeState:
+                entry.resumeState === 'APPROVED' ? ('MOVING' as const) : entry.resumeState,
+            }
+          : entry,
+      ),
     ).filter(
       (phase) =>
         job.migrationMode !== 'AS_IS' ||
-        !['METADATA', 'AI_EXTRACTION', 'REVIEW'].includes(phase.phase),
+        (!['METADATA', 'AI_EXTRACTION', 'REVIEW'].includes(phase.phase) &&
+          !(job.transferMode === 'FINAL' && phase.phase === 'MOVE')),
     ),
     totalItems,
     processedItems,

@@ -27,6 +27,7 @@ export interface MigrationProfile {
 }
 
 export type MigrationMode = 'AI_ORGANIZE' | 'AS_IS';
+export type TransferMode = 'STAGED' | 'FINAL';
 
 export interface MigrationFolder {
   readonly relativePath: string;
@@ -39,6 +40,7 @@ export type JobState = 'QUEUED' | 'SCANNING' | 'RUNNING' | 'PAUSED' | 'COMPLETED
 
 export interface MigrationJob {
   readonly migrationMode: MigrationMode;
+  readonly transferMode: TransferMode;
   readonly id: string;
   readonly name: string | null;
   readonly profileId: string;

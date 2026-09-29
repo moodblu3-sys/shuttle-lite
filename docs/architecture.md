@@ -68,6 +68,11 @@ packages/telemetry
 
 ### 4.2 Upload and reconciliation
 
+新規AS_ISは保存した最終フォルダーへ直接送信する（D-006）。`direct_upload_targets`とitemの
+最終フォルダー・名前を送信前に固定し、応答のID保存後に内容・配置を検証する。
+応答を失ってID不明の場合、同名ファイルをこの移行の成果と推測しない。存在すれば競合として停止する。
+既存AS_ISとAI方式は以下のstaging方式を維持する。
+
 1. Workerがsourceのstatを再確認する
 2. deterministicなstaging nameを決める
 3. DirectまたはChunked Uploadを開始する

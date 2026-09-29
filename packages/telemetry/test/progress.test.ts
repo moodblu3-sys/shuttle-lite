@@ -5,6 +5,7 @@ import { decideNextAction } from '@shuttle-lite/telemetry';
 function job(state: MigrationJob['state']): MigrationJob {
   return {
     migrationMode: 'AI_ORGANIZE',
+    transferMode: 'STAGED',
     id: 'job_1',
     testMode: false,
     cleanupState: 'NONE',

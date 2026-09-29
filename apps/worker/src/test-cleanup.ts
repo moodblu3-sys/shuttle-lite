@@ -1,3 +1,4 @@
+import { getDirectTarget } from './direct-upload';
 import { getVersionTarget } from '@shuttle-lite/db';
 import { hostname } from 'node:os';
 import { ShuttleError, toShuttleError, type MigrationItem } from '@shuttle-lite/core';
@@ -45,7 +46,11 @@ export async function processTestCleanup(ctx: WorkerContext): Promise<boolean> {
       }
       if (!item.boxFileId) {
         // Never guess the ID of an upload whose result was not recorded.
-        if (item.state === 'UPLOADING' || item.state === 'UNKNOWN_OUTCOME' || item.uploadStrategy) {
+        if (
+          job.transferMode === 'FINAL'
+            ? getDirectTarget(ctx.store, item.id)?.attempted
+            : item.state === 'UPLOADING' || item.state === 'UNKNOWN_OUTCOME' || item.uploadStrategy
+        ) {
           unresolved += 1;
         }
         continue;

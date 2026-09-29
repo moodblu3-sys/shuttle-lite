@@ -6,6 +6,7 @@ import { ShuttleError, type ConflictPolicy } from '@shuttle-lite/core';
 import { buildJobSnapshot, buildReportDocument } from '@shuttle-lite/telemetry';
 import { processCommands } from '../apps/worker/src/commands';
 import { advanceItem, TRANSFER_SCOPE } from '../apps/worker/src/pipeline';
+import { sourceRefOf } from '../apps/worker/src/steps/source';
 import { prepareFolderTree } from '../apps/worker/src/folder-tree';
 import { createHarness, runUntilIdle, type Harness } from './harness';
 
@@ -21,13 +22,18 @@ describe('そのまま移行', () => {
     h.cleanup();
   });
 
-  async function job(conflictPolicy: ConflictPolicy = 'RENAME', testMode = false) {
+  async function job(
+    conflictPolicy: ConflictPolicy = 'RENAME',
+    testMode = false,
+    transferMode: 'FINAL' | 'STAGED' = 'FINAL',
+  ) {
     const profile = h.createProfile({ conflictPolicy });
     const job = h.store.createJob({
       profileId: profile.id,
       operatorLabel: '担当者',
       migrationMode: 'AS_IS',
       testMode,
+      transferMode,
     });
     h.store.saveJobDestinations(
       job.id,
@@ -44,6 +50,9 @@ describe('そのまま移行', () => {
     mkdirSync(join(h.sourceRoot, '空/空の下'), { recursive: true });
     mkdirSync(join(h.sourceRoot, '.対象外'));
     symlinkSync(join(h.sourceRoot, '営業'), join(h.sourceRoot, 'リンク'));
+    const move = vi.spyOn(h.gateway, 'moveFile');
+    const upload = vi.spyOn(h.gateway, 'uploadDirect');
+    const chunked = vi.spyOn(h.gateway, 'createUploadSession');
     const ai = vi.spyOn(h.gateway, 'extractStructured');
     const template = vi.spyOn(h.gateway, 'extractTemplate');
     const metadata = vi.spyOn(h.gateway, 'updateMetadata');
@@ -77,14 +86,24 @@ describe('そのまま移行', () => {
       });
       expect(h.store.hasUploadRecord(j.id, i.id, i.boxFileId!)).toBe(true);
     }
+    expect(move).not.toHaveBeenCalled();
+    expect(h.store.getJob(j.id)).toMatchObject({ transferMode: 'FINAL', stagingFolderId: null });
+    for (const call of [...upload.mock.calls, ...chunked.mock.calls]) {
+      const request = call[0];
+      expect(
+        items.some(
+          (i) => i.finalFolderId === request.parentFolderId && i.finalName === request.name,
+        ),
+      ).toBe(true);
+    }
     expect(ai).not.toHaveBeenCalled();
     expect(template).not.toHaveBeenCalled();
     expect(metadata).not.toHaveBeenCalled();
     const view = buildJobSnapshot(h.store, j.id)!;
     expect(view.reviewBacklog).toBe(0);
-    expect(view.phases.some((p) => ['REVIEW', 'METADATA', 'AI_EXTRACTION'].includes(p.phase))).toBe(
-      false,
-    );
+    expect(
+      view.phases.some((p) => ['REVIEW', 'METADATA', 'AI_EXTRACTION', 'MOVE'].includes(p.phase)),
+    ).toBe(false);
     const report = buildReportDocument(h.store, j.id);
     expect(report.migrationMode).toBe('AS_IS');
     expect(report.folders).toEqual(folders);
@@ -134,7 +153,7 @@ describe('そのまま移行', () => {
 
   it('adopts a completed move after its response is lost, preserving file ID and avoiding another upload', async () => {
     h.writeSource('A.txt', 'A');
-    const j = await job();
+    const j = await job('RENAME', false, 'STAGED');
     const move = h.gateway.moveFile.bind(h.gateway);
     const moveSpy = vi.spyOn(h.gateway, 'moveFile').mockImplementationOnce(async (request) => {
       await move(request);
@@ -242,11 +261,10 @@ describe('そのまま移行', () => {
       return id === folder.boxFolderId && f ? { ...f, parentFolderId: 'elsewhere' } : f;
     });
     const item = h.store.listItems(j.id)[0]!;
-    while (h.store.getItem(item.id)?.state !== 'APPROVED') {
-      expect(await advanceItem(ctx, item.id, TRANSFER_SCOPE)).toBe('ADVANCED');
-    }
     const move = vi.spyOn(h.gateway, 'moveFile');
-    await advanceItem(ctx, item.id, ['APPROVED']);
+    const upload = vi.spyOn(h.gateway, 'uploadDirect');
+    await advanceItem(ctx, item.id, TRANSFER_SCOPE);
+    expect(upload).not.toHaveBeenCalled();
     expect(h.store.getItem(item.id)?.state).toBe('FAILED');
     expect(move).not.toHaveBeenCalled();
   });
@@ -266,5 +284,135 @@ describe('そのまま移行', () => {
       expect(await h.gateway.getFile(i.boxFileId!)).toBeNull();
     for (const f of h.store.listMigrationFolders(j.id))
       expect(await h.gateway.getFolder(f.boxFolderId!)).not.toBeNull();
+  });
+  it.each([1, 128])(
+    'does not duplicate or claim an unrecorded successful upload (%i bytes)',
+    async (size) => {
+      h.writeSource('A.txt', 'A'.repeat(size));
+      const j = await job('RENAME', true);
+      const method = size > 64 ? 'commitUploadSession' : 'uploadDirect';
+      let uploadedId: string | null = null;
+      if (method === 'uploadDirect') {
+        const upload = h.gateway.uploadDirect.bind(h.gateway);
+        vi.spyOn(h.gateway, 'uploadDirect').mockImplementationOnce(async (request) => {
+          const file = await upload(request);
+          uploadedId = file.id;
+          throw new ShuttleError('BOX_TIMEOUT', '応答なし');
+        });
+      } else {
+        const commit = h.gateway.commitUploadSession.bind(h.gateway);
+        vi.spyOn(h.gateway, 'commitUploadSession').mockImplementationOnce(async (request) => {
+          const file = await commit(request);
+          uploadedId = file.id;
+          throw new ShuttleError('BOX_TIMEOUT', '応答なし');
+        });
+      }
+      await runUntilIdle(h, 12);
+      const item = h.store.listItems(j.id)[0]!;
+      expect(item.state).toBe('UNKNOWN_OUTCOME');
+      h.store.updateItem(item.id, { nextAttemptAt: null });
+      await runUntilIdle(h);
+      expect(h.store.getItem(item.id)).toMatchObject({
+        state: 'FAILED',
+        boxFileId: null,
+        lastErrorCategory: 'BOX_CONFLICT',
+      });
+      expect(h.gateway[method]).toHaveBeenCalledTimes(1);
+      const files = (await h.gateway.listFolder(item.finalFolderId!)).filter(
+        (f) => f.type === 'file',
+      );
+      expect(files).toHaveLength(1);
+      expect(h.store.hasUploadRecord(j.id, item.id, uploadedId!)).toBe(false);
+      h.store.enqueueCommand(j.id, 'END_TEST');
+      await runUntilIdle(h);
+      expect(h.store.getJob(j.id)?.cleanupState).toBe('FAILED');
+      expect(await h.gateway.getFile(uploadedId!)).not.toBeNull();
+    },
+  );
+
+  it('resumes missing chunks after interruption without moving or re-sending completed parts', async () => {
+    h.writeSource('A.txt', 'A'.repeat(128));
+    const j = await job();
+    const uploadPart = h.gateway.uploadPart.bind(h.gateway);
+    const parts = vi.spyOn(h.gateway, 'uploadPart').mockImplementation(uploadPart);
+    // Fail one part once, leaving the other successful parts on the session.
+    parts.mockImplementationOnce(async () => {
+      throw new ShuttleError('BOX_TIMEOUT', '一時中断');
+    });
+    const sessions = vi.spyOn(h.gateway, 'createUploadSession');
+    const move = vi.spyOn(h.gateway, 'moveFile');
+    await runUntilIdle(h, 12);
+    const item = h.store.listItems(j.id)[0]!;
+    expect(item.state).toBe('UNKNOWN_OUTCOME');
+    h.store.updateItem(item.id, { nextAttemptAt: null });
+    await runUntilIdle(h);
+    expect(h.store.getItem(item.id)?.state).toBe('COMPLETED');
+    expect(sessions).toHaveBeenCalledTimes(1);
+    expect(parts).toHaveBeenCalledTimes(5);
+    expect(move).not.toHaveBeenCalled();
+  });
+
+  it('resumes before upload and after a recorded upload without duplicating files', async () => {
+    h.writeSource('A.txt', 'A');
+    const j = await job();
+    await h.scanAndHash(j.id);
+    const ctx = await h.jobContext(j.id);
+    await prepareFolderTree(ctx, () => false);
+    const item = h.store.listItems(j.id)[0]!;
+    const upload = vi.spyOn(h.gateway, 'uploadDirect');
+    await advanceItem(ctx, item.id, TRANSFER_SCOPE); // READY
+    expect(h.store.getItem(item.id)?.state).toBe('READY');
+    await advanceItem(await h.jobContext(j.id), item.id, TRANSFER_SCOPE); // STAGED
+    expect(h.store.getItem(item.id)?.state).toBe('STAGED');
+    await runUntilIdle(h);
+    expect(h.store.getItem(item.id)?.state).toBe('COMPLETED');
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a different Box version even when its content matches at final verification', async () => {
+    h.writeSource('A.txt', 'A');
+    const j = await job();
+    await h.scanAndHash(j.id);
+    const ctx = await h.jobContext(j.id);
+    await prepareFolderTree(ctx, () => false);
+    const item = h.store.listItems(j.id)[0]!;
+    for (let step = 0; step < 4; step++) await advanceItem(ctx, item.id, TRANSFER_SCOPE);
+    expect(h.store.getItem(item.id)?.state).toBe('FINAL_VERIFY');
+    const get = h.gateway.getFile.bind(h.gateway);
+    vi.spyOn(h.gateway, 'getFile').mockImplementation(async (id) => {
+      const file = await get(id);
+      return file ? { ...file, versionId: 'external-version' } : null;
+    });
+    await advanceItem(ctx, item.id, ['FINAL_VERIFY']);
+    expect(h.store.getItem(item.id)).toMatchObject({
+      state: 'FAILED',
+      lastErrorCategory: 'BOX_CONFLICT',
+    });
+  });
+
+  it('never adopts an external same-name same-content file created after preflight', async () => {
+    h.writeSource('A.txt', 'A');
+    const j = await job('RENAME', true);
+    await h.scanAndHash(j.id);
+    const ctx = await h.jobContext(j.id);
+    await prepareFolderTree(ctx, () => false);
+    const item = h.store.listItems(j.id)[0]!;
+    await advanceItem(ctx, item.id, TRANSFER_SCOPE);
+    const saved = h.store.getItem(item.id)!;
+    const external = await h.gateway.uploadDirect({
+      parentFolderId: saved.finalFolderId!,
+      name: saved.finalName!,
+      size: 1,
+      sha1Hex: saved.sourceSha1!,
+      contentModifiedAt: saved.sourceModifiedAt,
+      content: () => ctx.source.openStream(sourceRefOf(saved)),
+    });
+    const upload = vi.spyOn(h.gateway, 'uploadDirect');
+    await advanceItem(ctx, item.id, TRANSFER_SCOPE);
+    expect(h.store.getItem(item.id)).toMatchObject({ state: 'FAILED', boxFileId: null });
+    expect(upload).not.toHaveBeenCalled();
+    h.store.enqueueCommand(j.id, 'END_TEST');
+    await runUntilIdle(h);
+    expect(await h.gateway.getFile(external.id)).not.toBeNull();
   });
 });

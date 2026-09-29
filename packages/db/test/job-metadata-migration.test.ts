@@ -24,7 +24,12 @@ describe('per-job metadata selection schema upgrade', () => {
         conflictPolicy: 'RENAME',
       });
       const create = () => store.createJob({ profileId: profile.id, operatorLabel: '担当者' });
-      const old = create();
+      const old = { id: 'old-job' };
+      db.prepare(
+        `INSERT INTO migration_jobs
+        (id,profile_id,state,operator_label,created_at,updated_at)
+        VALUES (?,?,'QUEUED','担当者','2026-09-22','2026-09-22')`,
+      ).run(old.id, profile.id);
       const mappings: TemplateMapping[] = [
         {
           template: {

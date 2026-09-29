@@ -5,12 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JobSnapshot } from '@shuttle-lite/telemetry';
 import { ProgressView } from '../src/components/progress-view';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: navigate }) }));
 
 function snapshot(patch: Partial<JobSnapshot> = {}): JobSnapshot {
   return {
     job: {
       migrationMode: 'AI_ORGANIZE',
+      transferMode: 'STAGED',
       id: 'job',
       name: '9月の書類整理',
       profileId: 'profile',
@@ -63,6 +65,7 @@ describe('completion and live progress', () => {
   let root: Root;
   let stream: { onmessage?: (event: { data: string }) => void; close: ReturnType<typeof vi.fn> };
   beforeEach(() => {
+    navigate.mockClear();
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     vi.stubGlobal(
       'EventSource',
@@ -106,6 +109,8 @@ describe('completion and live progress', () => {
     ]);
     expect(result.querySelector('a')!.href).toBe('https://app.box.com/folder/123');
     expect(container.querySelectorAll('a[href$="format=csv"]')).toHaveLength(1);
+    expect(container.querySelectorAll('a[href$="format=json"]')).toHaveLength(0);
+    expect(container.querySelector('.job-ids')).toBeNull();
     const transfer = [...container.querySelectorAll('details')].find(
       (d) => d.querySelector('summary')?.textContent === '転送の詳細',
     )!;
@@ -165,5 +170,65 @@ describe('completion and live progress', () => {
     );
     expect(container.querySelector('[aria-label=移行結果]')).toBeNull();
     expect(container.textContent).toContain('テスト終了');
+  });
+  it('shows a single verified-progress bar and starts delta checking from the upper-right action', async () => {
+    const initial = snapshot();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ eligible: true })))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ command: { id: 'check' } }), { status: 202 }),
+      );
+    vi.stubGlobal('fetch', fetch);
+    await render({
+      ...initial,
+      job: { ...initial.job, migrationMode: 'AS_IS', transferMode: 'FINAL' },
+    });
+    expect(container.querySelectorAll('.track')).toHaveLength(1);
+    expect(container.querySelector('.track')?.textContent).toContain('移行の進捗');
+    expect(container.textContent).not.toContain('最終フォルダーへ配置');
+    const button = container.querySelector<HTMLButtonElement>('.job-head-action button')!;
+    expect(button.textContent).toBe('差分を確認');
+    await act(async () => {
+      button.click();
+      button.click();
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetch.mock.calls[1]![1].body).type).toBe('CHECK_DELTA');
+    expect(navigate).toHaveBeenCalledWith('/jobs/job/delta');
+  });
+
+  it('does not count transferred but unverified files as complete or offer delta for test runs', async () => {
+    const initial = snapshot({ completedItems: 2, transferredItems: 5 });
+    await render({
+      ...initial,
+      job: { ...initial.job, state: 'RUNNING', migrationMode: 'AS_IS', transferMode: 'FINAL' },
+    });
+    expect(container.querySelector<HTMLElement>('.bar-done')!.style.width).toBe('40%');
+    expect(container.querySelector('.job-head-action')).toBeNull();
+    await render({ ...initial, job: { ...initial.job, migrationMode: 'AS_IS', testMode: true } });
+    expect(container.querySelector('.job-head-action')).toBeNull();
+  });
+
+  it('shows a recoverable error when delta submission returns an empty response', async () => {
+    const initial = snapshot();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ eligible: true })))
+        .mockResolvedValueOnce(new Response('', { status: 503 })),
+    );
+    await render({ ...initial, job: { ...initial.job, migrationMode: 'AS_IS' } });
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('.job-head-action button')!.click(),
+    );
+    expect(container.querySelector('.job-head-action [role=alert]')?.textContent).toContain(
+      '差分確認を開始できませんでした',
+    );
+    expect(navigate).not.toHaveBeenCalled();
+    expect(container.querySelector<HTMLButtonElement>('.job-head-action button')!.disabled).toBe(
+      false,
+    );
   });
 });

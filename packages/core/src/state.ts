@@ -92,7 +92,7 @@ export function nextPipelineState(state: PipelineState): PipelineState | null {
  */
 const EXTRA_TRANSITIONS: Partial<Record<ItemState, readonly ItemState[]>> = {
   // そのまま移行は開始時に指定した階層へ進む。分類・個別承認は通さない。
-  TRANSFER_VERIFIED: ['APPROVED'],
+  TRANSFER_VERIFIED: ['APPROVED', 'FINAL_VERIFY'],
   // AI can be skipped entirely when routing is disabled or unsupported.
   PROVENANCE_APPLIED: ['AI_PENDING', 'REVIEW_REQUIRED'],
   AI_PENDING: ['AI_COMPLETED', 'REVIEW_REQUIRED'],

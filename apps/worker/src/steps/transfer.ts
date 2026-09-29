@@ -1,5 +1,6 @@
 import { getVersionTarget } from '@shuttle-lite/db';
 import { prepareVersionTarget } from '../version-upload';
+import { beginDirectUpload, getDirectTarget, prepareDirectTarget } from '../direct-upload';
 import {
   checkBoxFileName,
   isWindowsReservedName,
@@ -85,6 +86,25 @@ export async function preflightItem(ctx: JobContext, item: MigrationItem): Promi
     );
   }
 
+  if (ctx.job.transferMode === 'FINAL') {
+    // 一度決めた新規転送先を、再試行時に上書き対象へ変更しない。
+    if (!getDirectTarget(ctx.store, item.id) && (await prepareVersionTarget(ctx, item))) return;
+    const target = await prepareDirectTarget(ctx, item);
+    if (!target) return;
+    await ctx.gateway.preflightUpload({
+      parentFolderId: target.folder_id,
+      name: target.name,
+      size: item.sourceSize,
+    });
+    ctx.store.transitionItem({
+      itemId: item.id,
+      to: 'READY',
+      telemetry: ctx.telemetry,
+      patch: { uploadStrategy: strategyFor(ctx, item.sourceSize) },
+      event: { status: 'SUCCEEDED', phase: 'PREFLIGHT', sizeBytes: item.sourceSize },
+    });
+    return;
+  }
   if (await prepareVersionTarget(ctx, item)) return;
   const stagingName = item.stagingName ?? stagingFileName(item.id, item.sourceFileName);
   const adopted = await adoptStagedCopy(ctx, item, stagingName);
@@ -189,7 +209,11 @@ export async function uploadItem(ctx: JobContext, item: MigrationItem): Promise<
       itemId: item.id,
       to: 'UPLOADING',
       telemetry: ctx.telemetry,
-      patch: { stagingName, uploadStrategy: strategy, attempts: item.attempts + 1 },
+      patch: {
+        stagingName: ctx.job.transferMode === 'FINAL' ? null : stagingName,
+        uploadStrategy: strategy,
+        attempts: item.attempts + 1,
+      },
       event: { status: 'STARTED', phase: 'UPLOAD', sizeBytes: item.sourceSize },
     });
   }
@@ -207,6 +231,8 @@ export async function uploadItem(ctx: JobContext, item: MigrationItem): Promise<
     if (digest.sha1 !== item.sourceSha1 || digest.bytes !== item.sourceSize)
       throw new ShuttleError('SOURCE_CHANGED', '更新前に移行元の内容が変わりました。');
     ctx.store.db.prepare('UPDATE version_targets SET attempted=1 WHERE item_id=?').run(item.id);
+  } else if (ctx.job.transferMode === 'FINAL') {
+    await beginDirectUpload(ctx, item);
   }
   const started = Date.now();
   let file;
@@ -219,7 +245,12 @@ export async function uploadItem(ctx: JobContext, item: MigrationItem): Promise<
     // 409 here means a request whose outcome we never recorded had actually
     // landed. Real Box returned this after an HTTP/2 stream error was retried.
     // Adopting our own copy is what keeps the retry from creating a duplicate.
-    if (target || (error as { category?: string }).category !== 'BOX_CONFLICT') throw error;
+    if (
+      target ||
+      ctx.job.transferMode === 'FINAL' ||
+      (error as { category?: string }).category !== 'BOX_CONFLICT'
+    )
+      throw error;
     ctx.logger.warn('upload中に409を受けたのでstaging上のfileと照合します', {
       itemId: item.id,
       stagingName,
@@ -252,10 +283,11 @@ export async function uploadItem(ctx: JobContext, item: MigrationItem): Promise<
 async function uploadDirect(ctx: JobContext, item: MigrationItem, stagingName: string) {
   let lastReport = 0;
   const target = getVersionTarget(ctx.store, item.id);
+  const direct = getDirectTarget(ctx.store, item.id);
   return ctx.gateway.uploadDirect({
     ...(target ? { versionTarget: { fileId: target.id, etag: target.etag! } } : {}),
-    parentFolderId: target?.parentFolderId ?? ctx.stagingFolderId,
-    name: target?.name ?? stagingName,
+    parentFolderId: target?.parentFolderId ?? direct?.folder_id ?? ctx.stagingFolderId,
+    name: target?.name ?? direct?.name ?? stagingName,
     size: item.sourceSize,
     sha1Hex: item.sourceSha1 ?? '',
     contentModifiedAt: item.sourceModifiedAt,
@@ -276,6 +308,7 @@ async function uploadDirect(ctx: JobContext, item: MigrationItem, stagingName: s
  */
 async function uploadChunked(ctx: JobContext, item: MigrationItem, stagingName: string) {
   const target = getVersionTarget(ctx.store, item.id);
+  const direct = getDirectTarget(ctx.store, item.id);
   let session = ctx.store.getOpenSession(item.id);
   // A session recorded locally is only usable if Box still has it.
   const remote = session ? await ctx.gateway.getUploadSession(session.boxSessionId) : null;
@@ -292,8 +325,8 @@ async function uploadChunked(ctx: JobContext, item: MigrationItem, stagingName: 
   if (!session) {
     const created = await ctx.gateway.createUploadSession({
       ...(target ? { versionTarget: { fileId: target.id, etag: target.etag! } } : {}),
-      parentFolderId: target?.parentFolderId ?? ctx.stagingFolderId,
-      name: target?.name ?? stagingName,
+      parentFolderId: target?.parentFolderId ?? direct?.folder_id ?? ctx.stagingFolderId,
+      name: target?.name ?? direct?.name ?? stagingName,
       size: item.sourceSize,
     });
     const parts = [];
@@ -334,7 +367,7 @@ async function uploadChunked(ctx: JobContext, item: MigrationItem, stagingName: 
   ctx.store.updateItem(item.id, { bytesTransferred: transferred });
 
   const ref = sourceRefOf(item);
-  await Promise.all(
+  const outcomes = await Promise.allSettled(
     pending.map((part) =>
       // Part parallelism draws from the same budget as file parallelism.
       ctx.chunkGate.withPermit(async () => {
@@ -356,6 +389,10 @@ async function uploadChunked(ctx: JobContext, item: MigrationItem, stagingName: 
       }),
     ),
   );
+
+  // 失敗したpartがあっても送信中のpartを待つ。再開と前回の送信を重ねない。
+  const failed = outcomes.find((result) => result.status === 'rejected');
+  if (failed?.status === 'rejected') throw failed.reason;
 
   const parts: UploadedPart[] = ctx.store
     .listParts(activeSession.id)
@@ -394,6 +431,13 @@ export async function verifyTransfer(ctx: JobContext, item: MigrationItem): Prom
     throw new ShuttleError('BOX_NOT_FOUND', `Box上にfileが見つかりません: ${item.boxFileId}`);
   }
   await assertSourceUnchanged(ctx, item);
+  if (
+    ctx.job.transferMode === 'FINAL' &&
+    (file.parentFolderId !== item.finalFolderId ||
+      file.name !== item.finalName ||
+      file.versionId !== item.boxFileVersionId)
+  )
+    throw new ShuttleError('BOX_CONFLICT', '転送後のファイルが変更・移動されています。');
   if (file.size !== item.sourceSize || file.sha1 !== item.sourceSha1) {
     throw new ShuttleError('INTEGRITY_MISMATCH', 'Box上のsizeまたはSHA-1がsourceと一致しません', {
       details: {
