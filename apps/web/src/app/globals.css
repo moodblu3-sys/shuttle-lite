@@ -439,6 +439,11 @@ a:hover {
   box-shadow: none;
   color: var(--box-blue);
 }
+.migration-browser .text-button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--box-blue-dark);
+  text-decoration: underline;
+}
 .migration-browser .text-button[aria-current] {
   color: var(--ink);
   opacity: 1;
@@ -507,7 +512,8 @@ a:hover {
   color: var(--ink);
   font-size: 13px;
 }
-.migration-browser-list .migration-browser-folder {
+.migration-browser-list .migration-browser-folder,
+.migration-browser-list .migration-browser-folder:hover:not(:disabled) {
   border: 0;
   padding: 0;
   background: transparent;
