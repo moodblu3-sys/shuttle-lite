@@ -12,7 +12,9 @@ export function NewJobForm({
   aiEnabled,
   boxMode,
   folderPickerAvailable,
+  authenticated = false,
 }: {
+  authenticated?: boolean;
   aiEnabled: boolean;
   boxMode: 'real' | 'fake';
   folderPickerAvailable: boolean;
@@ -340,10 +342,17 @@ export function NewJobForm({
               <option value="SKIP">スキップ</option>
             </select>
           </label>
-          <label>
-            操作者名（任意）
-            <input name="operatorLabel" type="text" placeholder="ローカル操作者" disabled={busy} />
-          </label>
+          {!authenticated && (
+            <label>
+              操作者名（任意）
+              <input
+                name="operatorLabel"
+                type="text"
+                placeholder="ローカル操作者"
+                disabled={busy}
+              />
+            </label>
+          )}
         </div>
       </details>
       <div className="actions">

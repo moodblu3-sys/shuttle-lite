@@ -52,7 +52,10 @@ describe('saved settings drive migration and logging', () => {
     } finally {
       connection.close();
     }
-    expect(await (await GET()).json()).toEqual({ revision: 1, settings });
+    expect(await (await GET(new Request('http://localhost/api/settings'))).json()).toEqual({
+      revision: 1,
+      settings,
+    });
     expect((await PUT(request({ ...settings, aiEnabled: true }))).status).toBe(409);
     expect(harness.store.getRuntimeSettings().settings).toEqual(settings);
   });
@@ -126,9 +129,9 @@ describe('saved settings drive migration and logging', () => {
     expect(((await response.json()) as { error: string }).error).toContain(
       'SNOWFLAKE_PRIVATE_KEY_PATH',
     );
-    expect(JSON.stringify(await (await GET()).json())).not.toMatch(
-      /privateKey|accessToken|clientSecret/,
-    );
+    expect(
+      JSON.stringify(await (await GET(new Request('http://localhost/api/settings'))).json()),
+    ).not.toMatch(/privateKey|accessToken|clientSecret/);
     expect(harness.store.getRuntimeSettings().revision).toBe(0);
   });
 

@@ -337,14 +337,23 @@ Unknown outcome復旧用のdeterministic staging nameを確定する。
 - Event IDの重複排除方法
 - Snowflake unavailable時のlocal backlog
 
+### D-018: 利用者ログインと実行権限
+
+ユーザー利用はBox OAuth 2.0を採用し、認証した本人の権限で一時転送・AI・配置を行う。
+画面・API・workerのジョブ所有者を一致させ、トークン失効時に共通SAへ切り替えない。
+OAuthトークンはAES-256-GCMで暗号化して保存し、更新をプロセス間で排他する。
+管理者設定は明示したBoxユーザーIDだけに許可する。旧SAジョブの自動引き継ぎはしない。
+作成者・操作者・実行主体のIDとファイル名を監査用allowlistへ追加する。
+D-006・D-017の転送・競合処理は変えない。詳細は[Boxログイン](box-user-login.md)。
+
 ## Explicitly deferred
 
 - NTLM/Kerberos/PAC
 - Permission/ownership/full version history
 - Box-to-Box
 - Multiple source connectors
-- Verified enterprise approver identity
-- Multiple uploader identities
+- External identity provider integration (Box OAuth identity is implemented)
+- Multiple uploader identities within one job (OAuth uses the job owner)
 - UPDATE/delta mode
 - Bandwidth schedule
 - Box Automate integration

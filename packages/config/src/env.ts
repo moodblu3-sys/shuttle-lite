@@ -25,6 +25,10 @@ export const EnvSchema = z.object({
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 
   BOX_CLIENT_ID: optionalString,
+  BOX_AUTH_MODE: z.enum(['ccg', 'oauth']).default('ccg'),
+  SHUTTLE_APP_URL: z.string().url().default('http://localhost:3000'),
+  SHUTTLE_AUTH_KEY: optionalString,
+  SHUTTLE_ADMIN_USER_IDS: z.string().default(''),
   BOX_CLIENT_SECRET: optionalString,
   BOX_ENTERPRISE_ID: optionalString,
   BOX_ACCESS_TOKEN: optionalString.refine(
@@ -86,6 +90,9 @@ export type Env = z.infer<typeof EnvSchema>;
 
 export interface BoxConfig {
   readonly mode: 'fake' | 'real';
+  readonly authMode?: 'ccg' | 'oauth';
+  /** OAuth providers are supplied per verified user; never fall back to CCG. */
+  readonly tokenProvider?: (force?: boolean) => Promise<string>;
   readonly clientId?: string;
   readonly clientSecret?: string;
   readonly enterpriseId?: string;
@@ -165,7 +172,29 @@ export interface AppConfig {
 
 function crossFieldChecks(env: Env): string[] {
   const problems: string[] = [];
-  if (env.BOX_MODE === 'real' && !env.BOX_ACCESS_TOKEN) {
+  if (env.BOX_AUTH_MODE === 'oauth') {
+    if (env.BOX_MODE !== 'real') problems.push('OAuth認証には BOX_MODE=real が必要です');
+    for (const key of ['BOX_CLIENT_ID', 'BOX_CLIENT_SECRET', 'BOX_ENTERPRISE_ID'] as const)
+      if (!env[key]) problems.push(`OAuth認証には ${key} が必要です`);
+    if (!/^[a-f0-9]{64}$/i.test(env.SHUTTLE_AUTH_KEY ?? ''))
+      problems.push('SHUTTLE_AUTH_KEY にはランダムな32バイトの16進数を設定してください');
+    if (!/^\d+(,\s*\d+)*$/.test(env.SHUTTLE_ADMIN_USER_IDS))
+      problems.push('SHUTTLE_ADMIN_USER_IDS に管理者のBoxユーザーIDを設定してください');
+    const url = new URL(env.SHUTTLE_APP_URL);
+    if (
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      url.pathname !== '/' ||
+      (url.protocol !== 'https:' &&
+        !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))
+    )
+      problems.push('SHUTTLE_APP_URL はHTTPS、またはlocalhostのHTTPのオリジンを指定してください');
+    if (env.BOX_ACCESS_TOKEN)
+      problems.push('OAuth認証では BOX_ACCESS_TOKEN を設定しないでください');
+  }
+  if (env.BOX_MODE === 'real' && env.BOX_AUTH_MODE !== 'oauth' && !env.BOX_ACCESS_TOKEN) {
     if (!env.BOX_CLIENT_ID) problems.push('BOX_MODE=real には BOX_CLIENT_ID が必要です');
     if (!env.BOX_CLIENT_SECRET) problems.push('BOX_MODE=real には BOX_CLIENT_SECRET が必要です');
     if (!env.BOX_ENTERPRISE_ID) problems.push('BOX_MODE=real には BOX_ENTERPRISE_ID が必要です');
@@ -215,6 +244,7 @@ export function buildConfig(env: Env): AppConfig {
     logLevel: env.LOG_LEVEL,
     box: {
       mode: env.BOX_MODE,
+      authMode: env.BOX_AUTH_MODE,
       clientId: env.BOX_CLIENT_ID,
       clientSecret: env.BOX_CLIENT_SECRET,
       enterpriseId: env.BOX_ENTERPRISE_ID,
@@ -295,8 +325,8 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
 let cached: AppConfig | null = null;
 
 /**
- * Loads `.env` from the repository root once per process. Credentials stay in
- * the environment and are never persisted to SQLite.
+ * Loads `.env` from the repository root once per process. App secrets stay in
+ * the environment; per-user OAuth tokens are encrypted separately by AuthStore.
  */
 export function loadConfig(options: { reload?: boolean } = {}): AppConfig {
   if (cached && !options.reload) return cached;

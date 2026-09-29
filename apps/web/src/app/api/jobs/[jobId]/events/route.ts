@@ -1,3 +1,10 @@
+import {
+  guard,
+  oauthEnabled,
+  authStore,
+  requestCookie,
+  SESSION_COOKIE,
+} from '../../../../../lib/auth';
 import { buildJobSnapshot } from '@shuttle-lite/telemetry';
 import { getStore } from '../../../../../lib/runtime';
 
@@ -13,6 +20,8 @@ const POLL_INTERVAL_MS = 1_000;
  */
 export async function GET(request: Request, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
+  const denied = await guard(request, jobId);
+  if (denied) return denied;
   const store = getStore();
   if (!store.getJob(jobId)) {
     return new Response(JSON.stringify({ error: `jobが存在しません: ${jobId}` }), {
@@ -28,6 +37,13 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
       const push = () => {
         if (closed) return;
         try {
+          if (oauthEnabled()) {
+            const user = authStore().session(requestCookie(request, SESSION_COOKIE));
+            if (!user || store.jobOwner(jobId) !== user.id) {
+              stop();
+              return;
+            }
+          }
           const snapshot = buildJobSnapshot(store, jobId);
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(snapshot)}\n\n`));
         } catch {

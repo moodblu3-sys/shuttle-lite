@@ -67,6 +67,9 @@ export class BoxHttpClient {
   }
 
   async getAccessToken(force = false): Promise<string> {
+    if (this.#box.tokenProvider) return this.#box.tokenProvider(force);
+    if (this.#box.authMode === 'oauth')
+      throw new ShuttleError('BOX_AUTH', 'Boxにログインしたユーザーの接続が必要です。');
     // A supplied token fixes the identity for this process. Never fall back to
     // CCG (a potentially different user), including after a 401 or force refresh.
     if (this.#box.accessToken) return this.#box.accessToken;
@@ -151,6 +154,9 @@ export class BoxHttpClient {
     if (result.status === 401 && !request.skipAuth) {
       // The token may simply have aged out; drop it so the next call re-authenticates.
       this.#token = null;
+      // Refresh only the same user's grant. The failed operation is retried by
+      // the existing pipeline, avoiding an unsafe replay of a streamed body.
+      if (this.#box.tokenProvider) await this.#box.tokenProvider(true);
     }
     if (result.status >= 400 && !(request.allowStatuses ?? []).includes(result.status)) {
       if (result.status === 401 && !request.skipAuth && this.#box.accessToken) {

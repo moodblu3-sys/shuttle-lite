@@ -162,6 +162,9 @@ export type ItemPatch = Partial<{
 }>;
 
 export interface EventInput {
+  readonly actorUserId?: string;
+  readonly action?: string;
+  readonly requestedOnly?: boolean;
   readonly jobId: string;
   readonly itemId?: string | null;
   readonly phase: Phase;
@@ -433,6 +436,7 @@ export class ShuttleStore {
     name?: string;
     testMode?: boolean;
     migrationMode?: MigrationMode;
+    ownerUserId?: string;
   }): MigrationJob {
     const id = newJobId();
     const at = nowIso();
@@ -453,9 +457,31 @@ export class ShuttleStore {
         fromBool(input.testMode === true),
         input.migrationMode ?? 'AI_ORGANIZE',
       );
+    if (input.ownerUserId) this.setJobOwner(id, input.ownerUserId);
     const job = this.getJob(id);
     if (!job) throw new ShuttleError('UNKNOWN', 'jobの作成直後に読み出せませんでした');
     return job;
+  }
+
+  jobOwner(jobId: string): string | null {
+    const row = this.db.prepare('SELECT user_id FROM job_owners WHERE job_id=?').get(jobId) as
+      { user_id: string } | undefined;
+    return row?.user_id ?? null;
+  }
+
+  setJobOwner(jobId: string, userId: string): void {
+    this.db.prepare('INSERT INTO job_owners (job_id,user_id) VALUES (?,?)').run(jobId, userId);
+  }
+
+  listOwnedJobs(userId: string, limit = 50): MigrationJob[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT j.* FROM migration_jobs j JOIN job_owners o ON o.job_id=j.id
+      WHERE o.user_id=? ORDER BY j.created_at DESC,j.rowid DESC LIMIT ?`,
+        )
+        .all(userId, limit) as JobRow[]
+    ).map(mapJob);
   }
 
   requestTestCleanup(jobId: string): void {
@@ -1403,7 +1429,10 @@ export class ShuttleStore {
     jobId: string,
     type: CommandType,
     payload: Record<string, unknown> = {},
+    actorUserId?: string,
   ): JobCommandRecord {
+    if (actorUserId && this.jobOwner(jobId) !== actorUserId)
+      throw new ShuttleError('APPROVAL_INVALID', '移行の実行者が一致しません。');
     const id = newCommandId();
     this.db
       .prepare(
@@ -1414,7 +1443,31 @@ export class ShuttleStore {
     const row = this.db.prepare('SELECT * FROM job_commands WHERE id = ?').get(id) as
       CommandRow | undefined;
     if (!row) throw new ShuttleError('UNKNOWN', 'commandを読み出せませんでした');
+    if (actorUserId) {
+      this.db.prepare('INSERT INTO command_actors VALUES (?,?)').run(id, actorUserId);
+      this.auditCommand(id, 'STARTED');
+    }
     return mapCommand(row);
+  }
+
+  private auditCommand(id: string, status: EventStatus): void {
+    const command = this.db
+      .prepare(
+        `SELECT c.*,a.user_id FROM job_commands c JOIN command_actors a ON a.command_id=c.id WHERE c.id=?`,
+      )
+      .get(id) as (CommandRow & { user_id: string }) | undefined;
+    if (!command) return;
+    const payload = JSON.parse(command.payload) as Record<string, unknown>;
+    const item = typeof payload.itemId === 'string' ? this.getItem(payload.itemId) : null;
+    this.appendEvent({
+      jobId: command.job_id,
+      itemId: item?.jobId === command.job_id ? item.id : undefined,
+      phase: 'REVIEW',
+      status,
+      actorUserId: command.user_id,
+      action: command.type,
+      requestedOnly: status !== 'SUCCEEDED',
+    });
   }
 
   /** Let the scheduler drain active steps before operator commands change their state. */
@@ -1498,6 +1551,7 @@ export class ShuttleStore {
     this.db
       .prepare(`UPDATE job_commands SET state = 'DONE', completed_at = ? WHERE id = ?`)
       .run(nowIso(), id);
+    this.auditCommand(id, 'SUCCEEDED');
   }
 
   rejectCommand(id: string, reason: string): void {
@@ -1506,6 +1560,7 @@ export class ShuttleStore {
         `UPDATE job_commands SET state = 'REJECTED', rejection_reason = ?, completed_at = ? WHERE id = ?`,
       )
       .run(reason, nowIso(), id);
+    this.auditCommand(id, 'FAILED');
   }
 
   listJobOperations(jobId: string, limit = 20): JobCommandRecord[] {
@@ -1580,6 +1635,30 @@ export class ShuttleStore {
         EventRow | undefined;
       if (!row) throw new ShuttleError('UNKNOWN', 'eventを読み出せませんでした');
       const event = mapEvent(row);
+      const owner = this.jobOwner(input.jobId);
+      if (owner) {
+        const candidate = input.itemId ? this.getItem(input.itemId) : null;
+        const item = candidate?.jobId === input.jobId ? candidate : null;
+        const decision = item ? this.getRouting(item.id) : null;
+        const destinationKey = input.destinationKey ?? decision?.approvedDestinationKey;
+        const audit = {
+          requestedByUserId: owner,
+          actorUserId: input.actorUserId ?? null,
+          executorUserId: input.requestedOnly ? null : owner,
+          action: input.action ?? null,
+          fileName: item?.sourceFileName ?? null,
+          destinationFolderId:
+            item?.finalFolderId ??
+            this.getJobDestinations(input.jobId)?.entries.find(
+              (entry) => entry.key === destinationKey,
+            )?.folderId ??
+            null,
+        };
+        this.db
+          .prepare('UPDATE migration_events SET audit_json=? WHERE id=?')
+          .run(JSON.stringify(audit), id);
+        Object.assign(event, { audit });
+      }
       const payloadBuilder = options.payload ?? this.#telemetryPayload;
       if (options.telemetry !== false && payloadBuilder) {
         this.db

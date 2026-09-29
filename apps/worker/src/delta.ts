@@ -274,6 +274,7 @@ export function startDelta(ctx: WorkerContext, command: JobCommandRecord): void 
   const run = ctx.store.createJob({
     profileId: root.profileId,
     operatorLabel: root.operatorLabel,
+    ownerUserId: ctx.store.jobOwner(root.id) ?? undefined,
     name: root.name ?? undefined,
     migrationMode: 'AS_IS',
   });

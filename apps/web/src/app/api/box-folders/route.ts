@@ -1,6 +1,7 @@
+import { guard, browsingConfig } from '../../../lib/auth';
 import { NextResponse } from 'next/server';
 import { browseDestinationFolder, excludedDestinationIds } from '@shuttle-lite/box';
-import { getBoxGateway, getConfig } from '../../../lib/runtime';
+import { getBoxGateway } from '../../../lib/runtime';
 import { destinationError, readJobDestinations } from '../../../lib/box-destinations';
 
 export const runtime = 'nodejs';
@@ -8,10 +9,16 @@ export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'no-store' };
 
 export async function GET(request: Request) {
+  const denied = await guard(request, undefined, false);
+  if (denied) return denied;
   try {
     const folderId = new URL(request.url).searchParams.get('folderId') ?? '0';
     return NextResponse.json(
-      await browseDestinationFolder(getBoxGateway(), folderId, excludedDestinationIds(getConfig())),
+      await browseDestinationFolder(
+        await getBoxGateway(),
+        folderId,
+        excludedDestinationIds(await browsingConfig()),
+      ),
       { headers },
     );
   } catch (error) {
@@ -21,6 +28,8 @@ export async function GET(request: Request) {
 
 /** Preview only. The create-job request independently resolves and saves the subtree. */
 export async function POST(request: Request) {
+  const denied = await guard(request, undefined, false);
+  if (denied) return denied;
   const body = (await request.json().catch(() => null)) as {
     folderId?: unknown;
     migrationMode?: unknown;

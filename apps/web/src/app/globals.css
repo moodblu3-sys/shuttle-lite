@@ -1536,3 +1536,19 @@ button.ghost:hover:not(:disabled) {
   color: var(--box-blue);
   border-bottom-color: var(--box-blue);
 }
+
+.workspace-account {
+  padding: 16px 24px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 14px;
+}
+.workspace-account form {
+  margin-top: 8px;
+}
+.workspace-account button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: #2467f4;
+  cursor: pointer;
+}

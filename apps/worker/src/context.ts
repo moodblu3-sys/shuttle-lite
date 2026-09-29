@@ -16,6 +16,9 @@ export interface WorkerContext {
   readonly fileGate: Semaphore;
   readonly chunkGate: Semaphore;
   readonly workerId: string;
+  readonly resolveJobContext?: (
+    jobId: string,
+  ) => Promise<Pick<WorkerContext, 'gateway' | 'layout' | 'config'>>;
 }
 
 export interface JobContext extends WorkerContext {
@@ -27,6 +30,19 @@ export interface JobContext extends WorkerContext {
   /** Whether transitions for this job should also enqueue telemetry. */
   readonly telemetry: boolean;
   readonly aiEnabled: boolean;
+}
+
+export async function authenticatedJobContext(
+  ctx: WorkerContext,
+  jobId: string,
+): Promise<WorkerContext> {
+  if (ctx.resolveJobContext) return { ...ctx, ...(await ctx.resolveJobContext(jobId)) };
+  if (ctx.config.env.BOX_AUTH_MODE === 'oauth' || ctx.store.jobOwner(jobId))
+    throw new ShuttleError(
+      'BOX_AUTH',
+      'この移行は作成者のBoxログインが必要です。共通アカウントでは実行できません。',
+    );
+  return ctx;
 }
 
 export function destinationKeys(ctx: WorkerContext): string[] {

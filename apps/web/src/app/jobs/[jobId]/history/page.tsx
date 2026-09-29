@@ -1,3 +1,4 @@
+import { requirePageUser } from '../../../../lib/auth';
 import { notFound } from 'next/navigation';
 import { migrationRuns } from '@shuttle-lite/db';
 import { StatePill } from '../../../../components/state-pill';
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function HistoryPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
+  await requirePageUser(jobId);
   const store = getStore();
   const job = store.getJob(jobId);
   if (!job) notFound();

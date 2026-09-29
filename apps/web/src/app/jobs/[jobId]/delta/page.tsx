@@ -1,3 +1,4 @@
+import { requirePageUser } from '../../../../lib/auth';
 import { notFound, redirect } from 'next/navigation';
 import { DeltaControls } from '../../../../components/delta-controls';
 import { getStore } from '../../../../lib/runtime';
@@ -6,6 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function DeltaPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
+  await requirePageUser(jobId);
   const job = getStore().getJob(jobId);
   if (!job) notFound();
   if (job.migrationMode !== 'AS_IS') redirect(`/jobs/${jobId}`);

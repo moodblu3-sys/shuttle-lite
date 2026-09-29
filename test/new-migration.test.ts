@@ -32,7 +32,7 @@ describe('creating a migration without registering a source first', () => {
   beforeEach(async () => {
     harness = await createHarness();
     destinationFolderId = (await harness.gateway.ensureFolder('0', '営業部')).id;
-    vi.mocked(getBoxGateway).mockReturnValue(harness.gateway);
+    vi.mocked(getBoxGateway).mockResolvedValue(harness.gateway);
     vi.mocked(getStore).mockReturnValue(harness.store);
     vi.mocked(getConfig).mockReturnValue(harness.config);
     vi.mocked(getCatalog).mockReturnValue(harness.catalog);

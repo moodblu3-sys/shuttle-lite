@@ -1,9 +1,11 @@
+import { requirePageUser } from '../../../lib/auth';
 import { NewJobForm } from '../../../components/new-job-form';
 import { getConfig } from '../../../lib/runtime';
 
 export const dynamic = 'force-dynamic';
 
-export default function NewMigrationPage() {
+export default async function NewMigrationPage() {
+  await requirePageUser();
   const config = getConfig();
   return (
     <div className="page-content new-migration-page">
@@ -12,6 +14,7 @@ export default function NewMigrationPage() {
       </p>
       <h1 className="page-title">新しい移行</h1>
       <NewJobForm
+        authenticated={config.env.BOX_AUTH_MODE === 'oauth'}
         aiEnabled={config.ai.enabled}
         boxMode={config.box.mode}
         folderPickerAvailable={process.platform === 'darwin'}

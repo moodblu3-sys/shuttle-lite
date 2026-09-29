@@ -1,3 +1,4 @@
+import { guard } from '../../../lib/auth';
 import { constants } from 'node:fs';
 import { access, mkdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -15,7 +16,9 @@ import { isLocalMutation } from '../../../lib/local-request';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = await guard(request, undefined, true);
+  if (denied) return denied;
   return NextResponse.json(
     {
       settings: settingsFromConfig(getConfig()),
@@ -26,6 +29,8 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const denied = await guard(request, undefined, true);
+  if (denied) return denied;
   if (!isLocalMutation(request))
     return NextResponse.json(
       { error: 'localhostの設定画面から保存してください。' },

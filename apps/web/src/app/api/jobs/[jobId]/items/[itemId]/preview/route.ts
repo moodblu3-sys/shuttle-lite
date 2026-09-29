@@ -1,3 +1,4 @@
+import { guard } from '../../../../../../../lib/auth';
 import { NextResponse } from 'next/server';
 import { createFilePreview, filePreviewError } from '../../../../../../../lib/file-preview';
 import { isLocalMutation } from '../../../../../../../lib/local-request';
@@ -17,10 +18,12 @@ export async function POST(
     );
   try {
     const { jobId, itemId } = await context.params;
+    const denied = await guard(request, jobId);
+    if (denied) return denied;
     const body: unknown = await request.json().catch(() => null);
     const preview = await createFilePreview(
       getStore(),
-      getBoxGateway(),
+      await getBoxGateway(),
       jobId,
       itemId,
       body,

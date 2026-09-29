@@ -1,3 +1,4 @@
+import { requirePageUser } from '../../../lib/auth';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { JobNavigation } from '../../../components/job-navigation';
@@ -13,6 +14,7 @@ export default async function JobLayout({
   params: Promise<{ jobId: string }>;
 }) {
   const { jobId } = await params;
+  await requirePageUser(jobId);
   const job = getStore().getJob(jobId);
   if (!job) notFound();
   return (

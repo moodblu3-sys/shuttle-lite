@@ -57,6 +57,7 @@ export function ReviewList({
   destinations,
   needsReviewKey,
   defaultOperatorLabel,
+  authenticated = false,
   boxLinkBase,
   metadataTemplates = [],
   pagination,
@@ -69,6 +70,7 @@ export function ReviewList({
   destinations: readonly DestinationOption[];
   needsReviewKey: string;
   defaultOperatorLabel: string;
+  authenticated?: boolean;
   boxLinkBase: string | null;
   metadataTemplates?: readonly TemplateMapping[];
   pagination?: {
@@ -780,18 +782,20 @@ export function ReviewList({
               </button>
             </form>
           ) : null}
-          <details className={styles.operator}>
-            <summary>承認者</summary>
-            <label>
-              承認者名
-              <input
-                type="text"
-                value={operatorLabel}
-                disabled={busy}
-                onChange={(event) => setOperatorLabel(event.target.value)}
-              />
-            </label>
-          </details>
+          {!authenticated && (
+            <details className={styles.operator}>
+              <summary>承認者</summary>
+              <label>
+                承認者名
+                <input
+                  type="text"
+                  value={operatorLabel}
+                  disabled={busy}
+                  onChange={(event) => setOperatorLabel(event.target.value)}
+                />
+              </label>
+            </details>
+          )}
         </footer>
       </section>
       {active ? (

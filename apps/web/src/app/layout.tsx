@@ -1,3 +1,4 @@
+import { currentUser } from '../lib/auth';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { WorkspaceNav } from '../components/workspace-nav';
@@ -8,7 +9,8 @@ export const metadata: Metadata = {
   description: 'Box Platformベースの軽量migration path PoC',
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const user = await currentUser();
   return (
     <html lang="ja">
       <body>
@@ -23,6 +25,17 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               Shuttle Lite
             </a>
             <WorkspaceNav />
+            {user && (
+              <div className="workspace-account">
+                <span>{user.name}</span>
+                <div>
+                  <a href="/api/auth/login">Boxに再ログイン</a>
+                </div>
+                <form action="/api/auth/logout" method="post">
+                  <button type="submit">ログアウト</button>
+                </form>
+              </div>
+            )}
           </aside>
           <main id="workspace-content" className="workspace-content">
             {children}

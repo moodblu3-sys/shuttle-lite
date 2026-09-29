@@ -1,3 +1,4 @@
+import { requirePageUser, isAdmin } from '../../lib/auth';
 import { MetadataSettings } from '../../components/metadata-settings';
 import { platform } from 'node:os';
 import { settingsFromConfig } from '@shuttle-lite/config';
@@ -6,7 +7,8 @@ import { getConfig, getStore } from '../../lib/runtime';
 
 export const dynamic = 'force-dynamic';
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const user = await requirePageUser();
   const config = getConfig();
   return (
     <div className="page-content">
@@ -23,22 +25,28 @@ export default function SettingsPage() {
           <dd>
             {config.box.mode === 'fake'
               ? 'テスト用（認証不要）'
-              : config.box.accessToken
-                ? 'アクセストークン'
-                : 'アプリ認証（CCG）'}
+              : user
+                ? `Boxログイン（${user.name}）`
+                : config.box.accessToken
+                  ? 'アクセストークン'
+                  : 'アプリ認証（CCG）'}
           </dd>
         </dl>
       </section>
-      <MetadataSettings />
-      <section className="card">
-        <h2>詳細設定</h2>
-        <SettingsForm
-          initial={settingsFromConfig(config)}
-          revision={getStore().getRuntimeSettings().revision}
-          folderPickerAvailable={platform() === 'darwin'}
-          snowflakeKeyConfigured={Boolean(config.telemetry.snowflake.privateKeyPath)}
-        />
-      </section>
+      {isAdmin(user) && (
+        <>
+          <MetadataSettings />
+          <section className="card">
+            <h2>詳細設定</h2>
+            <SettingsForm
+              initial={settingsFromConfig(config)}
+              revision={getStore().getRuntimeSettings().revision}
+              folderPickerAvailable={platform() === 'darwin'}
+              snowflakeKeyConfigured={Boolean(config.telemetry.snowflake.privateKeyPath)}
+            />
+          </section>
+        </>
+      )}
     </div>
   );
 }

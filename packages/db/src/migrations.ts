@@ -322,6 +322,27 @@ export const MIGRATIONS: readonly Migration[] = [
     attempted INTEGER NOT NULL DEFAULT 0
   ) STRICT;`,
   },
+  {
+    version: 13,
+    name: 'authenticated users and migration ownership',
+    sql: `CREATE TABLE auth_users (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, login TEXT NOT NULL, enterprise_id TEXT NOT NULL,
+    tokens TEXT, expires_at INTEGER NOT NULL DEFAULT 0,
+    refresh_lock TEXT, refresh_lock_until INTEGER NOT NULL DEFAULT 0
+  ) STRICT;
+  CREATE TABLE auth_sessions (
+    digest TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES auth_users(id), expires_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE TABLE auth_states (digest TEXT PRIMARY KEY, expires_at INTEGER NOT NULL) STRICT;
+  CREATE TABLE job_owners (
+    job_id TEXT PRIMARY KEY REFERENCES migration_jobs(id), user_id TEXT NOT NULL REFERENCES auth_users(id)
+  ) STRICT;
+  CREATE INDEX job_owners_user ON job_owners(user_id);
+  ALTER TABLE migration_events ADD COLUMN audit_json TEXT;
+  CREATE TABLE command_actors (
+    command_id TEXT PRIMARY KEY REFERENCES job_commands(id), user_id TEXT NOT NULL REFERENCES auth_users(id)
+  ) STRICT;`,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

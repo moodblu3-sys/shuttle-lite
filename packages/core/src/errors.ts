@@ -105,7 +105,7 @@ export const ERROR_CATEGORY_META: Record<ErrorCategory, CategoryMeta> = {
   BOX_AUTH: {
     retryable: false,
     operatorAction:
-      'アクセストークン方式では.envのBOX_ACCESS_TOKENを更新してアプリを再起動してください。CCG方式ではclient ID、client secret、enterprise IDとscopeを確認してください。',
+      'Boxログイン方式ではログインし直してください。アクセストークン方式では.envのBOX_ACCESS_TOKENを更新してアプリを再起動してください。CCG方式ではclient ID、client secret、enterprise IDとscopeを確認してください。',
   },
   BOX_PERMISSION: {
     retryable: false,

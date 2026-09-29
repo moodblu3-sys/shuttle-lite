@@ -7,9 +7,9 @@ import { processCommands } from '../../worker/src/commands';
 import { JobControls, OperationResult } from '../src/components/job-controls';
 import { ProgressView } from '../src/components/progress-view';
 import { POST } from '../src/app/api/jobs/[jobId]/commands/route';
-import { getStore } from '../src/lib/runtime';
+import { getConfig, getStore } from '../src/lib/runtime';
 
-vi.mock('../src/lib/runtime', () => ({ getStore: vi.fn() }));
+vi.mock('../src/lib/runtime', () => ({ getConfig: vi.fn(), getStore: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 let h: Harness;
 let jobId: string;
@@ -17,6 +17,7 @@ beforeEach(async () => {
   h = await createHarness();
   jobId = h.store.createJob({ profileId: h.createProfile().id, operatorLabel: 'tester' }).id;
   vi.mocked(getStore).mockReturnValue(h.store);
+  vi.mocked(getConfig).mockReturnValue(h.config);
 });
 afterEach(() => h.cleanup());
 const snapshot = () => buildJobSnapshot(h.store, jobId)!;

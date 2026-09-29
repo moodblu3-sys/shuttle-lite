@@ -1,13 +1,13 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getStore } from '../src/lib/runtime';
+import { getConfig, getStore } from '../src/lib/runtime';
 import JobLayout from '../src/app/jobs/[jobId]/layout';
 import HistoryPage from '../src/app/jobs/[jobId]/history/page';
 import DeltaPage from '../src/app/jobs/[jobId]/delta/page';
 import { GET } from '../src/app/api/jobs/[jobId]/delta/route';
 import { createHarness, type Harness } from '../../../test/harness';
 
-vi.mock('../src/lib/runtime', () => ({ getStore: vi.fn() }));
+vi.mock('../src/lib/runtime', () => ({ getConfig: vi.fn(), getStore: vi.fn() }));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
   notFound: () => {
@@ -23,6 +23,7 @@ describe('job navigation pages', () => {
   beforeEach(async () => {
     h = await createHarness();
     vi.mocked(getStore).mockReturnValue(h.store);
+    vi.mocked(getConfig).mockReturnValue(h.config);
   });
   afterEach(() => h.cleanup());
 

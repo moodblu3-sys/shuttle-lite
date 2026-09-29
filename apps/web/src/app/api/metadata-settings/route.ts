@@ -1,3 +1,4 @@
+import { guard } from '../../../lib/auth';
 import { NextResponse } from 'next/server';
 import {
   assertBusinessTemplate,
@@ -11,9 +12,11 @@ import { isLocalMutation } from '../../../lib/local-request';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = await guard(request, undefined, false);
+  if (denied) return denied;
   try {
-    const templates = (await getBoxGateway().listMetadataTemplates()).filter((template) => {
+    const templates = (await (await getBoxGateway()).listMetadataTemplates()).filter((template) => {
       try {
         assertBusinessTemplate(template);
         return true;
@@ -34,6 +37,8 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const denied = await guard(request, undefined, true);
+  if (denied) return denied;
   if (!isLocalMutation(request))
     return NextResponse.json({ error: 'localhostから保存してください。' }, { status: 403 });
   const body = (await request.json().catch(() => null)) as {
@@ -60,7 +65,9 @@ export async function PUT(request: Request) {
         !/^[A-Za-z][A-Za-z0-9_-]*$/.test(entry.templateKey ?? '')
       )
         throw new ShuttleError('CONFIG_INVALID', 'テンプレートの設定を確認してください。');
-      const template = await getBoxGateway().getMetadataTemplate({
+      const template = await (
+        await getBoxGateway()
+      ).getMetadataTemplate({
         scope: entry.scope!,
         templateKey: entry.templateKey!,
       });

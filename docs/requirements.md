@@ -282,6 +282,9 @@ uploadとAI処理は別queueとし、AI待ちが別fileのtransferを止めな�
 
 ### 4.14 Snowflake logging
 
+OAuth方式の認証済みジョブは、作成者・操作者・実行主体のBoxユーザーID、操作種別、
+元ファイル名、配置先フォルダーIDもallowlistに含める。詳細は[Boxログイン](box-user-login.md)。
+
 SQLiteをoperational stateの正本とする。状態更新とoutbox event追加を同じSQLite
 transactionで確定する。
 

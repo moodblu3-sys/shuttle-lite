@@ -1,5 +1,5 @@
 import type { AppConfig } from '@shuttle-lite/config';
-import type { Logger } from '@shuttle-lite/core';
+import { ShuttleError, type Logger } from '@shuttle-lite/core';
 import { FakeBoxGateway } from './fake/gateway';
 import type { BoxGateway } from './gateway';
 import { HttpBoxGateway } from './http/gateway';
@@ -10,6 +10,8 @@ import { HttpBoxGateway } from './http/gateway';
  * objects and credentials exist.
  */
 export function createBoxGateway(config: AppConfig, logger?: Logger): BoxGateway {
+  if (config.env.BOX_AUTH_MODE === 'oauth' && !config.box.tokenProvider)
+    throw new ShuttleError('BOX_AUTH', 'OAuth方式ではBoxにログインしたユーザーの接続が必要です。');
   if (config.box.mode === 'fake') {
     return new FakeBoxGateway({
       rootDir: config.fakeBox.rootDir,

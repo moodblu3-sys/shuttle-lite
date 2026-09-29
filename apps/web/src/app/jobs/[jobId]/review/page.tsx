@@ -1,3 +1,4 @@
+import { requirePageUser } from '../../../../lib/auth';
 import { notFound, redirect } from 'next/navigation';
 import { ReviewWorkspace } from '../../../../components/review-workspace';
 import { buildReviewPage } from '../../../../lib/review';
@@ -17,6 +18,7 @@ export default async function ReviewPage({
   }>;
 }) {
   const { jobId } = await params;
+  const user = await requirePageUser(jobId);
   const job = getStore().getJob(jobId);
   if (!job) notFound();
   if (job.migrationMode === 'AS_IS') redirect(`/jobs/${jobId}`);
@@ -39,6 +41,7 @@ export default async function ReviewPage({
   return (
     <>
       <ReviewWorkspace
+        authenticated={!!user}
         key={`${jobId}:${pagination.page}:${pagination.query}:${pagination.filter}`}
         metadataTemplates={getStore().getAvailableJobMetadata(jobId)}
         jobId={jobId}
@@ -50,7 +53,7 @@ export default async function ReviewPage({
           boxPath: entry.boxPath,
         }))}
         needsReviewKey={getCatalog(jobId).needsReviewKey}
-        defaultOperatorLabel={job.operatorLabel}
+        defaultOperatorLabel={user?.name ?? job.operatorLabel}
         boxLinkBase={getConfig().box.mode === 'real' ? 'https://app.box.com/file/' : null}
       />
     </>

@@ -1,13 +1,25 @@
 import { hostname } from 'node:os';
-import { createBoxGateway, ensureBoxLayout, loadCachedLayout } from '@shuttle-lite/box';
+import {
+  BoxOAuth,
+  createBoxGateway,
+  ensureBoxLayout,
+  loadCachedLayout,
+  type BoxLayout,
+} from '@shuttle-lite/box';
 import {
   applyRuntimeSettings,
   EMPTY_DESTINATION_CATALOG,
   loadConfig,
   loadDestinationCatalog,
 } from '@shuttle-lite/config';
-import { createLogger, randomId, Semaphore, toShuttleError } from '@shuttle-lite/core';
-import { migrate, openDatabase, ShuttleStore } from '@shuttle-lite/db';
+import {
+  createLogger,
+  randomId,
+  Semaphore,
+  ShuttleError,
+  toShuttleError,
+} from '@shuttle-lite/core';
+import { AuthStore, migrate, openDatabase, ShuttleStore } from '@shuttle-lite/db';
 import {
   buildTelemetryPayload,
   ConfiguredTelemetrySink,
@@ -33,12 +45,43 @@ async function main(): Promise<void> {
   const store = new ShuttleStore(db, { telemetryPayload: buildTelemetryPayload });
 
   const catalog = config.box.mode === 'fake' ? loadDestinationCatalog() : EMPTY_DESTINATION_CATALOG;
-  const gateway = createBoxGateway(config, logger);
+  const oauth =
+    config.env.BOX_AUTH_MODE === 'oauth'
+      ? new BoxOAuth(config, new AuthStore(db, config.env.SHUTTLE_AUTH_KEY!))
+      : null;
+  // No process-wide Box identity in OAuth mode, even before a user has logged in.
+  const gateway = createBoxGateway(
+    oauth
+      ? {
+          ...config,
+          box: {
+            ...config.box,
+            accessToken: undefined,
+            tokenProvider: async () => {
+              throw new ShuttleError('BOX_AUTH', '移行の実行ユーザーが未指定です。');
+            },
+          },
+        }
+      : config,
+    logger,
+  );
 
-  const identity = await gateway.whoAmI();
-  logger.info('Box identity', { login: identity.login, mode: gateway.kind });
+  if (!oauth) {
+    const identity = await gateway.whoAmI();
+    logger.info('Box identity', { login: identity.login, mode: gateway.kind });
+  }
 
-  const layout = loadCachedLayout(config) ?? (await ensureBoxLayout(gateway, config, catalog));
+  const layout: BoxLayout = oauth
+    ? {
+        rootFolderId: '',
+        stagingRootFolderId: '',
+        needsReviewFolderId: '',
+        reportsFolderId: '',
+        destinations: {},
+        resolvedAt: '',
+        mode: 'real',
+      }
+    : (loadCachedLayout(config) ?? (await ensureBoxLayout(gateway, config, catalog)));
   logger.info('Box layout解決済み', {
     root: layout.rootFolderId,
     staging: layout.stagingRootFolderId,
@@ -55,6 +98,28 @@ async function main(): Promise<void> {
     fileGate: new Semaphore(config.limits.fileConcurrency),
     chunkGate: new Semaphore(config.limits.chunkConcurrency),
     workerId,
+    ...(oauth
+      ? {
+          resolveJobContext: async (jobId: string) => {
+            const userId = store.jobOwner(jobId);
+            if (!userId)
+              throw new ShuttleError(
+                'BOX_AUTH',
+                'この移行には認証済みの実行者が記録されていません。新しい移行を作成してください。',
+              );
+            const userConfig = applyRuntimeSettings(
+              oauth.userConfig(userId),
+              store.getRuntimeSettings().settings,
+            );
+            await oauth.accessToken(userId);
+            const userGateway = oauth.gateway(userId);
+            const userLayout =
+              loadCachedLayout(userConfig) ??
+              (await ensureBoxLayout(userGateway, userConfig, catalog));
+            return { config: userConfig, gateway: userGateway, layout: userLayout };
+          },
+        }
+      : {}),
   };
 
   const sink = new ConfiguredTelemetrySink(() =>
@@ -90,6 +155,7 @@ async function main(): Promise<void> {
   await senderLoop;
   await sender.close();
   await gateway.close();
+  await oauth?.close();
   db.close();
   logger.info('worker停止');
 }

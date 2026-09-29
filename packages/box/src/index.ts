@@ -11,3 +11,4 @@ export * from './http/multipart';
 export * from './http/rfc3339';
 export * from './layout';
 export * from './template';
+export * from './oauth';

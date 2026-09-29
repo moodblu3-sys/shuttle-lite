@@ -1,3 +1,4 @@
+import { guard } from '../../../lib/auth';
 import { NextResponse } from 'next/server';
 import { checkSource } from '../../../lib/source-check';
 import { isLocalMutation } from '../../../lib/local-request';
@@ -7,6 +8,8 @@ export const dynamic = 'force-dynamic';
 let checking = false;
 
 export async function POST(request: Request) {
+  const denied = await guard(request, undefined, false);
+  if (denied) return denied;
   if (!isLocalMutation(request, 'x-shuttle-source-check'))
     return NextResponse.json({ error: 'localhostの画面から確認してください。' }, { status: 403 });
   const body = (await request.json().catch(() => null)) as { sourceRootPath?: unknown } | null;

@@ -1,3 +1,4 @@
+import { guard } from '../../../../../lib/auth';
 import { NextResponse } from 'next/server';
 import { buildReviewPage } from '../../../../../lib/review';
 import { getCatalog, getStore } from '../../../../../lib/runtime';
@@ -8,6 +9,8 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
+  const denied = await guard(request, jobId);
+  if (denied) return denied;
   if (!getStore().getJob(jobId)) {
     return NextResponse.json({ error: `jobが存在しません: ${jobId}` }, { status: 404 });
   }
@@ -31,6 +34,8 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
 /** Read-only query: browser drafts affect filtering, never persisted routing or approval. */
 export async function POST(request: Request, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
+  const denied = await guard(request, jobId);
+  if (denied) return denied;
   if (!getStore().getJob(jobId))
     return NextResponse.json({ error: '移行が見つかりません。' }, { status: 404 });
   let input: { page?: number; query?: string; filter?: string; drafts?: SavedReviewDraft[] };

@@ -1,14 +1,19 @@
+import { guard } from '../../../lib/auth';
 import { NextResponse } from 'next/server';
 import { getCatalog, getConfig, getStore } from '../../../lib/runtime';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = await guard(request, undefined, true);
+  if (denied) return denied;
   return NextResponse.json({ profiles: getStore().listProfiles() });
 }
 
 export async function POST(request: Request) {
+  const denied = await guard(request, undefined, true);
+  if (denied) return denied;
   const body = (await request.json()) as Record<string, unknown>;
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   const sourceRootPath = typeof body.sourceRootPath === 'string' ? body.sourceRootPath.trim() : '';

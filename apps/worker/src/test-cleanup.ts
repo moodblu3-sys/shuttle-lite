@@ -1,7 +1,7 @@
 import { getVersionTarget } from '@shuttle-lite/db';
 import { hostname } from 'node:os';
 import { ShuttleError, toShuttleError, type MigrationItem } from '@shuttle-lite/core';
-import type { WorkerContext } from './context';
+import { authenticatedJobContext, type WorkerContext } from './context';
 
 /** Runs only after transfer work has released its lease. No folder-wide deletion. */
 export async function processTestCleanup(ctx: WorkerContext): Promise<boolean> {
@@ -12,6 +12,7 @@ export async function processTestCleanup(ctx: WorkerContext): Promise<boolean> {
   let unresolved = 0;
   const items: MigrationItem[] = [];
   try {
+    ctx = await authenticatedJobContext(ctx, job.id);
     const snapshot = ctx.store.getJobDestinations(job.id);
     if (
       (!snapshot && ctx.gateway.kind === 'http') ||

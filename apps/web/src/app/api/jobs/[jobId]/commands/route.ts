@@ -1,3 +1,4 @@
+import { guard, currentUser } from '../../../../../lib/auth';
 import { NextResponse } from 'next/server';
 import { COMMAND_TYPES, type CommandType } from '@shuttle-lite/core';
 import { getStore } from '../../../../../lib/runtime';
@@ -11,6 +12,8 @@ interface RouteContext {
 
 export async function GET(_request: Request, context: RouteContext) {
   const { jobId } = await context.params;
+  const denied = await guard(_request, jobId);
+  if (denied) return denied;
   return NextResponse.json({ commands: getStore().listCommands(jobId) });
 }
 
@@ -20,6 +23,8 @@ export async function GET(_request: Request, context: RouteContext) {
  */
 export async function POST(request: Request, context: RouteContext) {
   const { jobId } = await context.params;
+  const denied = await guard(request, jobId);
+  if (denied) return denied;
   const store = getStore();
   if (!store.getJob(jobId)) {
     return NextResponse.json({ error: `jobが存在しません: ${jobId}` }, { status: 404 });
@@ -37,6 +42,7 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  const user = await currentUser(request);
   const job = store.getJob(jobId)!;
   if (type === 'END_TEST' && !job.testMode) {
     return NextResponse.json(
@@ -57,7 +63,17 @@ export async function POST(request: Request, context: RouteContext) {
         (command) =>
           command.type === type && (command.state === 'PENDING' || command.state === 'CLAIMED'),
       );
-    return existing ?? store.enqueueCommand(jobId, type, body.payload ?? {});
+    return (
+      existing ??
+      store.enqueueCommand(
+        jobId,
+        type,
+        user
+          ? { ...body.payload, operatorLabel: user.name, actorUserId: user.id }
+          : (body.payload ?? {}),
+        user?.id,
+      )
+    );
   });
   return NextResponse.json({ command }, { status: 202 });
 }

@@ -27,7 +27,7 @@ describe('per-migration Box destination selection', () => {
   beforeEach(async () => {
     h = await createHarness();
     vi.mocked(getConfig).mockReturnValue(h.config);
-    vi.mocked(getBoxGateway).mockReturnValue(h.gateway);
+    vi.mocked(getBoxGateway).mockResolvedValue(h.gateway);
   });
   afterEach(() => {
     vi.restoreAllMocks();

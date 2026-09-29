@@ -1,3 +1,4 @@
+import { requirePageUser } from '../../../lib/auth';
 import { notFound } from 'next/navigation';
 import { buildJobSnapshot } from '@shuttle-lite/telemetry';
 import { ProgressView } from '../../../components/progress-view';
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function JobPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
+  await requirePageUser(jobId);
   const store = getStore();
   const snapshot = buildJobSnapshot(store, jobId);
   if (!snapshot) notFound();

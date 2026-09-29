@@ -6,7 +6,7 @@ ChatGPTを設計・実装・自動テストの主担当とし、GitHub経由で�
 設計レビューで合意した次の開発範囲と受け渡し方針は
 [development-plan.md](development-plan.md) を参照する。新しい設計は未実装の項目を含む。
 
-更新日 2026-09-27
+更新日 2026-09-29
 
 ## このプロダクトは何か
 
@@ -19,6 +19,12 @@ Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋�
 
 ## いまの状態
 
+- 2026-09-29: Box OAuthログイン、利用者ごとのBox接続・ジョブ制限、管理者設定を追加（schema 13）。
+  OAuthジョブの実行者・承認者・ファイル名をログへ記録。新しいBox OAuthアプリの準備が必要。
+  旧SAジョブを自動で引き継がない。実Boxログイン・Snowflake確認はMac側。手順はbox-user-login.md。
+  自動テスト591件、fake Box検証22項目、root/web型チェック、変更したコードのlint、本番ビルド成功。
+  全体lintは既存のtest/source-check.test.tsの型import指摘2件が残る。
+
 - 2026-09-27: 新規移行を`/jobs/new`の専用ページに変更。AI既定の2方式カード、開始前の件数・容量・読み取り確認、
   そのまま移行の最終配置先、「初回の同名ファイル」を追加。確認は転送せず、開始時に再走査して変更を検出する。
   上限・対象外・確認の限界はmigration-workflow-review.md、CursorへのSnowflake設定依頼はcursor-snowflake-setup.md。
@@ -28,7 +34,7 @@ Box Shuttleが届きにくい制約環境（明示proxy、file server）を埋�
   既存の進捗・承認URLは維持し、差分は`/jobs/[jobId]/delta`、履歴は`/jobs/[jobId]/history`。
   仕様レビューはmigration-workflow-review.md参照。
 - Snowflake設定に「テストログを送信」を追加。保存済み設定とリビジョンを確認し、合成イベント1件を送る。
-  実環境接続は未検証。操作者・ファイル名を含む監査ログ拡張は未実装で、既存allowlistを維持。
+  実環境接続は未検証。当時は操作者・ファイル名を含む監査ログ拡張は未実装。9/29のOAuth対応で追加。
 
 - 2026-09-27: 承認一覧を配置先・テンプレートの直接編集と一括変更に対応。
   未選択も選択可能。全選択は表示ページ・フィルター内のみで、要対応・処理中は対象外。

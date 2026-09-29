@@ -4,7 +4,12 @@ import { ensureJobStagingFolder } from '@shuttle-lite/box';
 import { type ItemState, Semaphore, sleep, toShuttleError } from '@shuttle-lite/core';
 import { processCommands } from './commands';
 import { processTestCleanup } from './test-cleanup';
-import { destinationsForJob, type JobContext, type WorkerContext } from './context';
+import {
+  authenticatedJobContext,
+  destinationsForJob,
+  type JobContext,
+  type WorkerContext,
+} from './context';
 import { advanceItem, PLACEMENT_SCOPE, ROUTING_SCOPE, TRANSFER_SCOPE } from './pipeline';
 import { reconcileJob } from './reconcile';
 import { LocalSourceAdapter } from './source/local';
@@ -137,6 +142,19 @@ export class WorkerRuntime {
   async #runJob(jobId: string): Promise<boolean> {
     const job = this.#ctx.store.getJob(jobId);
     if (!job) return false;
+    {
+      try {
+        this.#ctx = await authenticatedJobContext(this.#ctx, jobId);
+      } catch (error) {
+        const failure = toShuttleError(error);
+        this.#ctx.store.setJobState(jobId, 'PAUSED', {
+          pauseRequested: true,
+          lastError: failure.message,
+          lastErrorCategory: failure.category,
+        });
+        return true;
+      }
+    }
     const profile = this.#ctx.store.getProfile(job.profileId);
     if (!profile) {
       this.#ctx.store.setJobState(job.id, 'FAILED', {

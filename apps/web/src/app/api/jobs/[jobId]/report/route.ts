@@ -1,3 +1,4 @@
+import { guard } from '../../../../../lib/auth';
 import { buildReportDocument, reportToCsv } from '@shuttle-lite/telemetry';
 import { getStore } from '../../../../../lib/runtime';
 
@@ -10,6 +11,8 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: Request, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
+  const denied = await guard(request, jobId);
+  if (denied) return denied;
   const store = getStore();
   if (!store.getJob(jobId)) {
     return new Response(JSON.stringify({ error: `jobが存在しません: ${jobId}` }), {

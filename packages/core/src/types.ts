@@ -195,6 +195,14 @@ export interface JobCommandRecord {
 export type EventStatus = 'STARTED' | 'PROGRESS' | 'SUCCEEDED' | 'RETRYING' | 'FAILED' | 'SKIPPED';
 
 export interface MigrationEventRecord {
+  readonly audit?: {
+    requestedByUserId: string;
+    actorUserId: string | null;
+    executorUserId: string | null;
+    action: string | null;
+    fileName: string | null;
+    destinationFolderId: string | null;
+  };
   readonly id: string;
   readonly jobId: string;
   readonly itemId: string | null;

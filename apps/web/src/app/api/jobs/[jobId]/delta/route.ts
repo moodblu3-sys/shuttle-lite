@@ -1,9 +1,12 @@
+import { guard } from '../../../../../lib/auth';
 import { NextResponse } from 'next/server';
 import { getDeltaPlan, migrationRuns } from '@shuttle-lite/db';
 import { getStore } from '../../../../../lib/runtime';
 export const dynamic = 'force-dynamic';
 export async function GET(_request: Request, { params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
+  const denied = await guard(_request, jobId);
+  if (denied) return denied;
   const store = getStore();
   const job = store.getJob(jobId);
   if (!job) return NextResponse.json({ error: '移行が見つかりません。' }, { status: 404 });

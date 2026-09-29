@@ -1,17 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, PUT } from '../apps/web/src/app/api/metadata-settings/route';
-import { getBoxGateway, getStore } from '../apps/web/src/lib/runtime';
+import { getBoxGateway, getConfig, getStore } from '../apps/web/src/lib/runtime';
 import { createHarness, type Harness } from './harness';
 import { demoBusinessTemplates } from '../packages/box/src/fake/business-templates';
 
-vi.mock('../apps/web/src/lib/runtime', () => ({ getBoxGateway: vi.fn(), getStore: vi.fn() }));
+vi.mock('../apps/web/src/lib/runtime', () => ({
+  getConfig: vi.fn(),
+  getBoxGateway: vi.fn(),
+  getStore: vi.fn(),
+}));
 
 describe('metadata template settings', () => {
   let h: Harness;
   beforeEach(async () => {
     h = await createHarness();
     vi.mocked(getStore).mockReturnValue(h.store);
-    vi.mocked(getBoxGateway).mockReturnValue(h.gateway);
+    vi.mocked(getConfig).mockReturnValue(h.config);
+    vi.mocked(getBoxGateway).mockResolvedValue(h.gateway);
     for (const template of demoBusinessTemplates) await h.gateway.createMetadataTemplate(template);
   });
   afterEach(() => {
@@ -37,7 +42,7 @@ describe('metadata template settings', () => {
     });
   }
   it('saves actual Box schemas with revision checks and leaves job snapshots unchanged', async () => {
-    const available = await GET();
+    const available = await GET(new Request('http://localhost/api/settings'));
     expect(((await available.json()) as { templates: unknown[] }).templates).toHaveLength(2);
     expect((await PUT(request())).status).toBe(200);
     const saved = h.store.getMetadataSettings();

@@ -3,10 +3,14 @@ import type { BoxGateway } from '@shuttle-lite/box';
 import { ShuttleError, type MigrationItem } from '@shuttle-lite/core';
 import { POST } from '../apps/web/src/app/api/jobs/[jobId]/items/[itemId]/preview/route';
 import { validatePreviewUrl } from '../apps/web/src/lib/file-preview';
-import { getBoxGateway, getStore } from '../apps/web/src/lib/runtime';
+import { getBoxGateway, getConfig, getStore } from '../apps/web/src/lib/runtime';
 import { createHarness, runUntilIdle, type Harness } from './harness';
 
-vi.mock('../apps/web/src/lib/runtime', () => ({ getBoxGateway: vi.fn(), getStore: vi.fn() }));
+vi.mock('../apps/web/src/lib/runtime', () => ({
+  getConfig: vi.fn(),
+  getBoxGateway: vi.fn(),
+  getStore: vi.fn(),
+}));
 
 describe('review preview API', () => {
   let h: Harness;
@@ -33,7 +37,8 @@ describe('review preview API', () => {
       url: rawUrl,
     });
     vi.mocked(getStore).mockReturnValue(h.store);
-    vi.mocked(getBoxGateway).mockReturnValue({
+    vi.mocked(getConfig).mockReturnValue(h.config);
+    vi.mocked(getBoxGateway).mockResolvedValue({
       kind: 'http',
       getFilePreview: preview,
     } as unknown as BoxGateway);
@@ -171,7 +176,7 @@ describe('review preview API', () => {
   it('handles a removed file and the fake gateway', async () => {
     preview.mockResolvedValue(null);
     expect((await call()).status).toBe(404);
-    vi.mocked(getBoxGateway).mockReturnValue(h.gateway);
+    vi.mocked(getBoxGateway).mockResolvedValue(h.gateway);
     expect((await call()).status).toBe(409);
     await expect(h.gateway.getFilePreview(item.boxFileId!)).rejects.toThrow('デモモード');
   });

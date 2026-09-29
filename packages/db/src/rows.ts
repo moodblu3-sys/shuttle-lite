@@ -337,6 +337,7 @@ export function mapCommand(row: CommandRow): JobCommandRecord {
 }
 
 export interface EventRow {
+  audit_json?: string | null;
   id: string;
   job_id: string;
   item_id: string | null;
@@ -356,6 +357,9 @@ export interface EventRow {
 
 export function mapEvent(row: EventRow): MigrationEventRecord {
   return {
+    ...(row.audit_json
+      ? { audit: JSON.parse(row.audit_json) as MigrationEventRecord['audit'] }
+      : {}),
     id: row.id,
     jobId: row.job_id,
     itemId: row.item_id,

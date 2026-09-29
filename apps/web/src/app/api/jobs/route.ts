@@ -1,3 +1,4 @@
+import { guard, currentUser, oauthEnabled } from '../../../lib/auth';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
@@ -11,8 +12,13 @@ import { checkSource } from '../../../lib/source-check';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  return NextResponse.json({ jobs: getStore().listJobs() });
+export async function GET(request: Request) {
+  const denied = await guard(request, undefined, false);
+  if (denied) return denied;
+  const user = await currentUser(request);
+  return NextResponse.json({
+    jobs: user ? getStore().listOwnedJobs(user.id) : getStore().listJobs(),
+  });
 }
 
 /**
@@ -20,6 +26,8 @@ export async function GET() {
  * Every transfer remains in the worker process.
  */
 export async function POST(request: Request) {
+  const denied = await guard(request, undefined, false);
+  if (denied) return denied;
   const input: unknown = await request.json().catch(() => null);
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return NextResponse.json({ error: '移行の設定を確認してください。' }, { status: 400 });
@@ -41,16 +49,23 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  const user = await currentUser(request);
   const operatorLabel =
-    typeof body.operatorLabel === 'string' && body.operatorLabel.trim().length > 0
+    user?.name ??
+    (typeof body.operatorLabel === 'string' && body.operatorLabel.trim().length > 0
       ? body.operatorLabel.trim()
-      : 'ローカル操作者';
+      : 'ローカル操作者');
   if (body.autoStart !== undefined && typeof body.autoStart !== 'boolean') {
     return NextResponse.json({ error: '開始方法を確認してください。' }, { status: 400 });
   }
 
   // Existing scripts can still create jobs from a previously registered profile.
   if (body.profileId !== undefined) {
+    if (oauthEnabled())
+      return NextResponse.json(
+        { error: '新しい移行で移行元を選択してください。' },
+        { status: 400 },
+      );
     if (
       typeof body.profileId !== 'string' ||
       !body.profileId ||
@@ -88,6 +103,7 @@ export async function POST(request: Request) {
       const created = store.createJob({
         profileId: profile.id,
         operatorLabel,
+        ownerUserId: user?.id,
         testMode: body.testMode === true,
         migrationMode,
       });
@@ -96,7 +112,7 @@ export async function POST(request: Request) {
         migrationMode === 'AS_IS' ? [] : store.getMetadataSettings().mappings,
       );
       if (destinations) store.saveJobDestinations(created.id, destinations);
-      if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB');
+      if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB', {}, user?.id);
       return created;
     });
     return NextResponse.json({ job }, { status: 201 });
@@ -190,6 +206,7 @@ export async function POST(request: Request) {
       name,
       profileId: profile.id,
       operatorLabel,
+      ownerUserId: user?.id,
       testMode: body.testMode === true,
       migrationMode,
     });
@@ -198,7 +215,7 @@ export async function POST(request: Request) {
       migrationMode === 'AS_IS' ? [] : store.getMetadataSettings().mappings,
     );
     store.saveJobDestinations(created.id, destinations);
-    if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB');
+    if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB', {}, user?.id);
     return created;
   });
   return NextResponse.json({ job }, { status: 201 });

@@ -1,3 +1,4 @@
+import { guard } from '../../../lib/auth';
 import { NextResponse } from 'next/server';
 import { chooseSourceFolder, FolderPickerError } from '../../../lib/folder-picker';
 
@@ -24,6 +25,8 @@ function isLocalPickerRequest(request: Request): boolean {
 
 /** Only returns the chosen folder. Job creation and file transfer are separate actions. */
 export async function POST(request: Request) {
+  const denied = await guard(request, undefined, false);
+  if (denied) return denied;
   if (!isLocalPickerRequest(request)) {
     return NextResponse.json(
       { error: 'アプリを起動したMacでlocalhostの画面を開き、フォルダーを選択してください。' },

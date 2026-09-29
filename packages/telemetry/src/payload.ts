@@ -21,6 +21,12 @@ export const TELEMETRY_FIELDS = [
   'aiUsed',
   'humanOverride',
   'occurredAt',
+  'requestedByUserId',
+  'actorUserId',
+  'executorUserId',
+  'action',
+  'fileName',
+  'destinationFolderId',
 ] as const;
 
 export type TelemetryField = (typeof TELEMETRY_FIELDS)[number];
@@ -55,6 +61,12 @@ export function buildTelemetryPayload(event: MigrationEventRecord): TelemetryPay
     aiUsed: event.aiUsed,
     humanOverride: event.humanOverride,
     occurredAt: event.createdAt,
+    requestedByUserId: event.audit?.requestedByUserId ?? null,
+    actorUserId: event.audit?.actorUserId ?? null,
+    executorUserId: event.audit?.executorUserId ?? null,
+    action: event.audit?.action ?? null,
+    fileName: event.audit?.fileName ?? null,
+    destinationFolderId: event.audit?.destinationFolderId ?? null,
   };
 }
 

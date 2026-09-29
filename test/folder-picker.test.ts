@@ -122,6 +122,7 @@ describe('local Mac folder selection', () => {
       },
     );
     const pending = POST(request({}, controller.signal));
+    await vi.waitFor(() => expect(mocks.execFile).toHaveBeenCalledOnce());
     controller.abort();
     expect(await (await pending).json()).toEqual({ cancelled: true });
     result('cancelled\n');

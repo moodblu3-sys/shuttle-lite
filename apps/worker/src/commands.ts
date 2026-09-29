@@ -9,7 +9,12 @@ import {
   toShuttleError,
 } from '@shuttle-lite/core';
 import { parseApprovalRequest } from '@shuttle-lite/routing';
-import { destinationKeys, destinationsForJob, type WorkerContext } from './context';
+import {
+  authenticatedJobContext,
+  destinationKeys,
+  destinationsForJob,
+  type WorkerContext,
+} from './context';
 import { generateReport } from './report';
 
 const RESUMABLE_FROM: ItemState = 'PREFLIGHT';
@@ -19,7 +24,8 @@ const RESUMABLE_FROM: ItemState = 'PREFLIGHT';
  * worker stays the only component that changes item state
  * (docs/architecture.md section 8).
  */
-export async function processCommands(ctx: WorkerContext, limit = 20): Promise<number> {
+export async function processCommands(base: WorkerContext, limit = 20): Promise<number> {
+  const ctx = base;
   const commands = ctx.store.claimCommands(limit);
   if (commands.length === 0) return 0;
   const heartbeat = setInterval(() => {
@@ -32,7 +38,9 @@ export async function processCommands(ctx: WorkerContext, limit = 20): Promise<n
   heartbeat.unref();
   try {
     for (const command of commands) {
+      let ctx = base;
       try {
+        ctx = await authenticatedJobContext(base, command.jobId);
         if (
           ctx.store.getJob(command.jobId)?.migrationMode === 'AS_IS' &&
           ['APPROVE_ITEM', 'SELECT_METADATA_TEMPLATE', 'SEND_TO_REVIEW'].includes(command.type)

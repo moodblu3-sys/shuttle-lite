@@ -1,12 +1,14 @@
+import { requirePageUser } from '../lib/auth';
 import { buildJobSnapshot } from '@shuttle-lite/telemetry';
 import { JobCard } from '../components/job-card';
 import { getStore } from '../lib/runtime';
 
 export const dynamic = 'force-dynamic';
 
-export default function HomePage() {
+export default async function HomePage() {
+  const user = await requirePageUser();
   const store = getStore();
-  const jobs = store.listJobs(20).map((job) => ({
+  const jobs = (user ? store.listOwnedJobs(user.id, 20) : store.listJobs(20)).map((job) => ({
     job,
     snapshot: buildJobSnapshot(store, job.id),
     profile: store.getProfile(job.profileId),

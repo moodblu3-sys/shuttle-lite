@@ -44,9 +44,12 @@ async function openedReview(element: ReactNode) {
 }
 
 describe('concise workspace screens', () => {
-  it('renders navigation and page content without the top bar or sidebar slogan', () => {
+  it('renders navigation and page content without the top bar or sidebar slogan', async () => {
+    vi.mocked(getConfig).mockReturnValue(
+      buildConfig(parseEnv({ NODE_ENV: 'test', BOX_MODE: 'fake' })),
+    );
     const html = renderToStaticMarkup(
-      createElement(RootLayout, { children: createElement('h1', null, '移行一覧') }),
+      await RootLayout({ children: createElement('h1', null, '移行一覧') }),
     );
     expect(html).toContain('workspace-content');
     expect(html).toContain('メインナビゲーション');
@@ -108,11 +111,11 @@ describe('concise workspace screens', () => {
     expect(html).not.toContain('AIが配置先');
   });
 
-  it('shows connection values and detail settings without explanatory notes', () => {
+  it('shows connection values and detail settings without explanatory notes', async () => {
     vi.mocked(getConfig).mockReturnValue(
       buildConfig(parseEnv({ NODE_ENV: 'test', BOX_MODE: 'real', BOX_ACCESS_TOKEN: 'test-only' })),
     );
-    const html = renderToStaticMarkup(createElement(SettingsPage));
+    const html = renderToStaticMarkup(await SettingsPage());
     for (const label of ['認証情報', 'アクセストークン', '詳細設定', 'AI分類', '保存', 'Snowflake'])
       expect(html).toContain(label);
     for (const copy of [
@@ -132,11 +135,11 @@ describe('concise workspace screens', () => {
 });
 
 describe('concise review and empty states', () => {
-  it('keeps the new migration action in an empty list without a tutorial', () => {
+  it('keeps the new migration action in an empty list without a tutorial', async () => {
     vi.mocked(getConfig).mockReturnValue(
       buildConfig(parseEnv({ NODE_ENV: 'test', BOX_MODE: 'fake' })),
     );
-    const html = renderToStaticMarkup(createElement(HomePage));
+    const html = renderToStaticMarkup(await HomePage());
     expect(html).toContain('新しい移行');
     expect(html).toContain('移行履歴なし');
     expect(html).not.toContain('右上の');

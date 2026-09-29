@@ -60,7 +60,13 @@ export function getCatalog(jobId?: string): DestinationCatalogConfig {
 }
 
 /** Read-only Box browsing uses the same local credentials/proxy as the worker. */
-export function getBoxGateway(): BoxGateway {
+export async function getBoxGateway(): Promise<BoxGateway> {
+  if (getConfig().env.BOX_AUTH_MODE === 'oauth') {
+    const { currentUser, boxOAuth } = await import('./auth');
+    const user = await currentUser();
+    if (!user) throw new Error('Boxにログインしてください。');
+    return boxOAuth().gateway(user.id);
+  }
   const runtime = getRuntime();
   return (runtime.gateway ??= createBoxGateway(runtime.config));
 }

@@ -119,7 +119,11 @@ describe('sqlite store', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
       .all() as Array<{ name: string }>;
     expect(tables.map((t) => t.name)).toEqual([
+      'auth_sessions',
+      'auth_states',
+      'auth_users',
       'business_metadata_writes',
+      'command_actors',
       'delta_plans',
       'delta_runs',
       'extraction_results',
@@ -127,6 +131,7 @@ describe('sqlite store', () => {
       'job_commands',
       'job_destinations',
       'job_metadata',
+      'job_owners',
       'metadata_settings',
       'migration_events',
       'migration_folders',

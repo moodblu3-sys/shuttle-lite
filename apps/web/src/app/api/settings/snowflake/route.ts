@@ -1,3 +1,4 @@
+import { guard } from '../../../../lib/auth';
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { SnowflakeTelemetrySink } from '@shuttle-lite/telemetry';
@@ -10,6 +11,8 @@ export const dynamic = 'force-dynamic';
 let checking = false;
 
 export async function POST(request: Request) {
+  const denied = await guard(request, undefined, true);
+  if (denied) return denied;
   if (!isLocalMutation(request))
     return NextResponse.json(
       { error: 'localhostの設定画面から確認してください。' },
