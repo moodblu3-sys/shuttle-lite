@@ -1,5 +1,7 @@
 'use client';
 
+import { BoxLabel } from './box-label';
+
 import {
   loadReviewDraft,
   saveReviewDraft,
@@ -568,7 +570,7 @@ export function ReviewList({
                   disabled={locked || !active.boxVersionId || !active.boxSha1}
                 />
                 <a className={styles.openOriginal} href={boxLink} target="_blank" rel="noreferrer">
-                  <Icon kind="external" /> Boxで原本を開く
+                  <Icon kind="external" /> <BoxLabel>Boxで原本を開く</BoxLabel>
                 </a>
               </div>
             ) : null}
@@ -764,7 +766,9 @@ export function ReviewList({
                       ? 'SHA-1 一致'
                       : '未確認・不一致'}
                   </dd>
-                  <dt>BoxファイルID</dt>
+                  <dt>
+                    <BoxLabel>BoxファイルID</BoxLabel>
+                  </dt>
                   <dd>{active.boxFileId ?? '未取得'}</dd>
                   <dt>バージョン</dt>
                   <dd>{active.boxVersionId ?? '未取得'}</dd>

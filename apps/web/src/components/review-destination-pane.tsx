@@ -1,5 +1,7 @@
 'use client';
 
+import { BoxLabel } from './box-label';
+
 import { useMemo, useState } from 'react';
 import type { DestinationOption } from '../lib/review-types';
 import { WorkspaceIcon } from './workspace-icon';
@@ -126,7 +128,9 @@ export function ReviewDestinationPane({
   return (
     <section className={styles.destinationPane} aria-label="Boxの配置先">
       <header className={styles.paneHeading}>
-        <h2>Boxの配置先</h2>
+        <h2>
+          <BoxLabel>Boxの配置先</BoxLabel>
+        </h2>
       </header>
       <div className={styles.folderSearch}>
         <WorkspaceIcon kind="search" />

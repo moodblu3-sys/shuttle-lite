@@ -1,3 +1,4 @@
+import { BoxLabel } from '../../components/box-label';
 import { redirect } from 'next/navigation';
 import { currentUser, oauthEnabled } from '../../lib/auth';
 import { ShuttleBrand } from '../../components/shuttle-brand';
@@ -22,7 +23,7 @@ export default async function LoginPage({
         </p>
       )}
       <a className="login-button" href="/api/auth/login">
-        Boxでログイン
+        <BoxLabel inverse>Boxでログイン</BoxLabel>
       </a>
     </section>
   );

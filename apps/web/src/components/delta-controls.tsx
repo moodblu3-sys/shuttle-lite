@@ -1,15 +1,18 @@
 'use client';
-import { useEffect, useState } from 'react';
+
+import { BoxLabel } from './box-label';
+
+import { useEffect, useState, type ReactNode } from 'react';
 import type { JobCommandRecord, MigrationJob } from '@shuttle-lite/core';
 import type { DeltaAction, DeltaPlan } from '@shuttle-lite/db';
-const LABELS: Record<DeltaAction, string> = {
+const LABELS: Record<DeltaAction, ReactNode> = {
   ADD: '追加',
   UPDATE: '更新',
   RETRY: '未転送',
   UNCHANGED: '変更なし',
   CONFLICT: '要対応',
   REMOVED: '元で削除',
-  BOX_CHANGED: 'Box側で変更',
+  BOX_CHANGED: <BoxLabel>Box側で変更</BoxLabel>,
 };
 interface Data {
   runs: MigrationJob[];

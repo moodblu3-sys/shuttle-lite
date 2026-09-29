@@ -1,5 +1,7 @@
 'use client';
 
+import { BoxLabel } from './box-label';
+
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { BoxFolderPicker, type SelectedBoxFolder } from './box-folder-picker';
@@ -265,7 +267,7 @@ export function NewJobForm({
               →
             </span>
             <div>
-              <span>Boxの最終配置先</span>
+              <BoxLabel>Boxの最終配置先</BoxLabel>
               <strong>
                 {destination && folder
                   ? `${destination.path ?? destination.name} / ${folder.name}`

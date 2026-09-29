@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -29,7 +30,11 @@ describe('login layout', () => {
     expect(html.match(/Shuttle Lite/g)).toHaveLength(1);
     expect(html).not.toContain('workspace-brand');
     expect(html).toContain('href="/api/auth/login"');
-    expect(html).toContain('Boxでログイン');
+    const content = document.createElement('div');
+    content.innerHTML = html;
+    const login = content.querySelector('.login-button')!;
+    expect(login.textContent).toBe('Boxでログイン');
+    expect(login.querySelector('img')?.getAttribute('src')).toBe('/box-logo.png');
     expect(html).not.toContain('<aside');
     expect(html).not.toContain('<nav');
     expect(html).not.toContain('href="/settings"');

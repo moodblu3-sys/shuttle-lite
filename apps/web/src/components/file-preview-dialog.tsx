@@ -1,5 +1,7 @@
 'use client';
 
+import { BoxLabel } from './box-label';
+
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import type { ReviewItemView } from '../lib/review-types';
 import { WorkspaceIcon } from './workspace-icon';
@@ -168,7 +170,7 @@ function FilePreviewDialog({
               再読み込み
             </button>
             <a href={boxLink} target="_blank" rel="noreferrer">
-              Boxで原本を開く ↗
+              <BoxLabel>Boxで原本を開く ↗</BoxLabel>
             </a>
             <button
               type="button"

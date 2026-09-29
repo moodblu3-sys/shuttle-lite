@@ -5,6 +5,7 @@ import { formatBytes } from '@shuttle-lite/core/progress';
 import type { SourceListing } from '../lib/source-browser';
 import type { SelectedBoxFolder } from './box-folder-picker';
 import { DocumentIcon, WorkspaceIcon } from './workspace-icon';
+import { BoxLabel } from './box-label';
 
 export type SourceFolder = { cancelled: false; path: string; name: string; browseToken?: string };
 type Entry = { id: string; name: string; type: 'folder' | 'file'; size?: number };
@@ -56,7 +57,9 @@ function FolderPane({
   return (
     <section className="migration-browser" aria-label={title}>
       <div className="migration-browser-heading">
-        <h2>{title}</h2>
+        <h2>
+          <BoxLabel>{title}</BoxLabel>
+        </h2>
         {action}
       </div>
       <nav className="migration-browser-breadcrumb" aria-label={`${title}の階層`}>

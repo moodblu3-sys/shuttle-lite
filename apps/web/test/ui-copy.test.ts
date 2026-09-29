@@ -61,6 +61,8 @@ describe('concise workspace screens', () => {
     const html = renderToStaticMarkup(
       createElement(NewJobForm, { aiEnabled: true, boxMode: 'real', folderPickerAvailable: true }),
     );
+    const content = document.createElement('div');
+    content.innerHTML = html;
     for (const label of [
       '移行名',
       '移行元',
@@ -69,7 +71,7 @@ describe('concise workspace screens', () => {
       'Boxから選択',
       '移行を開始',
     ])
-      expect(html).toContain(label);
+      expect(content.textContent).toContain(label);
     for (const copy of [
       'このMac',
       '選択だけでは',

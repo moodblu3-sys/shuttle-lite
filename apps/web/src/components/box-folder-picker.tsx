@@ -1,5 +1,7 @@
 'use client';
 
+import { BoxLabel } from './box-label';
+
 import { useEffect, useRef, useState } from 'react';
 
 type Folder = { id: string; name: string; parentFolderId: string | null };
@@ -91,7 +93,7 @@ export function BoxFolderPicker({
   return (
     <div className="source-folder" role="group" aria-labelledby="box-folder-label">
       <span id="box-folder-label" className="small">
-        移行先 · {boxMode === 'real' ? 'Box' : 'Box（テスト環境）'}
+        <BoxLabel>{boxMode === 'real' ? '移行先 · Box' : '移行先 · Box（テスト環境）'}</BoxLabel>
       </span>
       <div className="source-folder-choice">
         <div aria-live="polite">
@@ -112,14 +114,16 @@ export function BoxFolderPicker({
             void load(value?.folderId ?? '0');
           }}
         >
-          {value ? '変更' : 'Boxから選択'}
+          {value ? '変更' : <BoxLabel>Boxから選択</BoxLabel>}
         </button>
       </div>
       {open ? (
         <div className="box-folder-browser">
           <div className="actions">
             <strong>
-              {listing?.folder.id === '0' ? 'すべてのフォルダー' : (listing?.folder.name ?? 'Box')}
+              {listing?.folder.id === '0'
+                ? 'すべてのフォルダー'
+                : (listing?.folder.name ?? <BoxLabel>Box</BoxLabel>)}
             </strong>
             {listing?.folder.parentFolderId ? (
               <button

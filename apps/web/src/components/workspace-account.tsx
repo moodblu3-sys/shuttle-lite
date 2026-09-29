@@ -1,5 +1,7 @@
 'use client';
 
+import { BoxLabel } from './box-label';
+
 import { useEffect, useId, useRef, useState } from 'react';
 
 export function WorkspaceAccount({ name }: { name: string }) {
@@ -53,7 +55,7 @@ export function WorkspaceAccount({ name }: { name: string }) {
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M20 7v5h-5 M20 12a8 8 0 1 0-2 6" />
             </svg>
-            Boxに再ログイン
+            <BoxLabel>Boxに再ログイン</BoxLabel>
           </a>
           <form action="/api/auth/logout" method="post">
             <button type="submit">

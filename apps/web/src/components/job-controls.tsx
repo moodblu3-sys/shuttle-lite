@@ -1,14 +1,16 @@
 'use client';
 
+import { BoxLabel } from './box-label';
+
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { CommandType, JobCommandRecord } from '@shuttle-lite/core';
 import type { JobSnapshot } from '@shuttle-lite/telemetry';
 import { ErrorNotice } from './error-notice';
 
 interface ControlButton {
   readonly type: CommandType;
-  readonly label: string;
+  readonly label: ReactNode;
   readonly variant?: 'primary' | 'secondary' | 'ghost';
 }
 
@@ -36,7 +38,7 @@ function buttonsFor(snapshot: JobSnapshot): {
     ...(snapshot.job.migrationMode === 'AS_IS'
       ? []
       : [{ type: 'RESCAN_JOB' as const, label: '移行元を再スキャン', variant: 'ghost' as const }]),
-    { type: 'GENERATE_REPORT', label: 'レポートをBoxに保存', variant: 'ghost' },
+    { type: 'GENERATE_REPORT', label: <BoxLabel>レポートをBoxに保存</BoxLabel>, variant: 'ghost' },
   ];
 
   switch (snapshot.job.state) {

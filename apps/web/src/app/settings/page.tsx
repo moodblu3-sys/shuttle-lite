@@ -1,3 +1,4 @@
+import { BoxLabel } from '../../components/box-label';
 import { requirePageUser, isAdmin } from '../../lib/auth';
 import { platform } from 'node:os';
 import { assertSnowflakeConfigured, settingsFromConfig } from '@shuttle-lite/config';
@@ -29,15 +30,19 @@ export default async function SettingsPage() {
       <section className="card">
         <h2>認証情報</h2>
         <dl className="kv">
-          <dt>Box</dt>
+          <dt>
+            <BoxLabel>Box</BoxLabel>
+          </dt>
           <dd>
-            {config.box.mode === 'fake'
-              ? 'テスト用（認証不要）'
-              : user
-                ? `Boxログイン（${user.name}）`
-                : config.box.accessToken
-                  ? 'アクセストークン'
-                  : 'アプリ認証（CCG）'}
+            {config.box.mode === 'fake' ? (
+              'テスト用（認証不要）'
+            ) : user ? (
+              <BoxLabel>{`Boxログイン（${user.name}）`}</BoxLabel>
+            ) : config.box.accessToken ? (
+              'アクセストークン'
+            ) : (
+              'アプリ認証（CCG）'
+            )}
           </dd>
         </dl>
       </section>

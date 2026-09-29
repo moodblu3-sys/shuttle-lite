@@ -1,5 +1,7 @@
 'use client';
 
+import { BoxLabel } from './box-label';
+
 import { useEffect, useState, type ReactNode } from 'react';
 // Deep import: the package barrel reaches node:fs, which cannot be bundled
 // for the browser.
@@ -89,7 +91,7 @@ export function ProgressView({
             staged job look 0% complete. */}
         <div className="progress-stack">
           <ProgressTrack
-            label="Boxへ転送"
+            label={<BoxLabel>Boxへ転送</BoxLabel>}
             done={snapshot.transferredItems}
             total={snapshot.totalItems}
             percent={percent(snapshot.transferredItems)}
@@ -237,7 +239,7 @@ function CompletionSummary({
             target="_blank"
             rel="noreferrer"
           >
-            Boxで確認
+            <BoxLabel inverse>Boxで確認</BoxLabel>
           </a>
         ) : null}
         <a className="linkbtn" href={`/api/jobs/${jobId}/report?format=csv`}>
@@ -297,7 +299,7 @@ function ProgressTrack({
   percent,
   tone,
 }: {
-  label: string;
+  label: ReactNode;
   done: number;
   total: number;
   percent: number;
