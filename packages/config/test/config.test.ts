@@ -90,10 +90,21 @@ describe('environment validation', () => {
     ).toThrowError(/PROXY_USERNAME/);
   });
 
-  it('demands Snowflake settings before selecting the Snowflake sink', () => {
-    expect(() =>
-      parseEnv({ BOX_MODE: 'fake', TELEMETRY_SINK: 'snowflake' } as NodeJS.ProcessEnv),
-    ).toThrowError(/SNOWFLAKE_ACCOUNT/);
+  it('defaults real Box connections to Snowflake and fake environments to local logs', () => {
+    expect(
+      buildConfig(parseEnv({ BOX_MODE: 'real', BOX_ACCESS_TOKEN: 'test-token' })).telemetry.sink,
+    ).toBe('snowflake');
+    expect(buildConfig(parseEnv(fakeEnv)).telemetry.sink).toBe('jsonl');
+  });
+  it('allows startup before Snowflake setup and respects an explicit local destination', () => {
+    expect(
+      buildConfig(parseEnv({ BOX_MODE: 'fake', TELEMETRY_SINK: 'snowflake' })).telemetry.sink,
+    ).toBe('snowflake');
+    expect(
+      buildConfig(
+        parseEnv({ BOX_MODE: 'real', BOX_ACCESS_TOKEN: 'test-token', TELEMETRY_SINK: 'jsonl' }),
+      ).telemetry.sink,
+    ).toBe('jsonl');
   });
 });
 

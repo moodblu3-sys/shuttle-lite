@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyRuntimeSettings, parseEnv, settingsFromConfig } from '@shuttle-lite/config';
@@ -230,6 +230,31 @@ describe('saved settings drive migration and logging', () => {
     expect((await sender.runOnce()).delivered).toBe(1);
     expect(JSON.parse(readFileSync(join(a, 'events.jsonl'), 'utf8')).status).toBe('STARTED');
     expect(JSON.parse(readFileSync(join(b, 'events.jsonl'), 'utf8')).status).toBe('SUCCEEDED');
+    await sender.close();
+  });
+  it('retains logs for retry when Snowflake is not configured, without writing local JSONL', async () => {
+    const job = harness.store.createJob({
+      profileId: harness.createProfile().id,
+      operatorLabel: 'tester',
+    });
+    const event = harness.store.appendEvent(
+      { jobId: job.id, phase: 'SCAN', status: 'STARTED' },
+      { telemetry: true },
+    );
+    const config = {
+      ...harness.config,
+      telemetry: { ...harness.config.telemetry, sink: 'snowflake' as const },
+    };
+    const sender = new OutboxSender({
+      store: harness.store,
+      sink: new ConfiguredTelemetrySink(() => config),
+      batchSize: 50,
+    });
+    expect(await sender.runOnce()).toEqual({ claimed: 1, delivered: 0, failed: 1 });
+    expect(harness.store.getOutbox(event.id)?.state).toBe('FAILED');
+    expect(harness.store.getOutbox(event.id)?.nextAttemptAt).not.toBeNull();
+    expect(existsSync(config.telemetry.jsonlPath)).toBe(false);
+    expect(harness.store.getJob(job.id)?.state).toBe('QUEUED');
     await sender.close();
   });
 });

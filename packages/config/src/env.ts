@@ -62,7 +62,10 @@ export const EnvSchema = z.object({
   AI_ROUTING_ENABLED: boolish.default(true),
   AI_MAX_ATTEMPTS: positiveInt(4),
 
-  TELEMETRY_SINK: z.enum(['jsonl', 'snowflake']).default('jsonl'),
+  TELEMETRY_SINK: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.enum(['jsonl', 'snowflake']).optional(),
+  ),
   TELEMETRY_BATCH_SIZE: positiveInt(50),
   SNOWFLAKE_ACCOUNT: optionalString,
   SNOWFLAKE_USERNAME: optionalString,
@@ -222,16 +225,9 @@ function crossFieldChecks(env: Env): string[] {
       );
     }
   }
-  if (env.TELEMETRY_SINK === 'snowflake') {
-    for (const key of [
-      'SNOWFLAKE_ACCOUNT',
-      'SNOWFLAKE_USERNAME',
-      'SNOWFLAKE_DATABASE',
-      'SNOWFLAKE_SCHEMA',
-    ] as const) {
-      if (!env[key]) problems.push(`TELEMETRY_SINK=snowflake には ${key} が必要です`);
-    }
-  }
+  // Snowflake can be configured in the settings screen after startup.
+  // Delivery validates the effective configuration and retains failures in
+  // the outbox; missing settings must not prevent login or configuration.
   return problems;
 }
 
@@ -280,7 +276,7 @@ export function buildConfig(env: Env): AppConfig {
     },
     ai: { enabled: env.AI_ROUTING_ENABLED, maxAttempts: env.AI_MAX_ATTEMPTS },
     telemetry: {
-      sink: env.TELEMETRY_SINK,
+      sink: env.TELEMETRY_SINK ?? (env.BOX_MODE === 'real' ? 'snowflake' : 'jsonl'),
       batchSize: env.TELEMETRY_BATCH_SIZE,
       jsonlPath: `${dataDir}/telemetry/events.jsonl`,
       snowflake: {

@@ -111,12 +111,26 @@ describe('concise workspace screens', () => {
     expect(html).not.toContain('AIが配置先');
   });
 
-  it('shows connection values and detail settings without explanatory notes', async () => {
+  it('shows connection values and local settings without explanatory notes', async () => {
     vi.mocked(getConfig).mockReturnValue(
-      buildConfig(parseEnv({ NODE_ENV: 'test', BOX_MODE: 'real', BOX_ACCESS_TOKEN: 'test-only' })),
+      buildConfig(
+        parseEnv({
+          NODE_ENV: 'test',
+          BOX_MODE: 'real',
+          BOX_ACCESS_TOKEN: 'test-only',
+          TELEMETRY_SINK: 'jsonl',
+        }),
+      ),
     );
     const html = renderToStaticMarkup(await SettingsPage());
-    for (const label of ['認証情報', 'アクセストークン', '詳細設定', 'AI分類', '保存', 'Snowflake'])
+    for (const label of [
+      '認証情報',
+      'アクセストークン',
+      '管理者設定',
+      'AI分類',
+      '保存',
+      'Snowflake',
+    ])
       expect(html).toContain(label);
     for (const copy of [
       '接続先',
