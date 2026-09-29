@@ -145,3 +145,33 @@ describe('report outcomes', () => {
     expect(h.store.listEvents(jobId)[0]?.status).toBe('SUCCEEDED');
   });
 });
+
+it('keeps a locked approval recoverable and applies it once after recovery', async () => {
+  h.writeSource('contract.txt', 'NDA contract');
+  h.store.enqueueCommand(jobId, 'START_JOB');
+  await runUntilIdle(h);
+  const item = h.store.listItems(jobId)[0]!;
+  approveItem(h, item, h.catalog.entries[0]!.key);
+  vi.spyOn(h.store, 'completeCommand').mockImplementationOnce(() => {
+    throw Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' });
+  });
+  await processCommands(h.ctx);
+  expect(h.store.getItem(item.id)?.state).toBe(item.state);
+  expect(h.store.latestReviewCommand(jobId, item.id)?.state).toBe('CLAIMED');
+  expireClaims();
+  await processCommands(h.ctx);
+  expect(h.store.getItem(item.id)?.state).toBe('APPROVED');
+  expect(h.store.latestReviewCommand(jobId, item.id)?.state).toBe('DONE');
+  expect(await processCommands(h.ctx)).toBe(0);
+});
+
+it('retries command acquisition on the next tick when SQLite is busy', async () => {
+  h.store.enqueueCommand(jobId, 'START_JOB');
+  vi.spyOn(h.store, 'claimCommands').mockImplementationOnce(() => {
+    throw Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' });
+  });
+  expect(await processCommands(h.ctx)).toBe(0);
+  expect(h.store.listCommands(jobId)[0]?.state).toBe('PENDING');
+  expect(await processCommands(h.ctx)).toBe(1);
+  expect(h.store.listCommands(jobId)[0]?.state).toBe('DONE');
+});

@@ -2,6 +2,7 @@ import { guard, currentUser } from '../../../../../lib/auth';
 import { NextResponse } from 'next/server';
 import { COMMAND_TYPES, type CommandType } from '@shuttle-lite/core';
 import { getStore } from '../../../../../lib/runtime';
+import { isDatabaseBusy } from '@shuttle-lite/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,6 +23,25 @@ export async function GET(_request: Request, context: RouteContext) {
  * intent happens here, but the decision to act stays with the worker.
  */
 export async function POST(request: Request, context: RouteContext) {
+  try {
+    return await appendCommand(request, context);
+  } catch (error) {
+    if (isDatabaseBusy(error)) {
+      return NextResponse.json(
+        {
+          code: 'DATABASE_BUSY',
+          error: '処理が混み合っています。少し待ってから再操作してください。',
+        },
+        { status: 503, headers: { 'Retry-After': '1' } },
+      );
+    }
+    // Preserve the server diagnostic for unexpected failures. The client also
+    // handles non-JSON error responses without exposing a JSON parser error.
+    throw error;
+  }
+}
+
+async function appendCommand(request: Request, context: RouteContext) {
   const { jobId } = await context.params;
   const denied = await guard(request, jobId);
   if (denied) return denied;

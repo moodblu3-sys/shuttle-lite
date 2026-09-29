@@ -28,6 +28,7 @@ import { DocumentIcon, WorkspaceIcon as Icon } from './workspace-icon';
 import styles from './review-workspace.module.css';
 import { ErrorNotice } from './error-notice';
 import { ReviewDestinationPane } from './review-destination-pane';
+import { submitReviewCommand } from '../lib/submit-review-command';
 import { errorPresentation } from '../lib/error-presentation';
 
 function metadataStatus(item: ReviewItemView, pending: boolean): string {
@@ -283,24 +284,16 @@ export function ReviewList({
         if (isReviewPending(item, submitted[item.itemId])) continue;
         if (!skip && !canApprove(currentDraft(item), destinations, needsReviewKey)) continue;
         try {
-          const response = await fetch(`/api/jobs/${jobId}/commands`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(
-              skip
-                ? {
-                    type: 'SKIP_ITEM',
-                    payload: { itemId: item.itemId, reason: '操作者が移行対象から除外しました' },
-                  }
-                : commandFor(item, currentDraft(item), operatorLabel),
-            ),
-          });
-          if (!response.ok) {
-            const body = (await response.json()) as { error?: string };
-            throw new Error(body.error ?? `送信に失敗しました (${response.status})`);
-          }
-          const body = (await response.json()) as { command: ReviewCommandView };
-          setSubmitted((previous) => ({ ...previous, [item.itemId]: body.command }));
+          const command = await submitReviewCommand(
+            jobId,
+            skip
+              ? {
+                  type: 'SKIP_ITEM',
+                  payload: { itemId: item.itemId, reason: '操作者が移行対象から除外しました' },
+                }
+              : commandFor(item, currentDraft(item), operatorLabel),
+          );
+          setSubmitted((previous) => ({ ...previous, [item.itemId]: command }));
           accepted.push(item.itemId);
         } catch (cause) {
           failures.push(`${item.sourceFileName}: ${(cause as Error).message}`);
@@ -329,29 +322,23 @@ export function ReviewList({
       for (const item of targets) {
         if (!item.businessMetadata || isReviewPending(item, submitted[item.itemId])) continue;
         try {
-          const response = await fetch(`/api/jobs/${jobId}/commands`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              type: 'SELECT_METADATA_TEMPLATE',
-              payload: {
-                itemId: item.itemId,
-                templateId,
-                revision: item.businessMetadata.revision,
-                observedBoxFileId: item.boxFileId,
-                observedSha1: item.boxSha1,
-              },
-            }),
+          const command = await submitReviewCommand(jobId, {
+            type: 'SELECT_METADATA_TEMPLATE',
+            payload: {
+              itemId: item.itemId,
+              templateId,
+              revision: item.businessMetadata.revision,
+              observedBoxFileId: item.boxFileId,
+              observedSha1: item.boxSha1,
+            },
           });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error ?? '変更を受け付けられませんでした。');
           // Preserve placement edits across our own extraction, never old metadata values.
           const saved: SavedReviewDraft = {
             revision: reviewRevision(item),
             commandId: item.reviewCommand?.id ?? null,
             draft: currentDraft(item),
             savedAt: Date.now(),
-            templateChange: { commandId: data.command.id, templateId },
+            templateChange: { commandId: command.id, templateId },
           };
           setEdits((previous) => ({ ...previous, [item.itemId]: saved }));
           try {
@@ -359,7 +346,7 @@ export function ReviewList({
           } catch {
             failures.push(`${item.sourceFileName}: 下書きを保存できません。`);
           }
-          setSubmitted((previous) => ({ ...previous, [item.itemId]: data.command }));
+          setSubmitted((previous) => ({ ...previous, [item.itemId]: command }));
           setSelected((previous) => {
             const next = new Map(previous);
             next.delete(item.itemId);

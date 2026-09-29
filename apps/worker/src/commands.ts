@@ -1,5 +1,5 @@
 import { checkDelta, startDelta, isDeltaRun } from './delta';
-import { migrationRuns } from '@shuttle-lite/db';
+import { isDatabaseBusy, migrationRuns } from '@shuttle-lite/db';
 import { selectMetadataTemplate, validateBusinessApproval } from './business-metadata';
 import {
   type ItemState,
@@ -26,7 +26,13 @@ const RESUMABLE_FROM: ItemState = 'PREFLIGHT';
  */
 export async function processCommands(base: WorkerContext, limit = 20): Promise<number> {
   const ctx = base;
-  const commands = ctx.store.claimCommands(limit);
+  let commands: ReturnType<typeof ctx.store.claimCommands>;
+  try {
+    commands = ctx.store.claimCommands(limit);
+  } catch (error) {
+    if (!isDatabaseBusy(error)) throw error;
+    return 0; // The next worker tick retries acquisition.
+  }
   if (commands.length === 0) return 0;
   const heartbeat = setInterval(() => {
     try {
@@ -82,6 +88,13 @@ export async function processCommands(base: WorkerContext, limit = 20): Promise<
           });
         }
       } catch (error) {
+        if (isDatabaseBusy(error)) {
+          // Local effects were rolled back. Keep the claim recoverable rather
+          // than rejecting valid intent. Expiry also fences this worker; report
+          // uploads retain their existing unknown-outcome recovery policy.
+          ctx.logger.warn('command waiting for database', { commandId: command.id });
+          break;
+        }
         const shuttleError = toShuttleError(error, 'APPROVAL_INVALID');
         ctx.logger.warn('command rejected', {
           commandId: command.id,
@@ -89,9 +102,17 @@ export async function processCommands(base: WorkerContext, limit = 20): Promise<
           category: shuttleError.category,
           message: shuttleError.message,
         });
-        ctx.store.withCommandClaim(command, () =>
-          ctx.store.rejectCommand(command.id, `${shuttleError.category}: ${shuttleError.message}`),
-        );
+        try {
+          ctx.store.withCommandClaim(command, () =>
+            ctx.store.rejectCommand(
+              command.id,
+              `${shuttleError.category}: ${shuttleError.message}`,
+            ),
+          );
+        } catch (writeError) {
+          if (!isDatabaseBusy(writeError)) throw writeError;
+          break;
+        }
       }
     }
   } finally {

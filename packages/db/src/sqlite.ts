@@ -6,6 +6,18 @@ import { LATEST_SCHEMA_VERSION, MIGRATIONS } from './migrations';
 
 export type SqliteDatabase = Database.Database;
 
+export function isDatabaseBusy(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) return false;
+  const code = error.code;
+  return (
+    typeof code === 'string' &&
+    (code === 'SQLITE_BUSY' ||
+      code.startsWith('SQLITE_BUSY_') ||
+      code === 'SQLITE_LOCKED' ||
+      code.startsWith('SQLITE_LOCKED_'))
+  );
+}
+
 export interface OpenOptions {
   readonly path: string;
   readonly readonly?: boolean;

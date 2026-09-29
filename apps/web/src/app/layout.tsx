@@ -1,6 +1,7 @@
 import { currentUser } from '../lib/auth';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { WorkspaceAccount } from '../components/workspace-account';
 import { WorkspaceNav } from '../components/workspace-nav';
 import { WorkspaceShell } from '../components/workspace-shell';
 import { ShuttleBrand } from '../components/shuttle-brand';
@@ -23,17 +24,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 <ShuttleBrand />
               </a>
               <WorkspaceNav />
-              {user && (
-                <div className="workspace-account">
-                  <span>{user.name}</span>
-                  <div>
-                    <a href="/api/auth/login">Boxに再ログイン</a>
-                  </div>
-                  <form action="/api/auth/logout" method="post">
-                    <button type="submit">ログアウト</button>
-                  </form>
-                </div>
-              )}
+              {user && <WorkspaceAccount name={user.name} />}
             </>
           }
         >

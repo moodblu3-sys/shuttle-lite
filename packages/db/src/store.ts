@@ -219,7 +219,9 @@ export class ShuttleStore {
   }
 
   transaction<T>(fn: () => T): T {
-    return this.db.transaction(fn)();
+    // Acquire the writer lock before reading, avoiding a stale WAL snapshot
+    // when another process commits between validation and the first write.
+    return this.db.transaction(fn).immediate();
   }
 
   getWrittenTemplates(itemId: string): BusinessTemplate[] {
@@ -490,7 +492,8 @@ export class ShuttleStore {
       this.db
         .prepare(
           `SELECT j.* FROM migration_jobs j JOIN job_owners o ON o.job_id=j.id
-      WHERE o.user_id=? ORDER BY j.created_at DESC,j.rowid DESC LIMIT ?`,
+      WHERE o.user_id=? AND NOT (j.test_mode = 1 AND j.cleanup_state = 'DONE')
+      ORDER BY j.created_at DESC,j.rowid DESC LIMIT ?`,
         )
         .all(userId, limit) as JobRow[]
     ).map(mapJob);
@@ -636,7 +639,8 @@ export class ShuttleStore {
           ORDER BY CASE WHEN run.state IN ('RUNNING','SCANNING','PAUSED') THEN 0 ELSE 1 END,
             run.created_at DESC, run.rowid DESC LIMIT 1)
           WHERE roots.id NOT IN (SELECT job_id FROM delta_runs)
-          ORDER BY roots.created_at DESC LIMIT ?`,
+          AND NOT (j.test_mode = 1 AND j.cleanup_state = 'DONE')
+          ORDER BY roots.created_at DESC, roots.rowid DESC LIMIT ?`,
       )
       .all(limit) as JobRow[];
     return rows.map(mapJob);

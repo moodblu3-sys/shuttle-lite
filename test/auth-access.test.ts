@@ -229,3 +229,34 @@ describe('authenticated web access', () => {
     expect((await reader.read()).done).toBe(true);
   });
 });
+
+it('hides only successfully cleaned tests, before the list limit, retaining audit history', async () => {
+  const profileId = h.createProfile().id;
+  const active = h.store.createJob({
+    profileId,
+    operatorLabel: 'test',
+    testMode: true,
+    ownerUserId: '11',
+  });
+  h.store.requestTestCleanup(active.id);
+  expect(h.store.listOwnedJobs('11').map((j) => j.id)).toContain(active.id);
+  h.store.finishTestCleanup(active.id, 'FAILED', 'retry needed');
+  expect(h.store.listOwnedJobs('11').map((j) => j.id)).toContain(active.id);
+  for (let i = 0; i < 22; i++) {
+    const removed = h.store.createJob({
+      profileId,
+      operatorLabel: 'test',
+      testMode: true,
+      ownerUserId: '11',
+    });
+    h.store.finishTestCleanup(removed.id, 'DONE', 'deleted');
+    expect(h.store.getJob(removed.id)).not.toBeNull();
+  }
+  expect(h.store.listJobs(1).map((j) => j.id)).toEqual([active.id]);
+  expect(h.store.listOwnedJobs('11', 1).map((j) => j.id)).toEqual([active.id]);
+  h.store.finishTestCleanup(active.id, 'DONE', 'deleted');
+  const response = await listJobs(request('/api/jobs'));
+  const body = (await response.json()) as { jobs: Array<{ id: string }> };
+  expect(body.jobs.map((j) => j.id)).not.toContain(active.id);
+  expect(body.jobs.map((j) => j.id)).toContain(jobId);
+});
