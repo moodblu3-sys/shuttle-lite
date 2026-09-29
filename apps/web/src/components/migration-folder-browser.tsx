@@ -57,7 +57,7 @@ function FolderPane({
   return (
     <section className="migration-browser" aria-label={title}>
       <div className="migration-browser-heading">
-        <h2>
+        <h2 className="migration-folder-title">
           <BoxLabel>{title}</BoxLabel>
         </h2>
         {action}

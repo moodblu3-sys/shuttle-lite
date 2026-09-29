@@ -442,8 +442,11 @@ a:hover {
   padding: 16px 18px;
   border-bottom: 1px solid var(--line);
 }
-.new-migration-form .migration-browser-heading h2 {
+.new-migration-form .migration-folder-title {
   margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 .migration-browser button {
   font-size: 13px;

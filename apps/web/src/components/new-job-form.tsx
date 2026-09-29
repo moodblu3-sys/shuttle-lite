@@ -279,9 +279,9 @@ export function NewJobForm({
       ) : (
         <div className="migration-folder-columns">
           <div className="source-folder" role="group" aria-labelledby="source-folder-label">
-            <span id="source-folder-label" className="small">
+            <h2 id="source-folder-label" className="migration-folder-title">
               移行元
-            </span>
+            </h2>
             <div className="source-folder-choice">
               <div aria-live="polite">
                 <strong>{folder?.name ?? 'フォルダー未選択'}</strong>

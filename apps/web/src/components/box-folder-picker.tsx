@@ -92,9 +92,9 @@ export function BoxFolderPicker({
 
   return (
     <div className="source-folder" role="group" aria-labelledby="box-folder-label">
-      <span id="box-folder-label" className="small">
+      <h2 id="box-folder-label" className="migration-folder-title">
         <BoxLabel>{boxMode === 'real' ? '移行先 · Box' : '移行先 · Box（テスト環境）'}</BoxLabel>
-      </span>
+      </h2>
       <div className="source-folder-choice">
         <div aria-live="polite">
           <strong>{value?.name ?? 'フォルダー未選択'}</strong>
