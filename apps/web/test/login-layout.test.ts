@@ -25,6 +25,9 @@ describe('login layout', () => {
     const page = await LoginPage({ searchParams: Promise.resolve({}) });
     const html = renderToStaticMarkup(await RootLayout({ children: page }));
     expect(html).toContain('Shuttle Lite');
+    expect(html).toContain('<h1 id="login-title">Shuttle Liteにログイン</h1>');
+    expect(html.match(/Shuttle Lite/g)).toHaveLength(1);
+    expect(html).not.toContain('workspace-brand');
     expect(html).toContain('href="/api/auth/login"');
     expect(html).toContain('Boxでログイン');
     expect(html).not.toContain('<aside');

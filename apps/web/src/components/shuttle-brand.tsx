@@ -1,4 +1,4 @@
-export function ShuttleBrand() {
+export function ShuttleBrand({ showName = true }: { showName?: boolean }) {
   return (
     <>
       <svg viewBox="0 0 40 40" aria-hidden="true">
@@ -6,7 +6,7 @@ export function ShuttleBrand() {
         <path d="m3 27 15-3L32 8 13 29z" fill="#83b4ff" />
         <path d="m18 24 6 12-1-18z" fill="#1752cf" />
       </svg>
-      Shuttle Lite
+      {showName ? 'Shuttle Lite' : null}
     </>
   );
 }

@@ -12,16 +12,16 @@ export default async function LoginPage({
   if (!oauthEnabled() || (!error && (await currentUser()))) redirect('/');
   return (
     <section className="login-panel" aria-labelledby="login-title">
-      <div className="workspace-brand login-brand">
-        <ShuttleBrand />
+      <div className="login-mark">
+        <ShuttleBrand showName={false} />
       </div>
-      <h1 id="login-title">ログイン</h1>
+      <h1 id="login-title">Shuttle Liteにログイン</h1>
       {error && (
         <p className="login-error" role="alert">
           ログインできませんでした。組織のBoxアカウントとアプリの認可設定を確認してください。
         </p>
       )}
-      <a className="new-migration-link login-button" href="/api/auth/login">
+      <a className="login-button" href="/api/auth/login">
         Boxでログイン
       </a>
     </section>
