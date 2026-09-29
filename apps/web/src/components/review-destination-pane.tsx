@@ -151,7 +151,7 @@ export function ReviewDestinationPane({
         <span>選択中の配置先</span>
         <p>
           <WorkspaceIcon kind="folder" />
-          {selected?.boxPath ?? '未選択'}
+          <span title={selected?.boxPath}>{selected?.boxPath ?? '未選択'}</span>
         </p>
         <button
           type="button"
