@@ -20,7 +20,18 @@ describe('per-migration metadata picker', () => {
   const fetchMock = vi.fn<typeof fetch>();
   function Form() {
     const [selected, setSelected] = useState<BusinessTemplate[]>([]);
-    return createElement(JobMetadataPicker, { selected, onChange: setSelected, disabled: false });
+    const [active, setActive] = useState(false);
+    return createElement(
+      'details',
+      { onToggle: () => setActive(true) },
+      createElement('summary', null, '詳細オプション'),
+      createElement(JobMetadataPicker, {
+        active,
+        selected,
+        onChange: setSelected,
+        disabled: false,
+      }),
+    );
   }
   beforeEach(async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -56,9 +67,13 @@ describe('per-migration metadata picker', () => {
     await act(async () => boxes[0]!.click());
     await act(async () => boxes[2]!.click());
     expect(boxes.map((box) => box.checked)).toEqual([true, false, true]);
-    expect(container.querySelector('summary')?.textContent).toBe('使用するメタデータ2件');
+    expect(container.querySelector('.metadata-options-title')?.textContent).toBe(
+      '使用するメタデータテンプレート2件',
+    );
     await act(async () => boxes[0]!.click());
-    expect(container.querySelector('summary')?.textContent).toBe('使用するメタデータ1件');
+    expect(container.querySelector('.metadata-options-title')?.textContent).toBe(
+      '使用するメタデータテンプレート1件',
+    );
     expect(container.querySelector('button')).toBeNull();
     expect(
       fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === 'GET'),

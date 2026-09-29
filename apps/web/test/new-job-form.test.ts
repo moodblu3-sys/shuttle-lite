@@ -73,7 +73,7 @@ describe('migration mode selection', () => {
   }
 
   it('submits a preserve job, omits the AI option and validates only the selected Box root', async () => {
-    expect(container.querySelector('[name=aiRoutingEnabled]')).not.toBeNull();
+    expect(container.querySelector('[name=aiRoutingEnabled]')).toBeNull();
     await mode('AS_IS');
     expect(container.querySelector('[name=aiRoutingEnabled]')).toBeNull();
     await selectFolders();
@@ -228,12 +228,40 @@ describe('migration mode selection', () => {
     expect(container.textContent).not.toContain('最終配置先');
   });
 
-  it('restores the existing AI option when switching back', async () => {
+  it('uses the migration mode without a separate AI checkbox', async () => {
     await mode('AS_IS');
     await mode('AI_ORGANIZE');
-    expect(container.querySelector<HTMLInputElement>('[name=aiRoutingEnabled]')?.checked).toBe(
-      true,
+    expect(container.querySelector('[name=aiRoutingEnabled]')).toBeNull();
+    expect(container.querySelector<HTMLInputElement>('[value=AI_ORGANIZE]')?.checked).toBe(true);
+  });
+
+  it('groups conflict policy and metadata in one accordion and puts test mode last', () => {
+    const details = container.querySelector('.migration-options')!;
+    expect(details.querySelector('details')).toBeNull();
+    const options = details.querySelector('.migration-options-body')!;
+    expect(options.children).toHaveLength(2);
+    expect(options.children[0]!.textContent).toContain('同名ファイルの扱い');
+    expect(options.children[1]!.textContent).toContain('使用するメタデータテンプレート');
+    expect(details.nextElementSibling?.textContent).toContain('テストモード');
+    expect(details.nextElementSibling?.nextElementSibling?.className).toBe('actions');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('defaults to direct migration when AI is disabled globally', async () => {
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () =>
+      root.render(
+        createElement(NewJobForm, {
+          aiEnabled: false,
+          boxMode: 'real',
+          folderPickerAvailable: true,
+        }),
+      ),
     );
+    expect(container.querySelector<HTMLInputElement>('[value=AS_IS]')?.checked).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('[value=AI_ORGANIZE]')?.disabled).toBe(true);
+    expect(container.querySelector('.metadata-options')).toBeNull();
   });
 
   it('submits only checked metadata templates and retains choices across mode switches', async () => {
@@ -246,7 +274,7 @@ describe('migration mode selection', () => {
     const expand = async () => {
       fetchMock.mockResolvedValueOnce(Response.json({ templates, mappings: [], revision: 0 }));
       await act(async () => {
-        const details = container.querySelector<HTMLDetailsElement>('.metadata-options')!;
+        const details = container.querySelector<HTMLDetailsElement>('.migration-options')!;
         details.open = true;
         details.dispatchEvent(new Event('toggle'));
       });
@@ -257,8 +285,8 @@ describe('migration mode selection', () => {
     );
     await mode('AS_IS');
     expect(container.querySelector('.metadata-options')).toBeNull();
+    fetchMock.mockResolvedValueOnce(Response.json({ templates }));
     await mode('AI_ORGANIZE');
-    await expand();
     expect(container.querySelector<HTMLInputElement>('.metadata-options input')!.checked).toBe(
       true,
     );
@@ -287,6 +315,7 @@ describe('migration mode selection', () => {
     expect(JSON.parse(fetchMock.mock.calls.at(-1)![1]!.body as string).metadataTemplates).toEqual([
       { scope: 'enterprise_123', templateKey: 'template0' },
     ]);
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1]!.body as string).aiRoutingEnabled).toBe(true);
     expect(router.push).toHaveBeenCalledWith('/jobs/job_metadata');
   });
 });

@@ -479,6 +479,10 @@ a:hover {
   border-bottom: 1px solid var(--line);
 }
 
+.metadata-options-title {
+  margin-bottom: 14px;
+}
+
 .metadata-template-options {
   border: 0;
   padding: 0;

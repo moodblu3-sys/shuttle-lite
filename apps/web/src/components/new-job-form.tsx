@@ -22,8 +22,11 @@ export function NewJobForm({
   folderPickerAvailable: boolean;
 }) {
   const router = useRouter();
-  const [migrationMode, setMigrationMode] = useState<'AS_IS' | 'AI_ORGANIZE'>('AI_ORGANIZE');
+  const [migrationMode, setMigrationMode] = useState<'AS_IS' | 'AI_ORGANIZE'>(
+    aiEnabled ? 'AI_ORGANIZE' : 'AS_IS',
+  );
   const [busy, setBusy] = useState(false);
+  const [optionsOpened, setOptionsOpened] = useState(false);
   const [testMode, setTestMode] = useState(false);
   const [metadataTemplates, setMetadataTemplates] = useState<BusinessTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -132,8 +135,7 @@ export function NewJobForm({
           sourceCheck: checked!.signature,
           destinationFolderId: destination.folderId,
           operatorLabel: form.get('operatorLabel'),
-          aiRoutingEnabled:
-            migrationMode !== 'AS_IS' && aiEnabled && form.get('aiRoutingEnabled') === 'on',
+          aiRoutingEnabled: migrationMode !== 'AS_IS' && aiEnabled,
           conflictPolicy: form.get('conflictPolicy'),
           metadataTemplates:
             migrationMode === 'AS_IS'
@@ -184,6 +186,7 @@ export function NewJobForm({
                 type="radio"
                 name="migrationMode"
                 value={value}
+                disabled={value === 'AI_ORGANIZE' && !aiEnabled}
                 checked={migrationMode === value}
                 onChange={() => {
                   setMigrationMode(value);
@@ -307,40 +310,20 @@ export function NewJobForm({
           </p>
         )}
       </section>
-      {migrationMode !== 'AS_IS' ? (
-        <JobMetadataPicker
-          selected={metadataTemplates}
-          onChange={setMetadataTemplates}
-          disabled={busy}
-        />
-      ) : null}
-      <label>
-        <span>
-          <input
-            type="checkbox"
-            checked={testMode}
-            disabled={busy}
-            onChange={(event) => setTestMode(event.target.checked)}
-          />{' '}
-          テストモード
-        </span>
-      </label>
-      <details className="migration-options">
+      {!authenticated && (
+        <label>
+          操作者名（任意）
+          <input name="operatorLabel" type="text" placeholder="ローカル操作者" disabled={busy} />
+        </label>
+      )}
+      <details
+        className="migration-options"
+        onToggle={(event) => {
+          if (event.currentTarget.open) setOptionsOpened(true);
+        }}
+      >
         <summary>詳細オプション</summary>
         <div className="migration-options-body">
-          {migrationMode !== 'AS_IS' ? (
-            <label>
-              <span>
-                <input
-                  name="aiRoutingEnabled"
-                  type="checkbox"
-                  defaultChecked={aiEnabled}
-                  disabled={busy || !aiEnabled}
-                />{' '}
-                AI分類
-              </span>
-            </label>
-          ) : null}
           <label>
             同名ファイルの扱い
             <select
@@ -356,19 +339,27 @@ export function NewJobForm({
               <option value="SKIP">スキップ</option>
             </select>
           </label>
-          {!authenticated && (
-            <label>
-              操作者名（任意）
-              <input
-                name="operatorLabel"
-                type="text"
-                placeholder="ローカル操作者"
-                disabled={busy}
-              />
-            </label>
-          )}
+          {migrationMode !== 'AS_IS' ? (
+            <JobMetadataPicker
+              active={optionsOpened}
+              selected={metadataTemplates}
+              onChange={setMetadataTemplates}
+              disabled={busy}
+            />
+          ) : null}
         </div>
       </details>
+      <label>
+        <span>
+          <input
+            type="checkbox"
+            checked={testMode}
+            disabled={busy}
+            onChange={(event) => setTestMode(event.target.checked)}
+          />{' '}
+          テストモード
+        </span>
+      </label>
       <div className="actions">
         <button
           type="button"
