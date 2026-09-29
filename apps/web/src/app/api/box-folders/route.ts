@@ -18,6 +18,7 @@ export async function GET(request: Request) {
         await getBoxGateway(),
         folderId,
         excludedDestinationIds(await browsingConfig()),
+        new URL(request.url).searchParams.get('includeFiles') === '1',
       ),
       { headers },
     );

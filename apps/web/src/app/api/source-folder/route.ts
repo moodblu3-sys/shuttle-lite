@@ -1,6 +1,7 @@
-import { guard } from '../../../lib/auth';
+import { guard, requestCookie, SESSION_COOKIE } from '../../../lib/auth';
 import { NextResponse } from 'next/server';
 import { chooseSourceFolder, FolderPickerError } from '../../../lib/folder-picker';
+import { grantSourceBrowse } from '../../../lib/source-browser';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,11 +35,19 @@ export async function POST(request: Request) {
     );
   }
   try {
+    const url = new URL(request.url);
+    const selection = await chooseSourceFolder(
+      request.signal,
+      url.searchParams.get('purpose') === 'logs' ? 'logs' : 'source',
+    );
+    const browse =
+      !selection.cancelled &&
+      url.searchParams.get('browse') === '1' &&
+      url.searchParams.get('purpose') !== 'logs'
+        ? await grantSourceBrowse(selection.path, requestCookie(request, SESSION_COOKIE) ?? 'local')
+        : {};
     return NextResponse.json(
-      await chooseSourceFolder(
-        request.signal,
-        new URL(request.url).searchParams.get('purpose') === 'logs' ? 'logs' : 'source',
-      ),
+      { ...selection, ...browse },
       {
         headers: { 'Cache-Control': 'no-store' },
       },

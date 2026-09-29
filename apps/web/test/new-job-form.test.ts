@@ -22,6 +22,7 @@ describe('migration mode selection', () => {
     await act(async () =>
       root.render(
         createElement(NewJobForm, {
+          classicFolderPicker: true,
           aiEnabled: true,
           boxMode: 'real',
           folderPickerAvailable: true,

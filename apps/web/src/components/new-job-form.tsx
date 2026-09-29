@@ -9,14 +9,21 @@ import { formatBytes } from '@shuttle-lite/core/progress';
 import { WorkspaceIcon } from './workspace-icon';
 import type { BusinessTemplate } from '@shuttle-lite/core';
 import { JobMetadataPicker } from './job-metadata-picker';
+import {
+  BoxDestinationPane,
+  SourceFolderPane,
+  type SourceFolder,
+} from './migration-folder-browser';
 
 export function NewJobForm({
   aiEnabled,
   boxMode,
   folderPickerAvailable,
   authenticated = false,
+  classicFolderPicker = false,
 }: {
   authenticated?: boolean;
+  classicFolderPicker?: boolean;
   aiEnabled: boolean;
   boxMode: 'real' | 'fake';
   folderPickerAvailable: boolean;
@@ -32,6 +39,9 @@ export function NewJobForm({
   const [error, setError] = useState<string | null>(null);
   const [folder, setFolder] = useState<Extract<FolderSelection, { cancelled: false }> | null>(null);
   const [destination, setDestination] = useState<SelectedBoxFolder | null>(null);
+  const [sourceAnchor, setSourceAnchor] = useState<SourceFolder | null>(null);
+  const [browsingSource, setBrowsingSource] = useState(false);
+  const dualPane = migrationMode === 'AS_IS' && !classicFolderPicker;
   const [selectingDestination, setSelectingDestination] = useState(false);
   const [picking, setPicking] = useState(false);
   const pickerRequest = useRef<AbortController | null>(null);
@@ -84,11 +94,14 @@ export function NewJobForm({
     setPicking(true);
     setError(null);
     try {
-      const response = await fetch('/api/source-folder', {
-        method: 'POST',
-        headers: { 'x-shuttle-folder-picker': '1' },
-        signal: controller.signal,
-      });
+      const response = await fetch(
+        dualPane ? '/api/source-folder?browse=1' : '/api/source-folder',
+        {
+          method: 'POST',
+          headers: { 'x-shuttle-folder-picker': '1' },
+          signal: controller.signal,
+        },
+      );
       if (!response.ok) {
         const body = (await response.json()) as { error?: string };
         throw new Error(body.error ?? 'フォルダーを選択できませんでした。');
@@ -96,6 +109,7 @@ export function NewJobForm({
       const selection = (await response.json()) as FolderSelection;
       if (!selection.cancelled) {
         setFolder(selection);
+        setSourceAnchor(selection);
         setChecked(null);
       }
     } catch (cause) {
@@ -108,7 +122,7 @@ export function NewJobForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || picking || checking || selectingDestination) return;
+    if (busy || picking || checking || selectingDestination || browsingSource) return;
     if (!folder) {
       setError('移行元フォルダーを選択してください。');
       return;
@@ -168,7 +182,7 @@ export function NewJobForm({
       ) : null}
       <fieldset
         className="migration-mode-options"
-        disabled={busy || picking || checking || selectingDestination}
+        disabled={busy || picking || checking || selectingDestination || browsingSource}
       >
         <legend>移行方式</legend>
         <div className="migration-mode-cards">
@@ -190,6 +204,11 @@ export function NewJobForm({
                 checked={migrationMode === value}
                 onChange={() => {
                   setMigrationMode(value);
+                  if (value === 'AS_IS' && !classicFolderPicker && !sourceAnchor?.browseToken) {
+                    setFolder(null);
+                    setChecked(null);
+                    setSourceAnchor(null);
+                  }
                   setDestination(null);
                 }}
               />
@@ -213,49 +232,93 @@ export function NewJobForm({
           disabled={busy}
         />
       </label>
-      <div className="migration-folder-columns">
-        <div className="source-folder" role="group" aria-labelledby="source-folder-label">
-          <span id="source-folder-label" className="small">
-            移行元
-          </span>
-          <div className="source-folder-choice">
-            <div aria-live="polite">
-              <strong>{folder?.name ?? 'フォルダー未選択'}</strong>
-              {folder ? <p className="small muted source-folder-path">{folder.path}</p> : null}
-            </div>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy || picking || checking || !folderPickerAvailable}
-              onClick={() => void selectFolder()}
-            >
-              {picking ? '選択中…' : folder ? '変更' : 'フォルダーを選択'}
-            </button>
+      {dualPane ? (
+        <>
+          <div className="migration-dual-pane">
+            <SourceFolderPane
+              key={sourceAnchor?.browseToken ?? 'empty'}
+              anchor={sourceAnchor}
+              value={folder}
+              onChange={(selected) => {
+                setFolder(selected);
+                setChecked(null);
+              }}
+              onChooseRoot={() => void selectFolder()}
+              onBusyChange={setBrowsingSource}
+              disabled={busy || checking}
+              picking={picking}
+              available={folderPickerAvailable}
+            />
+            <BoxDestinationPane
+              value={destination}
+              onChange={setDestination}
+              onBusyChange={setSelectingDestination}
+              disabled={busy || picking || checking}
+            />
           </div>
-          {!folderPickerAvailable || picking ? (
-            <p className="small muted" role="status">
-              {!folderPickerAvailable ? 'フォルダー選択はMacのみ対応' : 'フォルダーを選択中…'}
-            </p>
-          ) : null}
+          <div className="migration-path-summary" aria-label="選択した移行経路" aria-live="polite">
+            <div>
+              <span>移行元</span>
+              <strong>{folder?.path ?? '未選択'}</strong>
+            </div>
+            <span className="migration-path-arrow" aria-hidden="true">
+              →
+            </span>
+            <div>
+              <span>Boxの最終配置先</span>
+              <strong>
+                {destination && folder
+                  ? `${destination.path ?? destination.name} / ${folder.name}`
+                  : '未選択'}
+              </strong>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="migration-folder-columns">
+          <div className="source-folder" role="group" aria-labelledby="source-folder-label">
+            <span id="source-folder-label" className="small">
+              移行元
+            </span>
+            <div className="source-folder-choice">
+              <div aria-live="polite">
+                <strong>{folder?.name ?? 'フォルダー未選択'}</strong>
+                {folder ? <p className="small muted source-folder-path">{folder.path}</p> : null}
+              </div>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || picking || checking || !folderPickerAvailable}
+                onClick={() => void selectFolder()}
+              >
+                {picking ? '選択中…' : folder ? '変更' : 'フォルダーを選択'}
+              </button>
+            </div>
+            {!folderPickerAvailable || picking ? (
+              <p className="small muted" role="status">
+                {!folderPickerAvailable ? 'フォルダー選択はMacのみ対応' : 'フォルダーを選択中…'}
+              </p>
+            ) : null}
+          </div>
+          <BoxFolderPicker
+            key={migrationMode}
+            migrationMode={migrationMode}
+            sourceRootName={folder?.name}
+            value={destination}
+            onChange={setDestination}
+            onBusyChange={setSelectingDestination}
+            disabled={busy || picking || checking}
+            boxMode={boxMode}
+          />
         </div>
-        <BoxFolderPicker
-          key={migrationMode}
-          migrationMode={migrationMode}
-          sourceRootName={folder?.name}
-          value={destination}
-          onChange={setDestination}
-          onBusyChange={setSelectingDestination}
-          disabled={busy || picking || checking}
-          boxMode={boxMode}
-        />
-      </div>
+      )}
       <section className="source-check" aria-label="開始前の確認">
         <div className="card-head">
           <h2>開始前の確認</h2>
           <button
             type="button"
             className="secondary"
-            disabled={!folder || busy || picking || checking}
+            disabled={!folder || busy || picking || checking || browsingSource}
             onClick={() => void inspectSource()}
           >
             {checking ? '確認中…' : checked ? '再確認' : '移行元を確認'}
@@ -376,6 +439,7 @@ export function NewJobForm({
             picking ||
             checking ||
             selectingDestination ||
+            browsingSource ||
             !folder ||
             !destination ||
             !sourceReady

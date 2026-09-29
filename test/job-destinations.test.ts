@@ -116,6 +116,19 @@ describe('per-migration Box destination selection', () => {
     const create = vi.spyOn(h.gateway, 'ensureFolder');
     const listing = await browseDestinationFolder(h.gateway, root.id);
     expect(listing.folders.map((folder) => folder.name)).toEqual(['顧客A']);
+    expect(listing.files).toBeUndefined();
+    const response = await GET(
+      new Request(`http://localhost/api/box-folders?folderId=${root.id}&includeFiles=1`),
+    );
+    const pane = (await response.json()) as {
+      folders: { name: string }[];
+      files: { name: string; type: string; size: number }[];
+    };
+    expect(pane.folders.map((folder: { name: string }) => folder.name)).toEqual(['顧客A']);
+    expect(pane.files).toEqual([
+      expect.objectContaining({ name: 'file.txt', type: 'file', size: bytes.length }),
+    ]);
+    expect(pane.files[0]).not.toHaveProperty('sha1');
     const snapshot = await collectJobDestinations(h.gateway, root.id, 'fake');
     expect(snapshot.entries).toHaveLength(3);
     expect(snapshot.entries[2]).toMatchObject({

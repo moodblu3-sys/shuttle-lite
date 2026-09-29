@@ -14,6 +14,7 @@ export default async function NewMigrationPage() {
       </p>
       <h1 className="page-title">新しい移行</h1>
       <NewJobForm
+        classicFolderPicker={process.env.SHUTTLE_CLASSIC_FOLDER_PICKER === 'true'}
         authenticated={config.env.BOX_AUTH_MODE === 'oauth'}
         aiEnabled={config.ai.enabled}
         boxMode={config.box.mode}

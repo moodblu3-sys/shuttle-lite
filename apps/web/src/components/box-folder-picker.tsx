@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 
 type Folder = { id: string; name: string; parentFolderId: string | null };
-export type SelectedBoxFolder = { folderId: string; name: string; folderCount: number };
+export type SelectedBoxFolder = {
+  folderId: string;
+  name: string;
+  folderCount: number;
+  path?: string;
+};
 type Listing = { folder: Folder; folders: Folder[] };
 
 export function BoxFolderPicker({

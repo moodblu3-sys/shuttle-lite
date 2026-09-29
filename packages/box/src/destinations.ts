@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto';
 import type { AppConfig, DestinationCatalogConfig } from '@shuttle-lite/config';
 import { type JobDestinations, ShuttleError } from '@shuttle-lite/core';
-import type { BoxFolder, BoxGateway, MetadataTemplateSpec, MetadataValues } from './gateway';
+import type {
+  BoxFolder,
+  BoxGateway,
+  BoxItemSummary,
+  MetadataTemplateSpec,
+  MetadataValues,
+} from './gateway';
 import { loadCachedLayout } from './layout';
 
 const MAX_FOLDERS = 200;
@@ -37,7 +43,8 @@ export async function browseDestinationFolder(
   gateway: BoxGateway,
   folderId: string,
   excluded: readonly string[] = [],
-): Promise<{ folder: BoxFolder; folders: BoxFolder[] }> {
+  includeFiles = false,
+): Promise<{ folder: BoxFolder; folders: BoxFolder[]; files?: BoxItemSummary[] }> {
   if (!validFolderId(folderId))
     throw new ShuttleError('CONFIG_INVALID', 'Boxフォルダーの指定が不正です。');
   const folder = await gateway.getFolder(folderId);
@@ -67,14 +74,26 @@ export async function browseDestinationFolder(
     current = await gateway.getFolder(current.parentFolderId);
     if (!current) throw new ShuttleError('BOX_NOT_FOUND', '親フォルダーを確認できません。');
   }
-  const folders = (await gateway.listFolder(folderId))
+  const items = await gateway.listFolder(folderId);
+  const folders = items
     .filter(
       (entry) =>
         entry.type === 'folder' && !INTERNAL_NAMES.has(entry.name) && !excluded.includes(entry.id),
     )
     .map((entry) => ({ id: entry.id, name: entry.name, parentFolderId: folder.id }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-  return { folder, folders };
+  return {
+    folder,
+    folders,
+    ...(includeFiles
+      ? {
+          files: items
+            .filter((entry) => entry.type === 'file')
+            .map(({ id, name, type, size }) => ({ id, name, type, size }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'ja')),
+        }
+      : {}),
+  };
 }
 
 /** Freeze the complete selected subtree. Never silently accept a partial listing. */

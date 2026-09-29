@@ -13,6 +13,7 @@ import { GET as review } from '../apps/web/src/app/api/jobs/[jobId]/review/route
 import { GET as delta } from '../apps/web/src/app/api/jobs/[jobId]/delta/route';
 import { POST as logout } from '../apps/web/src/app/api/auth/logout/route';
 import { GET as callback } from '../apps/web/src/app/api/auth/callback/route';
+import { POST as browseLocal } from '../apps/web/src/app/api/source-browser/route';
 import { buildTelemetryPayload } from '@shuttle-lite/telemetry';
 import { GET as listTemplates } from '../apps/web/src/app/api/metadata-settings/route';
 
@@ -93,6 +94,7 @@ afterEach(() => {
 describe('authenticated web access', () => {
   it('rejects anonymous, expired, other-user and legacy-ownerless access', async () => {
     expect((await guard(request('/', 'forged')))?.status).toBe(401);
+    expect((await browseLocal(request('/api/source-browser', 'forged', {}))).status).toBe(401);
     const legacy = h.store.createJob({ profileId: h.createProfile().id, operatorLabel: 'old' });
     expect((await guard(request('/'), legacy.id))?.status).toBe(404);
     expect((await guard(request('/', bob), jobId))?.status).toBe(404);
