@@ -600,3 +600,270 @@
   gap: 24px;
   margin-bottom: 16px;
 }
+
+.classicPanes {
+  display: contents;
+}
+.panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 25vw, 340px);
+  gap: 20px;
+  padding: 0 28px 20px;
+  flex: 1;
+  min-height: 0;
+}
+.resultsPane,
+.rightPane {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #dce4ef;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #fff;
+}
+.resultsPane {
+  display: flex;
+  flex-direction: column;
+}
+.paneHeading {
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 58px;
+  flex-shrink: 0;
+}
+.paneHeading h2 {
+  font-size: 16px;
+  margin: 0;
+}
+.dualPane .list {
+  padding: 0;
+  scrollbar-gutter: auto;
+}
+.dualPane .table {
+  min-width: 620px;
+}
+.dualPane .table th {
+  background: #f7f9fd;
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+.dualPane .table td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.dualPane .destinationColumn {
+  width: 22%;
+}
+.dualPane .templateColumn {
+  width: 23%;
+}
+.dualPane .inlineSelect {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.dualPane .templateCell small {
+  line-height: 1.4;
+}
+.dualPane .fileButton {
+  gap: 9px;
+}
+.dualPane .fileText strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.rowStatus {
+  display: block;
+  color: #748197;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.rowStatus.warning {
+  color: #a66a18;
+}
+.resultsPagination {
+  border-top: 1px solid #e5ebf2;
+  padding: 9px 16px;
+  color: #66758c;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.resultsPagination .pagination {
+  margin: 0;
+  justify-content: space-between;
+}
+.rightPane {
+  position: relative;
+}
+.destinationContainer,
+.destinationPane {
+  height: 100%;
+  min-height: 0;
+}
+.destinationPane {
+  display: flex;
+  flex-direction: column;
+}
+.folderSearch {
+  position: relative;
+  padding: 0 16px 12px;
+}
+.folderSearch > :global(.workspace-icon) {
+  position: absolute;
+  left: 27px;
+  top: 11px;
+  width: 18px;
+  height: 18px;
+  color: #75839a;
+}
+.folderSearch input {
+  padding: 10px 12px 10px 36px;
+  font-size: 13px;
+  margin: 0;
+  width: 100%;
+  border: 1px solid #dce3ed;
+  border-radius: 7px;
+  background: #fff;
+}
+.folderList {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 12px 16px;
+}
+.folderTree {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.folderTree .folderTree {
+  padding-left: 14px;
+}
+.folderRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 3px 0;
+}
+.workspace .folderToggle,
+.folderSpacer {
+  width: 18px;
+  flex: 0 0 18px;
+}
+.workspace .folderToggle {
+  color: #697b93;
+  border: 0;
+  background: transparent;
+  padding: 8px 0;
+  font-size: 14px;
+}
+.workspace .folderChoice,
+.folderAncestor {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+  padding: 10px 8px;
+  font-size: 13px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  text-align: left;
+  background: transparent;
+  color: #33435b;
+  font-weight: 500;
+}
+.folderChoice span,
+.folderAncestor span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folderRow :global(.workspace-icon),
+.destinationActions :global(.workspace-icon) {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+.workspace .folderChoice:hover:not(:disabled) {
+  background: #f3f7fd;
+}
+.workspace .folderChoice[aria-pressed='true'] {
+  background: #eaf2ff;
+  color: #2164de;
+  border-color: #82acf8;
+}
+.destinationActions {
+  border-top: 1px solid #e5ebf2;
+  padding: 16px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.destinationActions > span {
+  font-weight: 600;
+}
+.destinationActions p {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 16px;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  color: #536780;
+}
+.destinationActions button {
+  width: 100%;
+  font-size: 12px;
+  padding: 11px 8px;
+}
+.destinationActions .textButton {
+  color: #718097;
+  font-size: 11px;
+  padding: 10px 0 0;
+}
+.folderEmpty {
+  padding: 20px 8px;
+  color: #69788e;
+  font-size: 12px;
+}
+.dualPane .inspector {
+  width: 100%;
+  border: 0;
+  box-shadow: none;
+}
+.dualPane .inspectorHeader {
+  padding: 16px 18px 0;
+}
+.dualPane .inspectorBody {
+  padding: 20px 18px;
+}
+.dualPane .documentTitle h3 {
+  font-size: 16px;
+}
+.dualPane .heading h1 {
+  margin-top: 12px;
+}
+.dualPane .workflow {
+  margin-top: 20px;
+  margin-bottom: 20px;
+  max-width: 850px;
+}
+@media (max-width: 1250px) {
+  .panes {
+    gap: 12px;
+    padding-right: 20px;
+    padding-left: 20px;
+    grid-template-columns: minmax(0, 1fr) 270px;
+  }
+  .dualPane .table {
+    min-width: 580px;
+  }
+}
+@media (max-width: 900px) {
+  .panes {
+    overflow: auto;
+    grid-template-columns: minmax(580px, 1fr) 270px;
+  }
+}

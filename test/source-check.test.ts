@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import * as fs from 'node:fs/promises';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  const actual = await importOriginal<typeof fs>();
   return { ...actual, open: vi.fn(actual.open) };
 });
 import { tmpdir } from 'node:os';
@@ -15,7 +15,7 @@ import { LocalSourceAdapter } from '../apps/worker/src/source/local';
 describe('read-only source preview', () => {
   let root: string;
   beforeEach(async () => {
-    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    const actual = await vi.importActual<typeof fs>('node:fs/promises');
     vi.mocked(fs.open).mockImplementation(actual.open);
     root = await mkdtemp(join(tmpdir(), 'shuttle-preview-'));
   });

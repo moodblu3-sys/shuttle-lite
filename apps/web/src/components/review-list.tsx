@@ -10,7 +10,7 @@ import type { TemplateMapping } from '@shuttle-lite/core';
 import { BusinessMetadataFields } from './business-metadata-fields';
 import { FilePreviewButton } from './file-preview-dialog';
 import { useRouter } from 'next/navigation';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { formatBytes } from '@shuttle-lite/core/progress';
 import { withNameSuffix } from '@shuttle-lite/core/naming';
 import type { DestinationOption, ReviewCommandView, ReviewItemView } from '../lib/review-types';
@@ -27,6 +27,7 @@ import {
 import { DocumentIcon, WorkspaceIcon as Icon } from './workspace-icon';
 import styles from './review-workspace.module.css';
 import { ErrorNotice } from './error-notice';
+import { ReviewDestinationPane } from './review-destination-pane';
 import { errorPresentation } from '../lib/error-presentation';
 
 function metadataStatus(item: ReviewItemView, pending: boolean): string {
@@ -64,6 +65,7 @@ export function ReviewList({
   onNavigate,
   onRefresh,
   navigationPending = false,
+  classicReviewLayout = false,
 }: {
   jobId: string;
   items: readonly ReviewItemView[];
@@ -86,8 +88,26 @@ export function ReviewList({
   onNavigate?: (page: number, query: string, filter: string) => void;
   onRefresh?: () => void;
   navigationPending?: boolean;
+  classicReviewLayout?: boolean;
 }) {
+  const dualPane = !classicReviewLayout;
   const router = useRouter();
+  const destinationLabels = useMemo(() => {
+    const options = destinations.filter((entry) => entry.key !== needsReviewKey);
+    const counts = new Map<string, number>();
+    const nameFor = (entry: DestinationOption) =>
+      entry.boxPath.split('/').filter(Boolean).at(-1) ?? entry.label;
+    for (const entry of options) {
+      const name = nameFor(entry);
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return new Map(
+      options.map((entry) => [
+        entry.key,
+        counts.get(nameFor(entry)) === 1 ? nameFor(entry) : entry.boxPath,
+      ]),
+    );
+  }, [destinations, needsReviewKey]);
   const [operatorLabel, setOperatorLabel] = useState(defaultOperatorLabel);
   const [edits, setEdits] = useState<Record<string, SavedReviewDraft>>({});
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
@@ -393,7 +413,7 @@ export function ReviewList({
           .filter((entry) => entry.key !== needsReviewKey)
           .map((entry) => (
             <option key={entry.key} value={entry.key}>
-              {entry.label}
+              {dualPane ? destinationLabels.get(entry.key) : entry.label}
             </option>
           ))}
       </>
@@ -440,6 +460,19 @@ export function ReviewList({
             <span className={styles.fileText}>
               <strong>{item.sourceFileName}</strong>
               {subtitle ? <span>{subtitle}</span> : null}
+              {dualPane ? (
+                <small
+                  className={`${styles.rowStatus} ${category === 'attention' || category === 'unselected' ? styles.warning : ''}`}
+                >
+                  {queued
+                    ? '処理中'
+                    : category === 'attention'
+                      ? '要対応'
+                      : category === 'ready'
+                        ? '承認待ち'
+                        : '未選択'}
+                </small>
+              ) : null}
             </span>
           </button>
         </td>
@@ -472,19 +505,21 @@ export function ReviewList({
           )}
           {item.businessMetadata?.template ? <small>{metadataStatus(item, queued)}</small> : null}
         </td>
-        <td>
-          <span
-            className={`${styles.status} ${category === 'attention' || category === 'unselected' ? styles.warning : ''}`}
-          >
-            {queued
-              ? '処理中'
-              : category === 'attention'
-                ? '要対応'
-                : category === 'ready'
-                  ? '承認待ち'
-                  : '未選択'}
-          </span>
-        </td>
+        {!dualPane ? (
+          <td>
+            <span
+              className={`${styles.status} ${category === 'attention' || category === 'unselected' ? styles.warning : ''}`}
+            >
+              {queued
+                ? '処理中'
+                : category === 'attention'
+                  ? '要対応'
+                  : category === 'ready'
+                    ? '承認待ち'
+                    : '未選択'}
+            </span>
+          </td>
+        ) : null}
         <td>
           {previewLink ? (
             <FilePreviewButton
@@ -512,14 +547,306 @@ export function ReviewList({
   const boxLink =
     active && boxLinkBase && active.boxFileId ? `${boxLinkBase}${active.boxFileId}` : null;
   const locked = busy || !!(active && isReviewPending(active, submitted[active.itemId]));
+  const inspector = active ? (
+    <aside id="review-inspector" className={styles.inspector} aria-label="ファイルの詳細">
+      <div className={styles.inspectorHeader}>
+        <h2>ファイルの詳細</h2>
+        {active ? (
+          <button
+            type="button"
+            className={styles.textButton}
+            aria-label="詳細を閉じる"
+            onClick={closeInspector}
+          >
+            <Icon kind="close" />
+          </button>
+        ) : null}
+      </div>
+      {active && draft ? (
+        <>
+          <div className={styles.inspectorBody}>
+            <div className={styles.documentTitle}>
+              <DocumentIcon name={active.sourceFileName} />
+              <h3>{active.sourceFileName}</h3>
+            </div>
+            <p className={styles.hint}>
+              {formatBytes(active.sourceSize)} · {active.sourceRelativePath}
+            </p>
+            {boxLink ? (
+              <div className={styles.previewActions}>
+                <FilePreviewButton
+                  key={`${active.itemId}:${active.boxFileId}:${active.boxVersionId}:${active.boxSha1}:${active.state}:${active.reviewCommand?.state ?? ''}`}
+                  item={active}
+                  boxLink={boxLink}
+                  disabled={locked || !active.boxVersionId || !active.boxSha1}
+                />
+                <a className={styles.openOriginal} href={boxLink} target="_blank" rel="noreferrer">
+                  <Icon kind="external" /> Boxで原本を開く
+                </a>
+              </div>
+            ) : null}
+            {active.reviewCommand?.state === 'REJECTED' ? (
+              <ErrorNotice
+                title="操作を反映できませんでした"
+                action="最新の処理状態と入力内容を確認してください。"
+                message={active.reviewCommand.rejectionReason}
+              />
+            ) : null}
+            <fieldset disabled={locked} className={styles.fields}>
+              <section>
+                <h3>配置先</h3>
+                <details className={styles.destinationPicker}>
+                  <summary>
+                    <Icon kind="folder" />
+                    <span>
+                      {destinations.find((entry) => entry.key === draft.destinationKey)?.label ??
+                        '配置先を選択'}
+                    </span>
+                    <span className={styles.changeDestination}>変更</span>
+                  </summary>
+                  <label>
+                    承認する配置先
+                    <select
+                      value={draft.destinationKey}
+                      onChange={(event) =>
+                        updateDraft(active, { destinationKey: event.target.value })
+                      }
+                    >
+                      <option value="">配置先を選択…</option>
+                      {destinations
+                        .filter((entry) => entry.key !== needsReviewKey)
+                        .map((entry) => (
+                          <option key={entry.key} value={entry.key}>
+                            {entry.label}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </details>
+                {destinationPath ? <p className={styles.path}>{destinationPath}</p> : null}
+              </section>
+              {active.needsAttention ? (
+                <section className={styles.problem}>
+                  <ErrorNotice
+                    category={active.lastErrorCategory}
+                    message={active.lastError}
+                    state={active.state}
+                    {...(active.businessMetadata?.extractionStatus === 'FAILED'
+                      ? {
+                          title: 'メタデータを抽出できませんでした',
+                          action: '「項目を確認・編集」から再抽出するか、値を入力してください。',
+                        }
+                      : {})}
+                  />
+                  {active.lastErrorCategory === 'MOVE_CONFLICT' ? (
+                    <>
+                      <label>
+                        配置するファイル名
+                        <input
+                          type="text"
+                          value={draft.finalName}
+                          onChange={(event) =>
+                            updateDraft(active, { finalName: event.target.value })
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() =>
+                          updateDraft(active, { finalName: withNameSuffix(draft.finalName) })
+                        }
+                      >
+                        連番を付ける
+                      </button>
+                    </>
+                  ) : null}
+                </section>
+              ) : null}
+              {classificationReason || classificationFields.length > 0 ? (
+                <section>
+                  <h3>{classificationReason ? '分類理由' : '分類結果'}</h3>
+                  {classificationReason ? <p>{classificationReason}</p> : null}
+                  {classificationFields.length > 0 ? (
+                    <dl className={styles.extracted}>
+                      {classificationFields.map(([label, value]) => (
+                        <Fragment key={label}>
+                          <dt>{label}</dt>
+                          <dd>{value}</dd>
+                        </Fragment>
+                      ))}
+                    </dl>
+                  ) : null}
+                </section>
+              ) : null}
+              {active.businessMetadata ? (
+                <section>
+                  <h3>メタデータ</h3>
+                  <label>
+                    テンプレート
+                    <select
+                      value={active.businessMetadata.templateId ?? ''}
+                      onChange={(event) => void selectTemplate(active, event.target.value || null)}
+                    >
+                      <option value="">未選択</option>
+                      {active.businessMetadata.template &&
+                      !metadataTemplates.some(
+                        ({ template }) =>
+                          `${template.scope}/${template.templateKey}` ===
+                          active.businessMetadata!.templateId,
+                      ) ? (
+                        <option value={active.businessMetadata.templateId!} disabled>
+                          {active.businessMetadata.template.displayName}（選択済み）
+                        </option>
+                      ) : null}
+                      {metadataTemplates.map(({ template }) => (
+                        <option
+                          key={`${template.scope}/${template.templateKey}`}
+                          value={`${template.scope}/${template.templateKey}`}
+                        >
+                          {template.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {locked && !active.businessMetadata.template ? <p role="status">処理中</p> : null}
+                  {active.businessMetadata.template ? (
+                    <>
+                      <p role="status">{metadataStatus(active, locked)}</p>
+                      <details
+                        className={styles.more}
+                        key={`${active.itemId}:${active.businessMetadata.templateId}`}
+                      >
+                        <summary>項目を確認・編集</summary>
+                        <BusinessMetadataFields
+                          template={active.businessMetadata.template}
+                          values={draft.businessValues ?? {}}
+                          onChange={(businessValues) => updateDraft(active, { businessValues })}
+                        />
+                        <button
+                          type="button"
+                          className="ghost"
+                          disabled={
+                            !active.businessMetadata.canExtract ||
+                            !metadataTemplates.some(
+                              ({ template }) =>
+                                `${template.scope}/${template.templateKey}` ===
+                                active.businessMetadata!.templateId,
+                            )
+                          }
+                          onClick={() =>
+                            void selectTemplate(active, active.businessMetadata!.templateId)
+                          }
+                        >
+                          再抽出
+                        </button>
+                      </details>
+                    </>
+                  ) : null}
+                </section>
+              ) : (
+                <details className={styles.more}>
+                  <summary>メタデータを確認・編集</summary>
+                  {(
+                    [
+                      ['documentType', '文書種別'],
+                      ['businessDomain', '業務区分'],
+                      ['businessIdentifier', '識別情報'],
+                      ['effectiveDate', '発効日'],
+                      ['suggestedTags', 'タグ（カンマ区切り）'],
+                      ['routingReason', '分類理由'],
+                    ] as const
+                  ).map(([field, label]) => (
+                    <label key={field}>
+                      {label}
+                      <input
+                        type={field === 'effectiveDate' ? 'date' : 'text'}
+                        value={draft[field]}
+                        onChange={(event) => updateDraft(active, { [field]: event.target.value })}
+                      />
+                    </label>
+                  ))}
+                </details>
+              )}
+              <details className={styles.more}>
+                <summary>検証情報とその他の操作</summary>
+                <dl className={styles.extracted}>
+                  <dt>内容の一致</dt>
+                  <dd>
+                    {active.sourceSha1 && active.sourceSha1 === active.boxSha1
+                      ? 'SHA-1 一致'
+                      : '未確認・不一致'}
+                  </dd>
+                  <dt>BoxファイルID</dt>
+                  <dd>{active.boxFileId ?? '未取得'}</dd>
+                  <dt>バージョン</dt>
+                  <dd>{active.boxVersionId ?? '未取得'}</dd>
+                  <dt>提案元</dt>
+                  <dd>{active.suggestionSource ?? '未取得'}</dd>
+                </dl>
+                <button type="button" className="ghost" onClick={() => void send([active], true)}>
+                  このファイルを移行対象から除外
+                </button>
+              </details>
+            </fieldset>
+          </div>
+          {active.needsAttention ? (
+            <div className={styles.individual}>
+              <button
+                type="button"
+                className="secondary"
+                disabled={
+                  locked ||
+                  !canApprove(draft, destinations, needsReviewKey) ||
+                  !operatorLabel.trim()
+                }
+                onClick={() => void send([active])}
+              >
+                {isReviewPending(active, submitted[active.itemId])
+                  ? '処理待ち'
+                  : 'このファイルを承認'}
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <p className={styles.inspectorEmpty}>ファイル未選択</p>
+      )}
+    </aside>
+  ) : null;
+  const paginationControls =
+    pagination && pagination.total > pagination.pageSize ? (
+      <nav className={styles.pagination} aria-label="承認一覧のページ">
+        <button
+          type="button"
+          className={styles.textButton}
+          disabled={busy || pagination.page <= 1}
+          onClick={() => navigate(pagination.page - 1, pagination.query)}
+        >
+          前へ
+        </button>
+        <span>
+          {(pagination.page - 1) * pagination.pageSize + 1}–
+          {Math.min(pagination.page * pagination.pageSize, pagination.total)} / {pagination.total}件
+        </span>
+        <button
+          type="button"
+          className={styles.textButton}
+          disabled={busy || pagination.page * pagination.pageSize >= pagination.total}
+          onClick={() => navigate(pagination.page + 1, pagination.query)}
+        >
+          次へ
+        </button>
+      </nav>
+    ) : null;
   return (
-    <div className={styles.workspace}>
+    <div className={`${styles.workspace} ${dualPane ? styles.dualPane : ''}`}>
       <section className={styles.main} aria-label="分類結果">
         <header className={styles.heading}>
           <p className={styles.breadcrumb}>
             <a href="/">移行一覧</a> / <a href={`/jobs/${jobId}`}>進捗</a> / 承認
           </p>
-          <h1>分類・承認</h1>
+          <h1>分類結果を確認</h1>
         </header>
         <ol className={styles.workflow} aria-label="移行の工程">
           <li>
@@ -580,81 +907,99 @@ export function ReviewList({
             {pagination?.total ?? items.filter((item) => matchesReviewSearch(item, query)).length}件
           </p>
         ) : null}
-        <div className={styles.list}>
-          {visibleItems.length > 0 ? (
-            <table className={styles.table} aria-label="承認するファイル">
-              <colgroup>
-                <col className={styles.checkColumn} />
-                <col />
-                <col className={styles.destinationColumn} />
-                <col className={styles.templateColumn} />
-                <col className={styles.statusColumn} />
-                <col className={styles.previewColumn} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col">
-                    <input
-                      type="checkbox"
-                      aria-label="全選択"
-                      checked={allSelected}
-                      ref={(node) => {
-                        if (node) node.indeterminate = chosen.length > 0 && !allSelected;
-                      }}
-                      disabled={busy || selectable.length === 0}
-                      onChange={() => toggleGroup(selectable)}
-                    />
-                  </th>
-                  <th scope="col">ファイル名</th>
-                  <th scope="col">配置先</th>
-                  <th scope="col">テンプレート</th>
-                  <th scope="col">状態</th>
-                  <th scope="col">
-                    <span className={styles.srOnly}>{boxLinkBase ? 'プレビュー' : '操作'}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>{visibleItems.map(renderRow)}</tbody>
-            </table>
-          ) : null}
-          {visibleItems.length === 0 ? (
-            <div className={styles.empty}>
-              <Icon kind="check" />
-              <h2>
-                {(pagination?.query ?? query) || filter !== 'all'
-                  ? '該当するファイルなし'
-                  : '承認待ちなし'}
-              </h2>
-              <a href={`/jobs/${jobId}`}>進捗画面へ戻る →</a>
+        <div className={dualPane ? styles.panes : styles.classicPanes}>
+          <section
+            className={dualPane ? styles.resultsPane : styles.classicPanes}
+            aria-label="AIの分類結果"
+          >
+            {dualPane ? (
+              <header className={styles.paneHeading}>
+                <h2>AIの分類結果</h2>
+                <button
+                  type="button"
+                  className={styles.textButton}
+                  disabled={busy || selectable.length === 0}
+                  onClick={() => toggleGroup(selectable)}
+                >
+                  {allSelected ? '選択解除' : '全選択'}
+                </button>
+              </header>
+            ) : null}
+            <div className={styles.list}>
+              {visibleItems.length > 0 ? (
+                <table className={styles.table} aria-label="承認するファイル">
+                  <colgroup>
+                    <col className={styles.checkColumn} />
+                    <col />
+                    <col className={styles.destinationColumn} />
+                    <col className={styles.templateColumn} />
+                    {!dualPane ? <col className={styles.statusColumn} /> : null}
+                    <col className={styles.previewColumn} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col">
+                        <input
+                          type="checkbox"
+                          aria-label="全選択"
+                          checked={allSelected}
+                          ref={(node) => {
+                            if (node) node.indeterminate = chosen.length > 0 && !allSelected;
+                          }}
+                          disabled={busy || selectable.length === 0}
+                          onChange={() => toggleGroup(selectable)}
+                        />
+                      </th>
+                      <th scope="col">ファイル名</th>
+                      <th scope="col">配置先</th>
+                      <th scope="col">テンプレート</th>
+                      {!dualPane ? <th scope="col">状態</th> : null}
+                      <th scope="col">
+                        <span className={styles.srOnly}>{boxLinkBase ? 'プレビュー' : '操作'}</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>{visibleItems.map(renderRow)}</tbody>
+                </table>
+              ) : null}
+              {visibleItems.length === 0 ? (
+                <div className={styles.empty}>
+                  <Icon kind="check" />
+                  <h2>
+                    {(pagination?.query ?? query) || filter !== 'all'
+                      ? '該当するファイルなし'
+                      : '承認待ちなし'}
+                  </h2>
+                  <a href={`/jobs/${jobId}`}>進捗画面へ戻る →</a>
+                </div>
+              ) : null}
+            </div>
+            {dualPane && pagination ? (
+              <div className={styles.resultsPagination}>
+                {paginationControls ?? <span>{pagination.total}件</span>}
+              </div>
+            ) : null}
+          </section>
+          {dualPane ? (
+            <div className={styles.rightPane}>
+              <div className={styles.destinationContainer} hidden={!!active}>
+                <ReviewDestinationPane
+                  destinations={destinations}
+                  needsReviewKey={needsReviewKey}
+                  count={chosen.length}
+                  disabled={busy || !!bulkEdit}
+                  onApply={(destinationKey) => {
+                    if (busy || bulkEdit) return;
+                    for (const item of chosen) updateDraft(item, { destinationKey });
+                  }}
+                />
+              </div>
+              {inspector}
             </div>
           ) : null}
         </div>
         <footer className={styles.approvalBar}>
-          {pagination && pagination.total > pagination.pageSize ? (
-            <nav className={styles.pagination} aria-label="承認一覧のページ">
-              <button
-                type="button"
-                className={styles.textButton}
-                disabled={busy || pagination.page <= 1}
-                onClick={() => navigate(pagination.page - 1, pagination.query)}
-              >
-                前へ
-              </button>
-              <span>
-                {(pagination.page - 1) * pagination.pageSize + 1}–
-                {Math.min(pagination.page * pagination.pageSize, pagination.total)} /{' '}
-                {pagination.total}件
-              </span>
-              <button
-                type="button"
-                className={styles.textButton}
-                disabled={busy || pagination.page * pagination.pageSize >= pagination.total}
-                onClick={() => navigate(pagination.page + 1, pagination.query)}
-              >
-                次へ
-              </button>
-            </nav>
-          ) : null}
+          {!dualPane ? paginationControls : null}
           {error ? (
             <ErrorNotice
               title="操作を完了できませんでした"
@@ -681,18 +1026,20 @@ export function ReviewList({
               選択解除
             </button>
             <div className={styles.bulkButtons}>
-              <button
-                type="button"
-                className="secondary"
-                disabled={busy || chosen.length === 0}
-                aria-expanded={bulkEdit === 'destination'}
-                onClick={() => {
-                  setBulkEdit(bulkEdit === 'destination' ? null : 'destination');
-                  setBulkValue('');
-                }}
-              >
-                配置先を変更
-              </button>
+              {!dualPane ? (
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy || chosen.length === 0}
+                  aria-expanded={bulkEdit === 'destination'}
+                  onClick={() => {
+                    setBulkEdit(bulkEdit === 'destination' ? null : 'destination');
+                    setBulkValue('');
+                  }}
+                >
+                  配置先を変更
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="secondary"
@@ -798,289 +1145,7 @@ export function ReviewList({
           )}
         </footer>
       </section>
-      {active ? (
-        <aside id="review-inspector" className={styles.inspector} aria-label="ファイルの詳細">
-          <div className={styles.inspectorHeader}>
-            <h2>ファイルの詳細</h2>
-            {active ? (
-              <button
-                type="button"
-                className={styles.textButton}
-                aria-label="詳細を閉じる"
-                onClick={closeInspector}
-              >
-                <Icon kind="close" />
-              </button>
-            ) : null}
-          </div>
-          {active && draft ? (
-            <>
-              <div className={styles.inspectorBody}>
-                <div className={styles.documentTitle}>
-                  <DocumentIcon name={active.sourceFileName} />
-                  <h3>{active.sourceFileName}</h3>
-                </div>
-                <p className={styles.hint}>
-                  {formatBytes(active.sourceSize)} · {active.sourceRelativePath}
-                </p>
-                {boxLink ? (
-                  <div className={styles.previewActions}>
-                    <FilePreviewButton
-                      key={`${active.itemId}:${active.boxFileId}:${active.boxVersionId}:${active.boxSha1}:${active.state}:${active.reviewCommand?.state ?? ''}`}
-                      item={active}
-                      boxLink={boxLink}
-                      disabled={locked || !active.boxVersionId || !active.boxSha1}
-                    />
-                    <a
-                      className={styles.openOriginal}
-                      href={boxLink}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Icon kind="external" /> Boxで原本を開く
-                    </a>
-                  </div>
-                ) : null}
-                {active.reviewCommand?.state === 'REJECTED' ? (
-                  <ErrorNotice
-                    title="操作を反映できませんでした"
-                    action="最新の処理状態と入力内容を確認してください。"
-                    message={active.reviewCommand.rejectionReason}
-                  />
-                ) : null}
-                <fieldset disabled={locked} className={styles.fields}>
-                  <section>
-                    <h3>配置先</h3>
-                    <details className={styles.destinationPicker}>
-                      <summary>
-                        <Icon kind="folder" />
-                        <span>
-                          {destinations.find((entry) => entry.key === draft.destinationKey)
-                            ?.label ?? '配置先を選択'}
-                        </span>
-                        <span className={styles.changeDestination}>変更</span>
-                      </summary>
-                      <label>
-                        承認する配置先
-                        <select
-                          value={draft.destinationKey}
-                          onChange={(event) =>
-                            updateDraft(active, { destinationKey: event.target.value })
-                          }
-                        >
-                          <option value="">配置先を選択…</option>
-                          {destinations
-                            .filter((entry) => entry.key !== needsReviewKey)
-                            .map((entry) => (
-                              <option key={entry.key} value={entry.key}>
-                                {entry.label}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                    </details>
-                    {destinationPath ? <p className={styles.path}>{destinationPath}</p> : null}
-                  </section>
-                  {active.needsAttention ? (
-                    <section className={styles.problem}>
-                      <ErrorNotice
-                        category={active.lastErrorCategory}
-                        message={active.lastError}
-                        state={active.state}
-                        {...(active.businessMetadata?.extractionStatus === 'FAILED'
-                          ? {
-                              title: 'メタデータを抽出できませんでした',
-                              action:
-                                '「項目を確認・編集」から再抽出するか、値を入力してください。',
-                            }
-                          : {})}
-                      />
-                      {active.lastErrorCategory === 'MOVE_CONFLICT' ? (
-                        <>
-                          <label>
-                            配置するファイル名
-                            <input
-                              type="text"
-                              value={draft.finalName}
-                              onChange={(event) =>
-                                updateDraft(active, { finalName: event.target.value })
-                              }
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            className="ghost"
-                            onClick={() =>
-                              updateDraft(active, { finalName: withNameSuffix(draft.finalName) })
-                            }
-                          >
-                            連番を付ける
-                          </button>
-                        </>
-                      ) : null}
-                    </section>
-                  ) : null}
-                  {classificationReason || classificationFields.length > 0 ? (
-                    <section>
-                      <h3>{classificationReason ? '分類理由' : '分類結果'}</h3>
-                      {classificationReason ? <p>{classificationReason}</p> : null}
-                      {classificationFields.length > 0 ? (
-                        <dl className={styles.extracted}>
-                          {classificationFields.map(([label, value]) => (
-                            <Fragment key={label}>
-                              <dt>{label}</dt>
-                              <dd>{value}</dd>
-                            </Fragment>
-                          ))}
-                        </dl>
-                      ) : null}
-                    </section>
-                  ) : null}
-                  {active.businessMetadata ? (
-                    <section>
-                      <h3>メタデータ</h3>
-                      <label>
-                        テンプレート
-                        <select
-                          value={active.businessMetadata.templateId ?? ''}
-                          onChange={(event) =>
-                            void selectTemplate(active, event.target.value || null)
-                          }
-                        >
-                          <option value="">未選択</option>
-                          {active.businessMetadata.template &&
-                          !metadataTemplates.some(
-                            ({ template }) =>
-                              `${template.scope}/${template.templateKey}` ===
-                              active.businessMetadata!.templateId,
-                          ) ? (
-                            <option value={active.businessMetadata.templateId!} disabled>
-                              {active.businessMetadata.template.displayName}（選択済み）
-                            </option>
-                          ) : null}
-                          {metadataTemplates.map(({ template }) => (
-                            <option
-                              key={`${template.scope}/${template.templateKey}`}
-                              value={`${template.scope}/${template.templateKey}`}
-                            >
-                              {template.displayName}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {locked && !active.businessMetadata.template ? (
-                        <p role="status">処理中</p>
-                      ) : null}
-                      {active.businessMetadata.template ? (
-                        <>
-                          <p role="status">{metadataStatus(active, locked)}</p>
-                          <details
-                            className={styles.more}
-                            key={`${active.itemId}:${active.businessMetadata.templateId}`}
-                          >
-                            <summary>項目を確認・編集</summary>
-                            <BusinessMetadataFields
-                              template={active.businessMetadata.template}
-                              values={draft.businessValues ?? {}}
-                              onChange={(businessValues) => updateDraft(active, { businessValues })}
-                            />
-                            <button
-                              type="button"
-                              className="ghost"
-                              disabled={
-                                !active.businessMetadata.canExtract ||
-                                !metadataTemplates.some(
-                                  ({ template }) =>
-                                    `${template.scope}/${template.templateKey}` ===
-                                    active.businessMetadata!.templateId,
-                                )
-                              }
-                              onClick={() =>
-                                void selectTemplate(active, active.businessMetadata!.templateId)
-                              }
-                            >
-                              再抽出
-                            </button>
-                          </details>
-                        </>
-                      ) : null}
-                    </section>
-                  ) : (
-                    <details className={styles.more}>
-                      <summary>メタデータを確認・編集</summary>
-                      {(
-                        [
-                          ['documentType', '文書種別'],
-                          ['businessDomain', '業務区分'],
-                          ['businessIdentifier', '識別情報'],
-                          ['effectiveDate', '発効日'],
-                          ['suggestedTags', 'タグ（カンマ区切り）'],
-                          ['routingReason', '分類理由'],
-                        ] as const
-                      ).map(([field, label]) => (
-                        <label key={field}>
-                          {label}
-                          <input
-                            type={field === 'effectiveDate' ? 'date' : 'text'}
-                            value={draft[field]}
-                            onChange={(event) =>
-                              updateDraft(active, { [field]: event.target.value })
-                            }
-                          />
-                        </label>
-                      ))}
-                    </details>
-                  )}
-                  <details className={styles.more}>
-                    <summary>検証情報とその他の操作</summary>
-                    <dl className={styles.extracted}>
-                      <dt>内容の一致</dt>
-                      <dd>
-                        {active.sourceSha1 && active.sourceSha1 === active.boxSha1
-                          ? 'SHA-1 一致'
-                          : '未確認・不一致'}
-                      </dd>
-                      <dt>BoxファイルID</dt>
-                      <dd>{active.boxFileId ?? '未取得'}</dd>
-                      <dt>バージョン</dt>
-                      <dd>{active.boxVersionId ?? '未取得'}</dd>
-                      <dt>提案元</dt>
-                      <dd>{active.suggestionSource ?? '未取得'}</dd>
-                    </dl>
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => void send([active], true)}
-                    >
-                      このファイルを移行対象から除外
-                    </button>
-                  </details>
-                </fieldset>
-              </div>
-              {active.needsAttention ? (
-                <div className={styles.individual}>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={
-                      locked ||
-                      !canApprove(draft, destinations, needsReviewKey) ||
-                      !operatorLabel.trim()
-                    }
-                    onClick={() => void send([active])}
-                  >
-                    {isReviewPending(active, submitted[active.itemId])
-                      ? '処理待ち'
-                      : 'このファイルを承認'}
-                  </button>
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <p className={styles.inspectorEmpty}>ファイル未選択</p>
-          )}
-        </aside>
-      ) : null}
+      {!dualPane ? inspector : null}
     </div>
   );
 }

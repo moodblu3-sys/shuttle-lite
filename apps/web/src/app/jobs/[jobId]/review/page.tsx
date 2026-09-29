@@ -41,6 +41,7 @@ export default async function ReviewPage({
   return (
     <>
       <ReviewWorkspace
+        classicReviewLayout={process.env.SHUTTLE_CLASSIC_REVIEW === 'true'}
         authenticated={!!user}
         key={`${jobId}:${pagination.page}:${pagination.query}:${pagination.filter}`}
         metadataTemplates={getStore().getAvailableJobMetadata(jobId)}

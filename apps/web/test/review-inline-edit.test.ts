@@ -73,11 +73,12 @@ describe('inline and bulk review edits', () => {
     container.remove();
     vi.unstubAllGlobals();
   });
-  async function render(items: ReviewItemView[]) {
+  async function render(items: ReviewItemView[], classicReviewLayout = false) {
     await act(async () =>
       root.render(
         createElement(ReviewList, {
           jobId: 'job',
+          classicReviewLayout,
           items,
           destinations: [
             { key: 'contracts', label: '契約書', boxPath: '/営業/契約書' },
@@ -109,15 +110,67 @@ describe('inline and bulk review edits', () => {
     );
   }
   async function applyDestination() {
-    await click('配置先を変更');
-    const select = container.querySelector<HTMLSelectElement>('footer select')!;
-    await change(select, 'invoices');
-    await click('選択した2件に適用');
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="営業/請求書を配置先に選択"]')!
+        .click(),
+    );
+    expect(destination('A').value).toBe('');
+    expect(destination('B').value).toBe('');
+    await click('選択した2件の配置先に指定');
   }
   const destination = (id: string) =>
     container.querySelector<HTMLSelectElement>(`[aria-label="${id}.pdf の配置先"]`)!;
   const chooseTemplate = (id: string) =>
     container.querySelector<HTMLSelectElement>(`[aria-label="${id}.pdf のテンプレート"]`)!;
+
+  it('keeps the classic destination editor available for rollback', async () => {
+    await render([item('A'), item('B')], true);
+    expect(container.querySelector('[aria-label="Boxの配置先"]')).toBeNull();
+    await all();
+    await click('配置先を変更');
+    await change(container.querySelector<HTMLSelectElement>('footer select')!, 'invoices');
+    await click('選択した2件に適用');
+    expect(destination('A').value).toBe('invoices');
+    expect(destination('B').value).toBe('invoices');
+    expect(button('選択した2件を承認').disabled).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps folder selection when closing details and never edits failed or queued files', async () => {
+    await render([
+      item('A'),
+      item('B'),
+      item('failed', { needsAttention: true }),
+      item('queued', { reviewCommand: receipt('q') }),
+    ]);
+    await all();
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="営業/請求書を配置先に選択"]')!
+        .click(),
+    );
+    await act(async () => container.querySelector<HTMLButtonElement>('#review-file-A')!.click());
+    expect(container.querySelector('[aria-label="Boxの配置先"]')!.parentElement!.hidden).toBe(true);
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[aria-label="詳細を閉じる"]')!.click(),
+    );
+    expect(container.querySelector('[aria-label="Boxの配置先"]')!.parentElement!.hidden).toBe(
+      false,
+    );
+    expect(
+      container
+        .querySelector('[aria-label="営業/請求書を配置先に選択"]')!
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    await click('選択した2件の配置先に指定');
+    expect(destination('A').value).toBe('invoices');
+    expect(destination('B').value).toBe('invoices');
+    expect(destination('failed').value).toBe('');
+    expect(destination('queued').value).toBe('');
+    expect(loadReviewDraft(localStorage, item('A'))!.draft.destinationKey).toBe('invoices');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 
   it('assigns unselected files together and approves exactly the edited destinations', async () => {
     const rows = [item('A'), item('B')];
