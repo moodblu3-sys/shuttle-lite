@@ -199,6 +199,62 @@ a:hover {
   flex: 0 0 auto;
 }
 
+.workspace-settings-icon {
+  display: inline-block;
+  background: currentColor;
+  mask: url('/settings-icon.png') center / contain no-repeat;
+}
+
+.login-shell {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px 24px;
+  background: var(--canvas);
+}
+
+.login-panel {
+  display: grid;
+  gap: 28px;
+  width: min(100%, 400px);
+  padding: 40px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 8px 32px rgb(23 35 56 / 5%);
+  text-align: center;
+}
+
+.login-brand {
+  justify-content: center;
+  height: auto;
+  padding: 0;
+  font-size: 28px;
+}
+
+.login-panel h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.login-error {
+  margin: 0;
+  color: var(--bad);
+  font-size: 13px;
+  text-align: left;
+}
+
+.login-panel .login-button {
+  width: 100%;
+  padding: 13px 20px;
+  font-size: 16px;
+}
+
+.login-panel .login-button:hover {
+  text-decoration: none;
+}
+
 .document-icon {
   width: 28px;
   height: 35px;
