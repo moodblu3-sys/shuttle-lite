@@ -457,6 +457,34 @@ a:hover {
   border-bottom: 1px solid var(--line);
 }
 
+.metadata-template-options {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.metadata-template-options label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.metadata-template-options input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--box-blue);
+}
+
+.metadata-selection-count {
+  margin-left: 12px;
+  font-size: 14px;
+  font-weight: 400;
+}
+
 .migration-options summary {
   cursor: pointer;
   font-size: 13px;

@@ -1,5 +1,4 @@
 import { requirePageUser, isAdmin } from '../../lib/auth';
-import { MetadataSettings } from '../../components/metadata-settings';
 import { platform } from 'node:os';
 import { settingsFromConfig } from '@shuttle-lite/config';
 import { SettingsForm } from '../../components/settings-form';
@@ -35,7 +34,6 @@ export default async function SettingsPage() {
       </section>
       {isAdmin(user) && (
         <>
-          <MetadataSettings />
           <section className="card">
             <h2>詳細設定</h2>
             <SettingsForm

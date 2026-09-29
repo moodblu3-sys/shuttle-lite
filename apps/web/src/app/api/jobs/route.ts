@@ -6,8 +6,9 @@ import { basename, resolve, isAbsolute } from 'node:path';
 import { NextResponse } from 'next/server';
 import { getConfig, getStore } from '../../../lib/runtime';
 import { destinationError, readJobDestinations } from '../../../lib/box-destinations';
-import type { JobDestinations } from '@shuttle-lite/core';
+import type { JobDestinations, TemplateMapping } from '@shuttle-lite/core';
 import { checkSource } from '../../../lib/source-check';
+import { readJobMetadata } from '../../../lib/job-metadata';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -88,6 +89,23 @@ export async function POST(request: Request) {
     )
       return NextResponse.json({ error: 'この移行方式では上書きできません。' }, { status: 400 });
     let destinations: JobDestinations | null = null;
+    let metadata: TemplateMapping[];
+    try {
+      metadata =
+        body.metadataTemplates === undefined && migrationMode !== 'AS_IS'
+          ? store.getMetadataSettings().mappings
+          : await readJobMetadata(
+              body.metadataTemplates === undefined ? [] : body.metadataTemplates,
+              migrationMode,
+            );
+    } catch {
+      return NextResponse.json(
+        {
+          error: '使用するメタデータを取得できません。テンプレートとアクセス権を確認してください。',
+        },
+        { status: 400 },
+      );
+    }
     if (
       body.destinationFolderId !== undefined ||
       getConfig().box.mode === 'real' ||
@@ -109,7 +127,8 @@ export async function POST(request: Request) {
       });
       store.saveJobMetadata(
         created.id,
-        migrationMode === 'AS_IS' ? [] : store.getMetadataSettings().mappings,
+        metadata,
+        body.metadataTemplates === undefined && migrationMode !== 'AS_IS' ? 'LEGACY' : 'JOB',
       );
       if (destinations) store.saveJobDestinations(created.id, destinations);
       if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB', {}, user?.id);
@@ -174,10 +193,22 @@ export async function POST(request: Request) {
         { status: 409 },
       );
   }
+  let metadata: TemplateMapping[];
   try {
     destinations = await readJobDestinations(body.destinationFolderId, migrationMode);
   } catch (error) {
     return NextResponse.json(destinationError(error), { status: 400 });
+  }
+  try {
+    metadata = await readJobMetadata(
+      body.metadataTemplates === undefined ? [] : body.metadataTemplates,
+      migrationMode,
+    );
+  } catch {
+    return NextResponse.json(
+      { error: '使用するメタデータを取得できません。テンプレートとアクセス権を確認してください。' },
+      { status: 400 },
+    );
   }
   const config = getConfig();
   const store = getStore();
@@ -210,10 +241,7 @@ export async function POST(request: Request) {
       testMode: body.testMode === true,
       migrationMode,
     });
-    store.saveJobMetadata(
-      created.id,
-      migrationMode === 'AS_IS' ? [] : store.getMetadataSettings().mappings,
-    );
+    store.saveJobMetadata(created.id, metadata, 'JOB');
     store.saveJobDestinations(created.id, destinations);
     if (body.autoStart !== false) store.enqueueCommand(created.id, 'START_JOB', {}, user?.id);
     return created;

@@ -129,6 +129,8 @@ describe('concise workspace screens', () => {
       '.env',
       '移行ごとにオフ',
       'このMac',
+      '使用するテンプレート',
+      'メタデータ',
     ])
       expect(html).not.toContain(copy);
   });

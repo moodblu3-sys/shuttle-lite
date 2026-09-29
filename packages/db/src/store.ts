@@ -272,8 +272,14 @@ export class ShuttleStore {
     });
   }
 
-  saveJobMetadata(jobId: string, mappings: readonly TemplateMapping[]): void {
-    this.db.prepare('INSERT INTO job_metadata VALUES (?, ?)').run(jobId, JSON.stringify(mappings));
+  saveJobMetadata(
+    jobId: string,
+    mappings: readonly TemplateMapping[],
+    selectionScope: 'LEGACY' | 'JOB' = 'LEGACY',
+  ): void {
+    this.db
+      .prepare('INSERT INTO job_metadata (job_id, mappings, selection_scope) VALUES (?, ?, ?)')
+      .run(jobId, JSON.stringify(mappings), selectionScope);
   }
 
   getJobMetadata(jobId: string): TemplateMapping[] | null {
@@ -282,10 +288,16 @@ export class ShuttleStore {
     return row ? JSON.parse(row.mappings) : null;
   }
 
-  /** Current choices are live; schemas already used by a job remain frozen. */
+  /** New migrations keep their own choices, including an explicitly empty selection. */
   getAvailableJobMetadata(jobId: string): TemplateMapping[] {
     const saved = this.getJobMetadata(jobId);
     if (saved === null) return [];
+    const row = this.db
+      .prepare('SELECT selection_scope FROM job_metadata WHERE job_id = ?')
+      .get(jobId) as { selection_scope: string };
+    if (row.selection_scope === 'JOB' || this.getJob(jobId)?.migrationMode === 'AS_IS')
+      return saved;
+    // Preserve the behavior of migrations created before per-job selection.
     const settings = this.getMetadataSettings();
     return settings.revision > 0 ? settings.mappings : saved;
   }

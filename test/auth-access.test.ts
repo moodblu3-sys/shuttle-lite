@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthStore } from '@shuttle-lite/db';
+import type { BusinessTemplate } from '@shuttle-lite/core';
 import { createHarness, type Harness } from './harness';
 import { getConfig, getStore, getBoxGateway } from '../apps/web/src/lib/runtime';
 import { guard, requirePageUser } from '../apps/web/src/lib/auth';
@@ -13,6 +14,7 @@ import { GET as delta } from '../apps/web/src/app/api/jobs/[jobId]/delta/route';
 import { POST as logout } from '../apps/web/src/app/api/auth/logout/route';
 import { GET as callback } from '../apps/web/src/app/api/auth/callback/route';
 import { buildTelemetryPayload } from '@shuttle-lite/telemetry';
+import { GET as listTemplates } from '../apps/web/src/app/api/metadata-settings/route';
 
 vi.mock('../apps/web/src/lib/runtime', () => ({
   getConfig: vi.fn(),
@@ -164,7 +166,7 @@ describe('authenticated web access', () => {
     expect(other.status).toBe(404);
   });
 
-  it('binds newly created jobs to the session instead of submitted owner fields', async () => {
+  it('binds new jobs to the session and lets non-admins select their own templates', async () => {
     const folder = await h.gateway.ensureFolder('0', '移行先');
     h.writeSource('契約書.txt', 'contract');
     const response = await createJob(
@@ -181,6 +183,24 @@ describe('authenticated web access', () => {
     expect(h.store.jobOwner(job.id)).toBe('11');
     expect(job.operatorLabel).toBe('山田');
     expect(h.store.listEvents(job.id)[0]?.audit?.actorUserId).toBe('11');
+    browser.token = bob;
+    expect((await listTemplates(request('/api/metadata-settings', 'forged'))).status).toBe(401);
+    const available = await listTemplates(request('/api/metadata-settings', bob));
+    expect(available.status).toBe(200);
+    const { templates } = (await available.json()) as { templates: BusinessTemplate[] };
+    const created = await createJob(
+      request('/api/jobs', bob, {
+        name: '利用者の移行',
+        sourceRootPath: h.sourceRoot,
+        destinationFolderId: folder.id,
+        metadataTemplates: [{ scope: templates[0]!.scope, templateKey: templates[0]!.templateKey }],
+      }),
+    );
+    expect(created.status, JSON.stringify(await created.clone().json())).toBe(201);
+    const other = ((await created.json()) as { job: { id: string } }).job;
+    expect(h.store.jobOwner(other.id)).toBe('22');
+    expect(h.store.getAvailableJobMetadata(other.id)).toEqual([{ template: templates[0] }]);
+    expect(h.store.getMetadataSettings()).toEqual({ revision: 0, mappings: [] });
   });
 
   it('rejects an unbound OAuth callback without contacting Box', async () => {

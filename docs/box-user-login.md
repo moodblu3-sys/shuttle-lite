@@ -38,8 +38,9 @@ node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('h
 ```
 
 プロキシ・Snowflakeの既存設定は維持する。webとworkerを両方再起動し、
-**http://localhost:3000** を開く。管理者がログインしてテンプレートとログ出力先を設定し、
+**http://localhost:3000** を開く。管理者がログインしてログ出力先などの共通設定を行い、
 各ユーザーは本人のBoxアカウントでログインして「新しい移行」を作成する。
+使用するメタデータは新しい移行の画面で選択し、管理者以外も自分の移行用に選べる。
 
 OAuth方式では、以前のSA用 `BOX_ROOT_FOLDER_ID` / `BOX_STAGING_FOLDER_ID` などは使用しない。
 本人のBoxルート配下の `Shuttle Lite` に作業領域を用意する。ジョブごとに一時フォルダーを分け、

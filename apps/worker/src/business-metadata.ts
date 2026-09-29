@@ -22,7 +22,7 @@ export async function checkTemplate(ctx: WorkerContext, template: BusinessTempla
   if (!sameTemplate(template, current))
     throw new ShuttleError(
       'METADATA_SCHEMA',
-      'テンプレートの項目が変更されています。設定を保存し直して新しい移行を作成してください。',
+      'テンプレートの項目が変更されています。新しい移行でテンプレートを選び直してください。',
     );
 }
 

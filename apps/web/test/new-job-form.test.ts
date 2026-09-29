@@ -87,7 +87,9 @@ describe('migration mode selection', () => {
         ?.textContent,
     ).toContain('最終配置先：移行データ / 営業資料');
     expect(container.textContent).not.toContain('配置先の範囲');
-    expect(container.textContent).toContain('初回の同名ファイル');
+    expect(container.textContent).toContain('同名ファイルの扱い');
+    expect(container.textContent).not.toContain('初回の同名ファイル');
+    expect(container.querySelector('.metadata-options')).toBeNull();
     expect(
       [...container.querySelectorAll('button')].find((b) => b.textContent === '移行を開始')!
         .disabled,
@@ -119,6 +121,7 @@ describe('migration mode selection', () => {
       sourceRootPath: '/Users/demo/営業資料',
       destinationFolderId: '123',
       autoStart: true,
+      metadataTemplates: [],
     });
     expect(router.push).toHaveBeenCalledWith('/jobs/job_new');
   });
@@ -231,5 +234,59 @@ describe('migration mode selection', () => {
     expect(container.querySelector<HTMLInputElement>('[name=aiRoutingEnabled]')?.checked).toBe(
       true,
     );
+  });
+
+  it('submits only checked metadata templates and retains choices across mode switches', async () => {
+    const templates = ['契約書', '請求書'].map((displayName, index) => ({
+      scope: 'enterprise_123',
+      templateKey: `template${index}`,
+      displayName,
+      fields: [],
+    }));
+    const expand = async () => {
+      fetchMock.mockResolvedValueOnce(Response.json({ templates, mappings: [], revision: 0 }));
+      await act(async () => {
+        const details = container.querySelector<HTMLDetailsElement>('.metadata-options')!;
+        details.open = true;
+        details.dispatchEvent(new Event('toggle'));
+      });
+    };
+    await expand();
+    await act(async () =>
+      container.querySelector<HTMLInputElement>('.metadata-options input')!.click(),
+    );
+    await mode('AS_IS');
+    expect(container.querySelector('.metadata-options')).toBeNull();
+    await mode('AI_ORGANIZE');
+    await expand();
+    expect(container.querySelector<HTMLInputElement>('.metadata-options input')!.checked).toBe(
+      true,
+    );
+    await selectFolders();
+    container.querySelector<HTMLInputElement>('[name=name]')!.value = '営業資料';
+    fetchMock.mockResolvedValueOnce(
+      Response.json({
+        fileCount: 1,
+        folderCount: 0,
+        totalBytes: 12,
+        excludedCount: 0,
+        errorCount: 0,
+        errors: [],
+        complete: true,
+        signature: 'a'.repeat(64),
+        checkedAt: '2026-09-29',
+      }),
+    );
+    await click('移行元を確認');
+    fetchMock.mockResolvedValueOnce(Response.json({ job: { id: 'job_metadata' } }));
+    await act(async () =>
+      container
+        .querySelector('form')!
+        .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
+    );
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1]!.body as string).metadataTemplates).toEqual([
+      { scope: 'enterprise_123', templateKey: 'template0' },
+    ]);
+    expect(router.push).toHaveBeenCalledWith('/jobs/job_metadata');
   });
 });

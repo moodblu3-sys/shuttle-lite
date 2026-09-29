@@ -1,7 +1,10 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MigrationJob } from '@shuttle-lite/core';
+import type { MigrationJob, TemplateMapping } from '@shuttle-lite/core';
+import { templateId } from '@shuttle-lite/core';
+import { demoBusinessTemplates } from '../packages/box/src/fake/business-templates';
+import { GET as review } from '../apps/web/src/app/api/jobs/[jobId]/review/route';
 import { checkSource } from '../apps/web/src/lib/source-check';
 import { POST } from '../apps/web/src/app/api/jobs/route';
 import { getBoxGateway, getCatalog, getConfig, getStore } from '../apps/web/src/lib/runtime';
@@ -279,5 +282,148 @@ describe('creating a migration without registering a source first', () => {
     await runUntilIdle(harness);
     expect(harness.store.getJob(job.id)?.state).toBe('QUEUED');
     expect(harness.store.getProfile(profile.id)).toEqual(profile);
+  });
+
+  it('freezes selected templates per job for AI, review and approval, regardless of global settings', async () => {
+    const [contract, invoice] = demoBusinessTemplates;
+    for (const template of demoBusinessTemplates)
+      await harness.gateway.createMetadataTemplate(template);
+    harness.store.saveMetadataSettings([{ template: invoice! }], 0);
+    harness.writeSource('契約書.txt', '業務委託契約書\n契約先：A社');
+    const classify = vi.spyOn(harness.gateway, 'extractStructured').mockResolvedValue({
+      provider: 'test',
+      confidence: null,
+      references: [],
+      fields: {
+        documentType: '契約書',
+        metadataTemplateId: templateId(contract!),
+        suggestedDestinationKey: 'NEEDS_REVIEW',
+      },
+    });
+    const response = await POST(
+      request({
+        name: '契約書だけ',
+        sourceRootPath: harness.sourceRoot,
+        metadataTemplates: [
+          { scope: contract!.scope, templateKey: contract!.templateKey, fields: [] },
+        ],
+      }),
+    );
+    expect(response.status).toBe(201);
+    const { job } = (await response.json()) as { job: MigrationJob };
+    expect(harness.store.getJobMetadata(job.id)).toEqual([{ template: contract }]);
+    const second = await POST(
+      request({
+        name: '請求書だけ',
+        sourceRootPath: harness.sourceRoot,
+        autoStart: false,
+        metadataTemplates: [{ scope: invoice!.scope, templateKey: invoice!.templateKey }],
+      }),
+    );
+    const other = ((await second.json()) as { job: MigrationJob }).job;
+    harness.store.saveMetadataSettings([], 1);
+    expect(harness.store.getAvailableJobMetadata(other.id)).toEqual([{ template: invoice }]);
+    await runUntilIdle(harness);
+    expect(classify.mock.calls[0]![0].metadataTemplates).toEqual([contract]);
+    const item = harness.store.listItems(job.id)[0]!;
+    expect(harness.store.getBusinessMetadata(item.id)).toMatchObject({
+      templateId: templateId(contract!),
+      extractionStatus: 'EXTRACTED',
+    });
+    const view = await review(new Request(`http://localhost/api/jobs/${job.id}/review`), {
+      params: Promise.resolve({ jobId: job.id }),
+    });
+    expect(
+      ((await view.json()) as { metadataTemplates: TemplateMapping[] }).metadataTemplates,
+    ).toEqual([{ template: contract }]);
+    harness.store.enqueueCommand(job.id, 'SELECT_METADATA_TEMPLATE', {
+      itemId: item.id,
+      templateId: templateId(invoice!),
+      extract: false,
+      revision: harness.store.getBusinessMetadata(item.id).revision,
+      observedBoxFileId: item.boxFileId,
+      observedSha1: item.boxSha1,
+    });
+    await runUntilIdle(harness);
+    expect(
+      harness.store
+        .listCommands(job.id)
+        .find((command) => command.type === 'SELECT_METADATA_TEMPLATE')?.state,
+    ).toBe('REJECTED');
+    approveItem(harness, item, harness.store.getJobDestinations(job.id)!.entries[0]!.key);
+    await runUntilIdle(harness);
+    expect(harness.store.getItem(item.id)?.state).toBe('COMPLETED');
+    expect(await harness.gateway.getMetadata(item.boxFileId!, contract!)).toMatchObject({
+      counterparty: 'A社',
+    });
+    expect(await harness.gateway.getMetadata(item.boxFileId!, invoice!)).toBeNull();
+  });
+
+  it.each([undefined, []])(
+    'does not inherit global templates when a new job selects %j',
+    async (metadataTemplates) => {
+      harness.store.saveMetadataSettings(
+        demoBusinessTemplates.map((template) => ({ template })),
+        0,
+      );
+      harness.writeSource('契約書.txt', '契約書');
+      const classify = vi.spyOn(harness.gateway, 'extractStructured');
+      const extract = vi.spyOn(harness.gateway, 'extractTemplate');
+      const response = await POST(
+        request({ name: 'メタデータなし', sourceRootPath: harness.sourceRoot, metadataTemplates }),
+      );
+      const { job } = (await response.json()) as { job: MigrationJob };
+      expect(harness.store.getAvailableJobMetadata(job.id)).toEqual([]);
+      await runUntilIdle(harness);
+      expect(classify.mock.calls[0]![0].metadataTemplates).toEqual([]);
+      expect(extract).not.toHaveBeenCalled();
+      expect(harness.store.listItems(job.id)[0]?.state).toBe('REVIEW_REQUIRED');
+    },
+  );
+
+  it.each([
+    null,
+    {},
+    ['invalid'],
+    [null],
+    [{ scope: 'enterprise', templateKey: 'missing' }],
+    [{ scope: ['enterprise'], templateKey: 'contract' }],
+    [{ scope: 'enterprise', templateKey: '../contract' }],
+    Array.from({ length: 101 }, () => ({ scope: 'enterprise', templateKey: 'contract' })),
+    [demoBusinessTemplates[0], demoBusinessTemplates[0]],
+  ])('rejects invalid or unavailable templates atomically: %j', async (metadataTemplates) => {
+    const response = await POST(
+      request({ name: 'テスト', sourceRootPath: harness.sourceRoot, metadataTemplates }),
+    );
+    expect(response.status).toBe(400);
+    expect(harness.store.listJobs()).toEqual([]);
+    expect(harness.store.listProfiles()).toEqual([]);
+  });
+
+  it('rejects templates for AS_IS and never inherits global templates for that mode', async () => {
+    harness.store.saveMetadataSettings(
+      demoBusinessTemplates.map((template) => ({ template })),
+      0,
+    );
+    const response = await POST(
+      request({
+        name: 'そのまま',
+        sourceRootPath: harness.sourceRoot,
+        migrationMode: 'AS_IS',
+        metadataTemplates: [],
+      }),
+    );
+    const { job } = (await response.json()) as { job: MigrationJob };
+    expect(harness.store.getAvailableJobMetadata(job.id)).toEqual([]);
+    const invalid = await POST(
+      request({
+        name: '不正',
+        sourceRootPath: harness.sourceRoot,
+        migrationMode: 'AS_IS',
+        metadataTemplates: [demoBusinessTemplates[0]],
+      }),
+    );
+    expect(invalid.status).toBe(400);
+    expect(harness.store.listJobs()).toHaveLength(1);
   });
 });

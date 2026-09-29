@@ -7,6 +7,8 @@ import type { FolderSelection } from '../lib/folder-picker';
 import type { SourceCheck } from '../lib/source-check';
 import { formatBytes } from '@shuttle-lite/core/progress';
 import { WorkspaceIcon } from './workspace-icon';
+import type { BusinessTemplate } from '@shuttle-lite/core';
+import { JobMetadataPicker } from './job-metadata-picker';
 
 export function NewJobForm({
   aiEnabled,
@@ -23,6 +25,7 @@ export function NewJobForm({
   const [migrationMode, setMigrationMode] = useState<'AS_IS' | 'AI_ORGANIZE'>('AI_ORGANIZE');
   const [busy, setBusy] = useState(false);
   const [testMode, setTestMode] = useState(false);
+  const [metadataTemplates, setMetadataTemplates] = useState<BusinessTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [folder, setFolder] = useState<Extract<FolderSelection, { cancelled: false }> | null>(null);
   const [destination, setDestination] = useState<SelectedBoxFolder | null>(null);
@@ -132,6 +135,10 @@ export function NewJobForm({
           aiRoutingEnabled:
             migrationMode !== 'AS_IS' && aiEnabled && form.get('aiRoutingEnabled') === 'on',
           conflictPolicy: form.get('conflictPolicy'),
+          metadataTemplates:
+            migrationMode === 'AS_IS'
+              ? []
+              : metadataTemplates.map(({ scope, templateKey }) => ({ scope, templateKey })),
           autoStart: true,
           testMode,
         }),
@@ -300,6 +307,13 @@ export function NewJobForm({
           </p>
         )}
       </section>
+      {migrationMode !== 'AS_IS' ? (
+        <JobMetadataPicker
+          selected={metadataTemplates}
+          onChange={setMetadataTemplates}
+          disabled={busy}
+        />
+      ) : null}
       <label>
         <span>
           <input
@@ -328,7 +342,7 @@ export function NewJobForm({
             </label>
           ) : null}
           <label>
-            {migrationMode === 'AS_IS' ? '初回の同名ファイル' : '同名ファイルの扱い'}
+            同名ファイルの扱い
             <select
               key={`${migrationMode}-${testMode}`}
               name="conflictPolicy"

@@ -343,6 +343,12 @@ export const MIGRATIONS: readonly Migration[] = [
     command_id TEXT PRIMARY KEY REFERENCES job_commands(id), user_id TEXT NOT NULL REFERENCES auth_users(id)
   ) STRICT;`,
   },
+  {
+    version: 14,
+    name: 'per-job metadata selection',
+    sql: `ALTER TABLE job_metadata ADD COLUMN selection_scope TEXT NOT NULL DEFAULT 'LEGACY'
+      CHECK (selection_scope IN ('LEGACY', 'JOB'));`,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);
