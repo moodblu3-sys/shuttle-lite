@@ -190,7 +190,7 @@ export function NewJobForm({
         <div className="migration-mode-cards">
           {(
             [
-              ['AS_IS', 'そのまま移行', 'フォルダー構成を維持して転送', 'folder'],
+              ['AS_IS', 'そのまま移行', 'フォルダー構成を維持して転送', 'folderExport'],
               [
                 'AI_ORGANIZE',
                 'AIで整理して移行',
