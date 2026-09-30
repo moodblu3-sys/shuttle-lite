@@ -191,7 +191,12 @@ export function NewJobForm({
           {(
             [
               ['AS_IS', 'そのまま移行', 'フォルダー構成を維持して転送', 'folder'],
-              ['AI_ORGANIZE', 'AIで整理して移行', '内容から配置先・メタデータを提案', 'review'],
+              [
+                'AI_ORGANIZE',
+                'AIで整理して移行',
+                '内容から配置先・メタデータを提案',
+                'documentSparkles',
+              ],
             ] as const
           ).map(([value, title, description, icon]) => (
             <label
